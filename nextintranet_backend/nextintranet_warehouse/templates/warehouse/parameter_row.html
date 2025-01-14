@@ -1,0 +1,13 @@
+{% load crispy_forms_tags %}
+
+<div class="flex items-center gap-4 mb-2">
+  <div class="flex-1">
+      {{ form.parameter_type|as_crispy_field }}
+  </div>
+  <div class="flex-1">
+      {{ form.value|as_crispy_field }}
+  </div>
+  <div class="w-12">
+      {{ form.DELETE|as_crispy_field }}
+  </div>
+</div>

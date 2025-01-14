@@ -1,0 +1,197 @@
+{"_id":{"$oid":"5c7099af12875079fd76e19b"},"name":"STUL","text":"Stůl","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":"#"}
+{"_id":{"$oid":"5c7099c512875079fd76e1a4"},"name":"KABELY KONEKTORY UAV","text":"Kabely a konektory pro UAV","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":{"$oid":"5c84f4121287500b4e027f75"}}
+{"_id":{"$oid":"5c709a5612875079fd76e1d9"},"name":"sob02_stul","text":"Stůl","warehouse":{"$oid":"5c67446b7e875154440cc299"},"parent":"#"}
+{"_id":{"$oid":"5c709a6e12875079fd76e1e6"},"name":"sob02_spoj","text":"Spojovací metariál - závěsné šuplíky","warehouse":{"$oid":"5c67446b7e875154440cc299"},"parent":"#"}
+{"_id":{"$oid":"5c709f8912875079fd76e227"},"name":"sob02_nezarazeno","text":"Nezařazeno","warehouse":{"$oid":"5c67446b7e875154440cc299"},"parent":"#"}
+{"_id":{"$oid":"5c709fa012875079fd76e238"},"name":"Nezařazeno","text":"Nezařazeno","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":"#"}
+{"_id":{"$oid":"5c709fb412875079fd76e249"},"name":"sob01_nezarazeno","text":"Nezařazeno","warehouse":{"$oid":"5c67445b7e875154440cc297"},"parent":"#"}
+{"_id":{"$oid":"5c70ff3212875079fd76e2fd"},"name":"S01","text":"Skříň 01","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":"#","position":"#"}
+{"_id":{"$oid":"5c84ee5f1287500b4e027e45"},"name":"S02","text":"Skříň 02","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":"#","position":"#"}
+{"_id":{"$oid":"5c84eec01287500b4e027e52"},"name":"S03","text":"Skříň 03","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":"#","position":"#"}
+{"_id":{"$oid":"5c84eeee1287500b4e027e57"},"name":"C SPECIAL","text":"Speciální C","parent":{"$oid":"5c84eec01287500b4e027e52"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84ef121287500b4e027e5c"},"name":"S04","text":"Skříň 04","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":"#","position":"#"}
+{"_id":{"$oid":"5c84ef721287500b4e027e61"},"name":"ZDÍŘKY, BANÁNKY","text":"Zdířky a banánky","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":{"$oid":"5c84ef121287500b4e027e5c"}}
+{"_id":{"$oid":"5c84efa41287500b4e027e66"},"name":"LOZISKA,3D TISKARNA","text":"Ložiska, díly na 3D tiskárnu","parent":{"$oid":"5c84f10c1287500b4e027eb1"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84efbc1287500b4e027e6b"},"name":"SW","text":"SW tlačítka, vypínače, relé","parent":{"$oid":"5c84ef121287500b4e027e5c"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84efd91287500b4e027e70"},"name":"FASTONY","text":"Fastony, dutinky na vodiče","parent":{"$oid":"5c84f08e1287500b4e027e8e"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84eff21287500b4e027e75"},"name":"KONEKTORY SILOVE","text":"Konektory silové","parent":{"$oid":"5c84f08e1287500b4e027e8e"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f0051287500b4e027e7a"},"name":"KONEKTORY NAPAJECI","text":"Konektory napájecí","parent":{"$oid":"5c84f10c1287500b4e027eb1"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f0191287500b4e027e7f"},"name":"KONEKTORY VALCOVE","text":"Konektory válcové","parent":{"$oid":"5c84f08e1287500b4e027e8e"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f0411287500b4e027e84"},"name":"KONEKTORY MIX","text":"Konektory mix","parent":{"$oid":"5c84f08e1287500b4e027e8e"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f0501287500b4e027e89"},"name":"KONEKTORY RF","text":"Konektory RF","parent":{"$oid":"5c84f08e1287500b4e027e8e"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f08e1287500b4e027e8e"},"name":"S05","text":"Skříň 05","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":"#","position":"#"}
+{"_id":{"$oid":"5c84f0a81287500b4e027e93"},"name":"HREBINKY, JUMPERY","text":"Hřebínky, jumpery","parent":{"$oid":"5c84f08e1287500b4e027e8e"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f0b91287500b4e027e98"},"name":"PRUCHODKY","text":"Průchodky","parent":{"$oid":"5c84ef121287500b4e027e5c"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f0ca1287500b4e027e9d"},"name":"VENTILATORY","text":"Ventilátory","parent":{"$oid":"5c84f08e1287500b4e027e8e"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f0da1287500b4e027ea2"},"name":"F","text":"Pojistky","parent":{"$oid":"5c84ef121287500b4e027e5c"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f0f51287500b4e027ea7"},"name":"KABELY SATA,SMA","text":"Kabely SATA a SMA","parent":{"$oid":"5c84f08e1287500b4e027e8e"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f1011287500b4e027eac"},"name":"S06","text":"Skříň 06","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":"#","position":"#"}
+{"_id":{"$oid":"5c84f10c1287500b4e027eb1"},"name":"S07","text":"Skříň 07","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":"#","position":"#"}
+{"_id":{"$oid":"5c84f1241287500b4e027eb6"},"name":"ANTENY","text":"Antény","position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":{"$oid":"5c84f1f71287500b4e027ef7"}}
+{"_id":{"$oid":"5c84f1311287500b4e027ebb"},"name":"R SPECIAL","text":"R speciální","parent":{"$oid":"5c84f10c1287500b4e027eb1"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f14d1287500b4e027ec0"},"name":"R 1206","text":"R v pouzdru 1206","parent":{"$oid":"5c84f10c1287500b4e027eb1"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f1661287500b4e027ec5"},"name":"R + C 0402","text":"R a C v pouzdru 0402","parent":{"$oid":"5c84f10c1287500b4e027eb1"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f1731287500b4e027eca"},"name":"nevyužito","text":"not_set","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":"#"}
+{"_id":{"$oid":"5c84f17f1287500b4e027ecf"},"name":"R VYKONOVE","text":"R výkonové","parent":{"$oid":"5c84f08e1287500b4e027e8e"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f1991287500b4e027ed4"},"name":"IO ADC","text":"IO ADC převodníky","parent":{"$oid":"5c84f10c1287500b4e027eb1"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f1a81287500b4e027ed9"},"name":"CPU","text":"CPU procesory","parent":{"$oid":"5c84f10c1287500b4e027eb1"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f1b31287500b4e027ede"},"name":"IO INTERFACE","text":"IO interface","parent":{"$oid":"5c84f10c1287500b4e027eb1"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f1c01287500b4e027ee3"},"name":"nevyužito2","text":"not_set","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":"#"}
+{"_id":{"$oid":"5c84f1cc1287500b4e027ee8"},"name":"TRANSIL","text":"Transili","parent":{"$oid":"5c84f10c1287500b4e027eb1"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f1d91287500b4e027eed"},"name":"LED THT","text":"LED THT montáž","parent":{"$oid":"5c84f10c1287500b4e027eb1"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f1e51287500b4e027ef2"},"name":"IO POWER","text":"IO POWER","parent":{"$oid":"5c84f10c1287500b4e027eb1"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f1f71287500b4e027ef7"},"name":"S08","text":"Skříň 08","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":"#","position":"#"}
+{"_id":{"$oid":"5c84f20d1287500b4e027efc"},"name":"XTAL","text":"krystaly","parent":{"$oid":"5c84f1f71287500b4e027ef7"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f2151287500b4e027f01"},"name":"U","text":"Stabilizátory napětí","parent":{"$oid":"5c84f1f71287500b4e027ef7"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f21d1287500b4e027f06"},"name":"T","text":"Tranzistory","parent":{"$oid":"5c84f1f71287500b4e027ef7"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f2281287500b4e027f0b"},"name":"TRAFA","text":"Trafa","parent":{"$oid":"5c84f10c1287500b4e027eb1"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f2311287500b4e027f10"},"name":"L 0805","text":"Cívky v pouzdru 0805","parent":{"$oid":"5c84ef121287500b4e027e5c"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f2381287500b4e027f15"},"name":"IO MIX01","text":"Integrované obvody MIX","parent":{"$oid":"5c84f1f71287500b4e027ef7"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f2421287500b4e027f1a"},"name":"S08/L SMALL","text":"not_set","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":{"$oid":"5c84f14d1287500b4e027ec0"}}
+{"_id":{"$oid":"5c84f2591287500b4e027f23"},"name":"LED SMD","text":"LED SMD","parent":{"$oid":"5c84f1f71287500b4e027ef7"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f2651287500b4e027f28"},"name":"OPTOČLEN","text":"Optočleny","parent":{"$oid":"5c84f1f71287500b4e027ef7"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f3381287500b4e027f35"},"name":"RF RED","text":"RF redukce","parent":{"$oid":"5c84f1f71287500b4e027ef7"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f3451287500b4e027f3a"},"name":"OZ","text":"Operační zesilovače","parent":{"$oid":"5c84f1f71287500b4e027ef7"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f3621287500b4e027f43"},"name":"RF CON","text":"RF konektory","parent":{"$oid":"5c84f1f71287500b4e027ef7"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f3941287500b4e027f48"},"name":"D","text":"Diody mix","parent":{"$oid":"5c84f1f71287500b4e027ef7"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f39e1287500b4e027f4d"},"name":"TRIMRY","text":"TRIMRY","parent":{"$oid":"5c84f1f71287500b4e027ef7"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f3ac1287500b4e027f52"},"name":"ČIDLA","text":"IO čidla","parent":{"$oid":"5c84f1f71287500b4e027ef7"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f3b71287500b4e027f57"},"name":"RF MOD","text":"RF moduly","parent":{"$oid":"5c84f1f71287500b4e027ef7"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f3c91287500b4e027f5c"},"name":"S09","text":"Skříň 09","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":"#","position":"#"}
+{"_id":{"$oid":"5c84f3d31287500b4e027f61"},"name":"S10","text":"Skříň 10","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":"#","position":"#"}
+{"_id":{"$oid":"5c84f3de1287500b4e027f66"},"name":"S11","text":"Skříň 11","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":"#","position":"#"}
+{"_id":{"$oid":"5c84f3ea1287500b4e027f6b"},"name":"S12","text":"Skříň 12","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":"#","position":"#"}
+{"_id":{"$oid":"5c84f4061287500b4e027f70"},"name":"KONEKTORY RJ45, RJ11","text":"RJ45 RJ11","parent":{"$oid":"5c84f3ea1287500b4e027f6b"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f4121287500b4e027f75"},"name":"S13","text":"Skříň 13","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":"#","position":"#"}
+{"_id":{"$oid":"5c84f41a1287500b4e027f7a"},"name":"S14","text":"Skříň 14","parent":"#","position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f4241287500b4e027f7f"},"name":"S15","text":"Skříň 15","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":"#","position":"#"}
+{"_id":{"$oid":"5c84f42e1287500b4e027f84"},"name":"S16","text":"Skříň 16","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":"#","position":"#"}
+{"_id":{"$oid":"5c84f44e1287500b4e027f89"},"name":"R0805","text":"R0805","parent":{"$oid":"5c84f42e1287500b4e027f84"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f4651287500b4e027f8e"},"name":"KABLIKY","text":"MLAB Kablíky","parent":{"$oid":"5c84f42e1287500b4e027f84"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f4721287500b4e027f93"},"name":"KOLA01","text":"Kola součástek","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":{"$oid":"5c84f42e1287500b4e027f84"}}
+{"_id":{"$oid":"5c84f47b1287500b4e027f98"},"name":"S17","text":"Skříň 17","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":"#","position":"#"}
+{"_id":{"$oid":"5c84f4891287500b4e027f9d"},"name":"C0805","text":"C0805","parent":{"$oid":"5c84f47b1287500b4e027f98"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f4931287500b4e027fa2"},"name":"KOLA02","text":"Kola součástek","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":{"$oid":"5c84f47b1287500b4e027f98"}}
+{"_id":{"$oid":"5c84f4a31287500b4e027fa7"},"name":"S18","text":"Skříň 18","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":"#","position":"#"}
+{"_id":{"$oid":"5c84f4ab1287500b4e027fac"},"name":"S19","text":"Skříň 19","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":"#","position":"#"}
+{"_id":{"$oid":"5c84f4ed1287500b4e027fb1"},"name":"SUP01","text":"Skříňka na stole modrá 01","parent":"#","position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f51b1287500b4e027fb6"},"name":"SUP02","text":"Skříňka na stole modrá 02","parent":"#","position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f5391287500b4e027fbf"},"name":"SUP03","text":"Skříňka na stole modrá 03","parent":"#","position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f55b1287500b4e027fc8"},"name":"SUP04","text":"Skříňka na stole modrá 04","parent":"#","position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f5661287500b4e027fcd"},"name":"SUP05","text":"Skříňka na stole modrá 05","parent":"#","position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f5701287500b4e027fd2"},"name":"SUP06","text":"Skříňka na stole modrá 06","parent":"#","position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f57b1287500b4e027fd7"},"name":"SUP07","text":"Skříňka na stole modrá 07","parent":"#","position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5c84f5971287500b4e027fdc"},"name":"SKL","text":"Sklad-místnost","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":"#"}
+{"_id":{"$oid":"5c84f5b41287500b4e027fe1"},"name":"PCB BOX","text":"Skříň na PCB","parent":"#","position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5d27bae0128750448e6b43b4"},"name":"sob02_mech","text":"Mechanika - závěsné šuplíčky u 2. od okna","warehouse":{"$oid":"5c67446b7e875154440cc299"},"parent":"#"}
+{"_id":{"$oid":"5d27bafa128750448e6b43bc"},"name":"sob02_elektro","text":"Elektro - Závěsné šuplíčky 1. od okna","warehouse":{"$oid":"5c67446b7e875154440cc299"},"parent":"#"}
+{"_id":{"$oid":"5d823cf8128750448eca13de"},"name":"DUTINKY02","text":"Dutinky na kablíky, letecké dutinky","parent":{"$oid":"5c84f3ea1287500b4e027f6b"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5e356dd51287502a33477d04"},"name":"BATERIE","text":"Baterie","parent":{"$oid":"5c84eec01287500b4e027e52"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5e35dcf41287502a3347812a"},"name":"IO PAMĚTI","text":"IO paměti","parent":{"$oid":"5c84f1f71287500b4e027ef7"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5e35f2e51287502a334783bf"},"name":"L POWER","text":"Cívky výkonové","parent":{"$oid":"5c84f10c1287500b4e027eb1"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5e35f4bd1287502a33478447"},"name":"TERMISTORY","text":"Termistory","parent":{"$oid":"5c84f10c1287500b4e027eb1"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5e3709541287502a33478609"},"name":"L MIX","text":"L mix","parent":{"$oid":"5c84ef121287500b4e027e5c"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5e3709791287502a3347860e"},"name":"L 0402","text":"Cívky v pouzdru 0402","parent":{"$oid":"5e3709811287502a33478611"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5e3709811287502a33478611"},"name":"L 0402 0603","text":"Cívky v pouzdru 0402 0603","parent":{"$oid":"5c84ef121287500b4e027e5c"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5e3eaaed1287502a33bad58f"},"name":"R0603","text":"R0603","parent":{"$oid":"5c84f42e1287500b4e027f84"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5e3eb2fe1287502a33bad657"},"name":"C0603","text":"C0603","parent":{"$oid":"5c84f47b1287500b4e027f98"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5e5ac1b91287502a334cd1d5"},"name":"DUTINKY01","text":"Dutinky na kablíky","parent":{"$oid":"5c84f3ea1287500b4e027f6b"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5e5ac2211287502a334cd1dc"},"name":"KABELY RJ11, SATA","text":"Kabely RJ11,SATA","parent":{"$oid":"5c84f3ea1287500b4e027f6b"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5e5ac4ba1287502a334cd23a"},"name":"MALINY","text":"Maliny jejich zdroje a krabičky","parent":{"$oid":"5c84f3ea1287500b4e027f6b"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5e5ac5241287502a334cd245"},"name":"KABELY USB","text":"Kabely USB","parent":{"$oid":"5c84f3ea1287500b4e027f6b"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5e5ac5b41287502a334cd248"},"name":"ODROID","text":"Odorid a jejich karty","parent":{"$oid":"5c84f3ea1287500b4e027f6b"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5e5ac5e61287502a334cd24b"},"name":"ODROID PRISLUSENSTVI","text":"Odroid příslušenství - SD karty, tištěné držáky.","parent":{"$oid":"5c84f3ea1287500b4e027f6b"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5e5ac7351287502a334cd264"},"name":"KONEKTORY MIX VELKY","text":"Konektory mix velká krabice","parent":{"$oid":"5c84f4121287500b4e027f75"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5e5acb331287502a334cd326"},"name":"BUZIRKY","text":"Bužírky","parent":{"$oid":"5c84f4241287500b4e027f7f"},"position":"#","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"5ff33f4412875043c04e5a6e"},"name":"L 0603","parent":{"$oid":"5e3709811287502a33478611"},"position":"#","text":"Cívky v pouzdru 0603","warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"6016bea31287504e4aa85cd6"},"name":"NAPÁJECÍ ZDROJE","text":"Napájecí zdroje","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":{"$oid":"5c84f08e1287500b4e027e8e"}}
+{"_id":{"$oid":"601ef99a1287504e4a4a9770"},"name":"R0402","text":"Odpory v 0402","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":{"$oid":"5c84f1661287500b4e027ec5"}}
+{"_id":{"$oid":"601ef9ab1287504e4a4a9773"},"name":"C0402","text":"C v 0402","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":{"$oid":"5c84f1661287500b4e027ec5"}}
+{"_id":{"$oid":"6029004d12875038ee0abcc5"},"name":"KABLIKY MIX","text":"Hotové MLAB kablíky, UAV vodiče","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":{"$oid":"5c84f42e1287500b4e027f84"}}
+{"_id":{"$oid":"602900ca12875038ee0abcd7"},"name":"KABELY MIX01","text":"Mix kabelů","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":{"$oid":"5c84f47b1287500b4e027f98"}}
+{"_id":{"$oid":"602900d912875038ee0abcda"},"name":"KABELY MIX02","text":"Mix kabelů","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":{"$oid":"5c84f47b1287500b4e027f98"}}
+{"_id":{"$oid":"6029026812875038ee0abcfa"},"name":"KABELY USB,ETHERNET","text":"Kabely USB a Ethernet","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":{"$oid":"5c84f3ea1287500b4e027f6b"}}
+{"_id":{"$oid":"6029052512875038ee0abd13"},"name":"KRABICKY STINICI","text":"Stínící krabičky na PCB","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":{"$oid":"5c84f41a1287500b4e027f7a"}}
+{"_id":{"$oid":"6029053512875038ee0abd16"},"name":"ZIP SACKY","text":"Zip sáčky","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":{"$oid":"5c84f41a1287500b4e027f7a"}}
+{"_id":{"$oid":"6029054412875038ee0abd19"},"name":"FASETY","text":"Stahovací pásky","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":{"$oid":"5c84f41a1287500b4e027f7a"}}
+{"_id":{"$oid":"6029271b12875038ee0ac0f1"},"name":"FILTRY0805","text":"Filtry v pouzdru 0805","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":{"$oid":"5c84f4891287500b4e027f9d"}}
+{"_id":{"$oid":"60292fac12875038ee0ac2a8"},"name":"TUBY MIX","text":"Součástky v tubách","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":{"$oid":"5c84f1011287500b4e027eac"}}
+{"_id":{"$oid":"603dfef81287502673c9d968"},"name":"PCB001","text":"PCB kapsa 001","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef81287502673c9d969"},"name":"PCB002","text":"PCB kapsa 002","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef81287502673c9d96a"},"name":"PCB003","text":"PCB kapsa 003","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef81287502673c9d96b"},"name":"PCB004","text":"PCB kapsa 004","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef81287502673c9d96c"},"name":"PCB005","text":"PCB kapsa 005","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef81287502673c9d96d"},"name":"PCB006","text":"PCB kapsa 006","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef81287502673c9d96e"},"name":"PCB007","text":"PCB kapsa 007","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef81287502673c9d96f"},"name":"PCB008","text":"PCB kapsa 008","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef81287502673c9d970"},"name":"PCB009","text":"PCB kapsa 009","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef81287502673c9d971"},"name":"PCB010","text":"PCB kapsa 010","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef81287502673c9d972"},"name":"PCB011","text":"PCB kapsa 011","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef81287502673c9d973"},"name":"PCB012","text":"PCB kapsa 012","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef81287502673c9d974"},"name":"PCB013","text":"PCB kapsa 013","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef81287502673c9d975"},"name":"PCB014","text":"PCB kapsa 014","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef81287502673c9d976"},"name":"PCB015","text":"PCB kapsa 015","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef81287502673c9d977"},"name":"PCB016","text":"PCB kapsa 016","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef81287502673c9d978"},"name":"PCB017","text":"PCB kapsa 017","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef81287502673c9d979"},"name":"PCB018","text":"PCB kapsa 018","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef81287502673c9d97a"},"name":"PCB019","text":"PCB kapsa 019","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef81287502673c9d97b"},"name":"PCB020","text":"PCB kapsa 020","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d97c"},"name":"PCB021","text":"PCB kapsa 021","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d97d"},"name":"PCB022","text":"PCB kapsa 022","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d97e"},"name":"PCB023","text":"PCB kapsa 023","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d97f"},"name":"PCB024","text":"PCB kapsa 024","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d980"},"name":"PCB025","text":"PCB kapsa 025","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d981"},"name":"PCB026","text":"PCB kapsa 026","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d982"},"name":"PCB027","text":"PCB kapsa 027","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d983"},"name":"PCB028","text":"PCB kapsa 028","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d984"},"name":"PCB029","text":"PCB kapsa 029","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d985"},"name":"PCB030","text":"PCB kapsa 030","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d986"},"name":"PCB031","text":"PCB kapsa 031","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d987"},"name":"PCB032","text":"PCB kapsa 032","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d988"},"name":"PCB033","text":"PCB kapsa 033","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d989"},"name":"PCB034","text":"PCB kapsa 034","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d98a"},"name":"PCB035","text":"PCB kapsa 035","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d98b"},"name":"PCB036","text":"PCB kapsa 036","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d98c"},"name":"PCB037","text":"PCB kapsa 037","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d98d"},"name":"PCB038","text":"PCB kapsa 038","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d98e"},"name":"PCB039","text":"PCB kapsa 039","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d98f"},"name":"PCB040","text":"PCB kapsa 040","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d990"},"name":"PCB041","text":"PCB kapsa 041","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d991"},"name":"PCB042","text":"PCB kapsa 042","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d992"},"name":"PCB043","text":"PCB kapsa 043","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d993"},"name":"PCB044","text":"PCB kapsa 044","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d994"},"name":"PCB045","text":"PCB kapsa 045","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d995"},"name":"PCB046","text":"PCB kapsa 046","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d996"},"name":"PCB047","text":"PCB kapsa 047","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d997"},"name":"PCB048","text":"PCB kapsa 048","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d998"},"name":"PCB049","text":"PCB kapsa 049","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d999"},"name":"PCB050","text":"PCB kapsa 050","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d99a"},"name":"PCB051","text":"PCB kapsa 051","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d99b"},"name":"PCB052","text":"PCB kapsa 052","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d99c"},"name":"PCB053","text":"PCB kapsa 053","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d99d"},"name":"PCB054","text":"PCB kapsa 054","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d99e"},"name":"PCB055","text":"PCB kapsa 055","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d99f"},"name":"PCB056","text":"PCB kapsa 056","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d9a0"},"name":"PCB057","text":"PCB kapsa 057","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d9a1"},"name":"PCB058","text":"PCB kapsa 058","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d9a2"},"name":"PCB059","text":"PCB kapsa 059","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d9a3"},"name":"PCB060","text":"PCB kapsa 060","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d9a4"},"name":"PCB061","text":"PCB kapsa 061","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d9a5"},"name":"PCB062","text":"PCB kapsa 062","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d9a6"},"name":"PCB063","text":"PCB kapsa 063","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d9a7"},"name":"PCB064","text":"PCB kapsa 064","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d9a8"},"name":"PCB065","text":"PCB kapsa 065","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d9a9"},"name":"PCB066","text":"PCB kapsa 066","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d9aa"},"name":"PCB067","text":"PCB kapsa 067","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d9ab"},"name":"PCB068","text":"PCB kapsa 068","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d9ac"},"name":"PCB069","text":"PCB kapsa 069","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"603dfef91287502673c9d9ad"},"name":"PCB070","text":"PCB kapsa 070","parent":{"$oid":"5c84f5b41287500b4e027fe1"},"warehouse":{"$oid":"5c67444e7e875154440cc28f"}}
+{"_id":{"$oid":"622dcdbc10f7e6f8437381de"},"name":"STUL BOX01","text":"Pod stolem box01","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":{"$oid":"5c7099af12875079fd76e19b"}}
+{"_id":{"$oid":"622df52c10f7e6f843738404"},"name":"KRABICKY PRISLUSENCTVI","text":"Krabičky příslušenství","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":{"$oid":"5c84ee5f1287500b4e027e45"}}
+{"_id":{"$oid":"622df70a10f7e6f8437384b2"},"name":"KROKOVE MOTORY01","text":"Krokové motory 01","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":{"$oid":"5c84f4a31287500b4e027fa7"}}
+{"_id":{"$oid":"622df71d10f7e6f8437384b5"},"name":"KROKOVE MOTORY02","text":"Krokové motory 02","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":{"$oid":"5c84f4a31287500b4e027fa7"}}
+{"_id":{"$oid":"633451746fe07c55159b2614"},"name":"MECHANIKA01","text":"distanční sloupky","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":{"$oid":"5c84f41a1287500b4e027f7a"}}
+{"_id":{"$oid":"639b11fa59afe8a1aacbd362"},"name":"PLANŽETY01","text":"Planžety na osazování","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":{"$oid":"5c84f47b1287500b4e027f98"}}
+{"_id":{"$oid":"6426d71676c82a1d3b575fc2"},"name":"BATERIE POUZDRA","text":"Pouzdra baterií velká.","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":{"$oid":"5c84f41a1287500b4e027f7a"}}
+{"_id":{"$oid":"652272fe462c6d9e72055910"},"name":"FERIT KORALKY","text":"Feritové korálky","warehouse":{"$oid":"5c67444e7e875154440cc28f"},"parent":{"$oid":"5c84ef121287500b4e027e5c"}}
+{"_id":{"$oid":"6563daea95a79cc5ac40a866"},"name":"nezarazeno","text":"Nezařazeno","warehouse":{"$oid":"6563da8559c0bfbdb6c08420"}}

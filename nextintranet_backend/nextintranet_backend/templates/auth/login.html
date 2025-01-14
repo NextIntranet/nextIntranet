@@ -1,0 +1,105 @@
+
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div class="flex flex-col items-center justify-center h-screen bg-gray-100">
+      <!-- Container -->
+      <div class="flex w-full max-w-4xl bg-white shadow-lg rounded-lg overflow-hidden">
+        <!-- Left Section -->
+        <div class="w-1/2 p-8 bg-gray-50 flex flex-col justify-center">
+          <h1 class="text-3xl font-bold text-gray-800 mb-4 text-center">
+            NextIntranet
+          </h1>
+  
+          <!-- Error Message Area -->
+        {% if error_message %}
+          <div v-if="errorMessage" class="mb-4 bg-red-100 text-red-800 p-4 rounded">
+            {{ error_message }}
+          </div>
+        {% endif %}
+
+<!-- 
+        <form method="post">
+            {{ form.as_p }}
+            <button type="submit">Login</button>
+        </form> -->
+  
+          <!-- Login Form -->
+          <form method="post" class="space-y-4">
+            {% csrf_token %}
+            <div>
+              <label for="username" class="block text-sm font-medium text-gray-700 mb-1">
+                Username
+            </label>
+              <input
+                v-model="username"
+                id="username"
+                name="username"
+                type="text"
+                placeholder="Username"
+                class="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring focus:ring-blue-200"
+                required
+              />
+            </div>
+            <div>
+              <label for="password" class="block text-sm font-medium text-gray-700 mb-1">
+                Password
+            </label>
+              <input
+                v-model="password"
+                id="password"
+                name="password"
+                type="password"
+                placeholder="Password"
+                class="w-full p-2 border border-gray-300 rounded focus:outline-none focus:ring focus:ring-blue-200"
+                required
+              />
+            </div>
+            <button
+              type="submit"
+              class="w-full py-2 px-4 bg-blue-500 text-white font-bold rounded hover:bg-blue-600"
+            >
+              Submit
+            </button>
+          </form>
+        </div>
+  
+        <!-- Right Section -->
+        <div class="w-1/2 p-8 bg-blue-500 text-white flex flex-col justify-between">
+          <!-- Instance Identification -->
+          <div>
+            <h2 class="text-3xl font-bold mb-4"> Welcome to <b>NextIntranet</b> </h2>
+            <p>This instance belongs to:</p>
+            <h3 class="text-xl font-semibold mt-2">{{companyName}}</h3>
+          </div>
+  
+          <!-- Informational Text -->
+          <div>
+            <p class="text-sm">
+                NextIntranet is a platform designed to improve collaboration and communication within your organization.
+            </p>
+          </div>
+        </div>
+      </div>
+  
+      <!-- Links Section -->
+      <div class="mt-6 flex space-x-4">
+        <a href="https://github.com" target="_blank" class="text-blue-500 hover:underline">
+            github
+        </a>
+        <a href="https://nextintranet.com" target="_blank" class="text-blue-500 hover:underline">
+            nextintranet 
+        </a>
+      </div>
+    </div>
+</body>
+</html>
+  

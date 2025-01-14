@@ -1,0 +1,11 @@
+{% extends 'base_layout.html' %}
+{% load tailwind_filters %}
+
+{% block content %}
+<h2 class="text-2xl font-bold mb-4">Edit supplier relation</h2>
+<form method="post">
+    {% csrf_token %}
+    {{ form|crispy }}
+    <button type="submit" class="btn btn-primary bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">Save</button>
+</form>
+{% endblock %}

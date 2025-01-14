@@ -1,0 +1,25 @@
+{% extends "base_layout.html" %}
+{% load crispy_forms_tags %}
+
+{% block content %}
+<h2 class="text-xl font-bold mb-4">Edit Parameters for <a href="./../..">{{ component.name }}</a></h2>
+
+<form method="post" hx-post="." hx-target="#formset-container" class="space-y-4" hx-swap="innerHTML">
+
+{% include "warehouse/parameters_edit_partial.html" %}
+
+<div class="flex gap-4">
+  <button type="submit" class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+      Save
+  </button>
+  <button type="button" hx-get="{% url 'component-add-row' component.id %}" hx-target="#formset-container"
+  hx-swap="beforeend" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">
+  Add Parameter
+  </button>
+  <a href="{% url 'component-detail' component.id %}" class="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">
+  Back to Component
+  </a>
+</div>
+</form>
+
+{% endblock %}

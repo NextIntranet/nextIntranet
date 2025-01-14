@@ -1,0 +1,31 @@
+<div class="bg-white shadow-md rounded-lg p-6 mb-6">
+    <div class="flex justify-between items-center mb-4">
+      <h4 class="text-lg font-bold text-gray-700">Parameters</h4>
+      <a
+        href="./parameters/edit/"
+        class="flex items-center text-gray-500 hover:text-gray-700 text-sm">
+        <span class="material-icons mr-1">edit</span>
+        Edit Parameter
+      </a>
+    </div>
+    {% if item.parameters.all %}
+    <table class="w-full text-left">
+      <thead>
+        <tr class="text-gray-600 border-b">
+          <th class="px-4 py-2">Parameter Type</th>
+          <th class="px-4 py-2">Value</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for param in item.parameters.all %}
+        <tr v-for="param in parameters" :key="param.type" class="border-b">
+          <td class="px-4 py-2">{{ param.parameter_type.name }}</td>
+          <td class="px-4 py-2">{{ param.value }} <span v-if="param.parameter_type.unit"> {{ param.parameter_type.unit }}</span></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="text-gray-600 text-sm mt-2">No parameters available.</div>
+    {% endif %}
+  </div>

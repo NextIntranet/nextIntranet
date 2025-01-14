@@ -1,0 +1,105 @@
+import io
+import datetime
+from django.http import FileResponse
+from django.views import View
+from fpdf import FPDF
+#from pylibdmtx import pylibdmtx
+#from pystrich.datamatrix import DataMatrixEncoder
+import treepoem
+from nextintranet_warehouse.models.component import Packet  # Upravte podle umístění vašeho modelu
+
+class PDFGeneratorView(View):
+    def get(self, request, *args, **kwargs):
+        # Načtěte objekt z modelu
+        packet = Packet.objects.get(pk=kwargs['pk'])
+
+        # Inicializace FPDF
+        pdf = FPDF(orientation='L', unit='mm', format=(38.1, 66.04))
+        pdf.set_auto_page_break(auto=False, margin=0)
+        pdf.set_margins(0, 0, 0)
+        pdf.add_page()
+
+
+        x0, y0 = 0, 0
+        label_width = 66.04
+
+        # Text "Packet"
+        pdf.set_text_color(150)
+        pdf.set_font('Arial', '', 6)
+        pdf.set_xy(x0+2, y0+1)
+        pdf.cell(label_width-4, 4.5, "Packet", align='L')
+
+        # Název součástky
+        pdf.set_draw_color(10)
+        pdf.set_fill_color(245)
+        pdf.set_text_color(0)
+        pdf.set_font('Arial', 'B', 12)
+        pdf.set_xy(x0+3, y0+4.5)
+
+        label_name = packet.component.name
+        if len(label_name) > 40:
+            label_name = label_name[:40] + "..."
+        name_length = pdf.get_string_width(label_name)
+
+        # Úprava velikosti písma, pokud je text příliš dlouhý
+        if name_length > 58:
+            for size in range(0, 70):
+                pdf.set_font('Arial', 'B', 12 - size / 10)
+                name_length = pdf.get_string_width(label_name)
+                if name_length < 58:
+                    break
+        pdf.cell(label_width-10, 4.6, label_name, align='L', border=1)
+
+        # Popis štítku
+        pdf.set_font('Arial', '', 8)
+        description = packet.component.description[:110].strip()
+        pdf.set_xy(x0+4, y0+15)
+        pdf.multi_cell(label_width-28, 2.8, description, align='L')
+
+        # Čárový kód (DataMatrix)
+        #barcode = f"[)>␞06␝S{packet.id}␝5D{datetime.datetime.now().strftime('%y%m%d')}␞␄"
+        #barcode = f"[)>06S{packet.id}5D{datetime.datetime.now().strftime('%y%m%d')}"
+        #barcode = f"{packet.id}"
+        barcode = f"?packet={packet.id}&type=packet&date={datetime.datetime.now().strftime('%y%m%d')};"
+        print("Barcode code:", barcode)
+        barcode_image = treepoem.generate_barcode(
+            barcode_type='datamatrix',
+            data=barcode
+        ).convert('1')
+        barcode_image_path = '/tmp/barcode_image.png'
+        barcode_image.save(barcode_image_path, format='PNG')
+        pdf.set_xy(x0+label_width-20-4, y0+8+7)
+        pdf.image(barcode_image_path, x=None, y=None, w=20, h=20, type='PNG', link='')
+
+        # # Pozice ve skladu
+        if packet.location:
+            pos = packet.location.full_path
+            pdf.set_text_color(80)
+            pdf.set_xy(x0+2, y0+10)
+            pdf.set_font('Arial', 'B', 9)
+            pdf.multi_cell(label_width-10, 3, pos, align='L')
+
+        # Kategorie
+        # if hasattr(packet.component, 'category'):
+        #     category_names = ", ".join([c.name for c in packet.component.category.all()])
+        #     pdf.set_text_color(60)
+        #     pdf.set_xy(x0+4, y0+34.5)
+        #     pdf.cell(0, 0, f"{packet.packet_count} ks | cat: {category_names}", align='L')
+
+        # # Dodavatel
+        # try:
+        #     supplier_info = packet.component.supplier[int(packet.supplier)]
+        #     supplier_text = f"{supplier_info.get('supplier', 'NA')} | {supplier_info.get('symbol', 'NA')}"
+        #     pdf.set_text_color(100)
+        #     pdf.set_xy(x0+4, y0+29)
+        #     pdf.cell(label_width-28, 4.5, supplier_text, align='L', border=0)
+        # except:
+        #     pass
+
+        # Uložení PDF do bufferu
+        buffer = io.BytesIO()
+        pdf_content = pdf.output(dest='S').encode('latin1')
+        buffer.write(pdf_content)
+        buffer.seek(0)
+
+        return FileResponse(buffer, as_attachment=True, filename='label.pdf')

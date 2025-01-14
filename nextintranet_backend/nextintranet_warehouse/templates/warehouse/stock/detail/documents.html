@@ -1,0 +1,44 @@
+
+
+<div class="bg-white shadow-md rounded-lg p-6 mb-6">
+  <div class="flex justify-between items-center mb-4">
+    <h4 class="text-lg font-bold text-gray-700">Documents</h4>
+    <a
+      href="./document/edit/"
+      class="flex items-center text-gray-500 hover:text-gray-700 text-sm">
+      <span class="material-icons mr-1">edit</span>
+      Edit Documents
+    </a>
+  </div>
+  {% if item.documents.all %}
+  <table class="w-full text-sm text-left border-collapse">
+      <thead>
+        <tr class="text-gray-600">
+          <th class="px-4 py-2">Name</th>
+          <th class="px-4 py-2">Type</th>
+          <th class="px-4 py-2">Link</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for document in item.documents.all %}
+        <tr class="text-gray-800">
+          <td class="px-4 py-2">{{ document.name }}</td>
+          <td class="px-4 py-2">{{ document.doc_type }}</td>
+          <td class="px-4 py-2">
+            <a
+              href="{{document.get_url}}"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-blue-600 hover:underline"
+            >
+              {{ document.get_url|truncatechars:30 }}
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <div class="text-gray-600 text-sm mt-2">No documents available.</div>
+  {% endif %}
+  </div>

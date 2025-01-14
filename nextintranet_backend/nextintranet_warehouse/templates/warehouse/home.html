@@ -1,0 +1,36 @@
+{% extends 'base_layout.html' %}
+{%block content %}
+
+<div class="container">
+    <h1>Warehouse</h1>
+    <p>Welcome to the warehouse</p>
+
+
+<div>
+
+    <table class="table">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Quantity</th>
+                <th>Location</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for component in components %}
+            <tr>
+                <td>{{ component.id }}</td>
+                <td>{{ component.name }}</td>
+                <td>{{ component.quantity }}</td>
+                <td>{{ component.location }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+</div>
+
+</div>
+
+{%endblock%}

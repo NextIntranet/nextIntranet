@@ -1,0 +1,222 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NextIntranet</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons"
+    rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <script src="/static/htmx.min.js"></script>
+ 
+      <script src="https://code.jquery.com/jquery-3.6.4.min.js"></script>
+      <link href="https://cdnjs.cloudflare.com/ajax/libs/select2/4.1.0-rc.0/css/select2.min.css" rel="stylesheet">
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.1.0-rc.0/js/select2.min.js"></script>
+    <style>
+            /* Flexibilní layout */
+            .flex {
+                display: flex;
+            }
+            .h-screen {
+                height: 100vh;
+            }
+            
+            /* Sidebar */
+            aside {
+                overflow: hidden;
+                background-color: #444865;
+                color: white;
+                transition: width 0.3s ease;
+            }
+            aside .material-icons {
+                font-size: 24px;
+            }
+            
+            /* Header */
+            header {
+                background-color: #f9f9f9;
+            }
+            
+            /* Popup menu */
+            button {
+                cursor: pointer;
+            }
+  
+    </style>
+</head>
+<body>
+
+
+
+    <div class="flex h-screen bg-gray-100">
+        <!-- Sidebar -->
+        <aside
+          class="bg-gray-800 text-white flex flex-col transition-all duration-300"
+          :class="isSidebarExpanded ? 'w-72' : 'w-20'"
+        >
+          <div class="flex items-center justify-between p-4 border-b border-gray-700">
+            <h1 v-if="isSidebarExpanded" class="text-xl font-bold">NextIntranet</h1>
+            <button
+              @click="toggleSidebar"
+              class="text-white hover:text-gray-400 focus:outline-none"
+            >
+            </button>
+          </div>
+          <nav class="flex-1 p-4">
+            <ul class="space-y-2">
+              <li>
+                <a
+                  href="/"
+                  class="flex items-center py-2 px-4 rounded hover:bg-gray-700"
+                >
+                  <span class="material-icons">home</span>
+                  <span v-if="isSidebarExpanded" class="ml-3">Home</span>
+                </a>
+              </li>
+              <li>
+                  <a
+                      href="/store"
+                      class="flex items-center py-2 px-4 rounded hover:bg-gray-700"
+                  >
+                      <span class="material-icons">store</span>
+                      <span v-if="isSidebarExpanded" class="ml-3">Warehouse</span>
+                  </a>
+              </li>
+              <li>
+                <a
+                  href="/user"
+                  class="flex items-center py-2 px-4 rounded hover:bg-gray-700"
+                >
+                  <span class="material-icons">person</span>
+                  <span v-if="isSidebarExpanded" class="ml-3">My profile</span>
+                </a>
+              </li>
+              <li>
+                <a
+                  href="/logout"
+                  class="flex items-center py-2 px-4 rounded hover:bg-gray-700"
+                >
+                  <span class="material-icons">logout</span>
+                  <span v-if="isSidebarExpanded" class="ml-3">Logout</span>
+                </a>
+              </li>
+            </ul>
+  
+            <div class="">
+              <button @click="changeLocale('cs')" class="flex items-center mr-2">
+                <span class="material-icons">language</span>
+                <span class="ml-2">Čeština</span>
+              </button>
+              <button @click="changeLocale('en')" class="flex items-center">
+                <span class="material-icons">language</span>
+                <span class="ml-2">English</span>
+              </button>
+              </div>
+              <div>
+                In app: {{ in_app }}
+              </div>
+          </nav>
+        </aside>
+    
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col">
+          <!-- Header -->
+          <header class="bg-white p-4 flex justify-between items-center shadow">
+            <div class="flex items-center gap-4">
+              <slot name="menubar">
+              <h1 class="text-2xl font-semibold">NextIntranet</h1>
+              </slot>
+            </div>
+            <div class="relative" x-data="{ isUserMenuVisible: false }">
+                <button
+                    @click="isUserMenuVisible = !isUserMenuVisible"
+                    class="flex items-center gap-2 bg-gray-200 p-2 rounded-full shadow hover:shadow-md focus:outline-none"
+                >
+                    <img
+                        src="https://www.gravatar.com/avatar/{{ user.email }}?s=200"
+                        alt="User Avatar"
+                        class="w-8 h-8 rounded-full"
+                    />
+                    <span class="text-gray-800"> {{ user.get_full_name }} </span>
+                    <span class="material-icons">expand_more</span>
+                </button>
+                <!-- Popup menu with user actions -->
+                <div
+                    x-show="isUserMenuVisible"
+                    class="absolute right-0 mt-1 w-48 bg-white rounded shadow-md z-10"
+                    @click.outside="isUserMenuVisible = false"
+                >
+                    <a href="/user" class="block px-4 py-2 text-gray-700 hover:bg-gray-100">Profil</a>
+                    <a href="/settings" class="block px-4 py-2 text-gray-700 hover:bg-gray-100">Nastavení</a>
+                    <button class="w-full text-left block px-4 py-2 text-gray-700 hover:bg-gray-100">Odhlásit se</button>
+                </div>
+            </div>
+          </header>
+    
+        <!-- Slot for Page Content -->
+        <main class="flex-1 p-6 overflow-auto">
+          <!-- Wrapper for Content -->
+          <div class="max-w-full xl:container mx-auto px-1">
+            {% block content %}{% endblock %}
+        </div>
+        </main>
+        </div>
+      </div>
+    </template>
+    
+<!--     
+    <script setup>
+  
+      const { locale } = useI18n();
+  
+      const changeLocale = (lang) => {
+      locale.value = lang;
+      };
+  
+    import { ref, computed } from 'vue';
+    import { useAuthStore } from '~/stores/auth';
+    import { useApi } from  '~/utils/useApi';
+    
+    // Stav pro levý panel
+    const isSidebarExpanded = ref(true);
+    const toggleSidebar = () => {
+      isSidebarExpanded.value = !isSidebarExpanded.value;
+    };
+    
+    // Stav pro popup menu uživatele
+    const isUserMenuVisible = ref(false);
+    const toggleUserMenu = () => {
+      isUserMenuVisible.value = !isUserMenuVisible.value;
+    };
+    
+    // Uživatel z auth store
+    const authStore = useAuthStore();
+    const isAuthenticated = computed(() => authStore.isAuthenticated);
+  
+  
+      const userInfo = ref(null);
+  
+      onMounted(async () => {
+      userInfo.value = await authStore.fetchUser();
+      });
+  
+    
+    // Odhlášení
+    const logout = () => {
+      authStore.logout();
+      isUserMenuVisible.value = false; // Zavřít menu po odhlášení
+    };
+    </script>
+   -->
+    
+    
+
+    {% block scripts %}
+
+    {% endblock %}
+
+</body>
+</html>

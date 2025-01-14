@@ -1,0 +1,105 @@
+<div class="bg-white shadow-md rounded-lg p-6 mb-6">
+    <div class="flex justify-between items-center mb-4">
+      <h4 class="text-lg font-bold text-gray-700">Suppliers <span class="text-gray-400">({{item.suppliers.count}})</span> </h4>
+      <a
+        href="./new_supplier/"
+        class="flex items-center text-gray-500 hover:text-gray-700 text-sm">
+        <span class="material-icons mr-1">add</span>
+        Add Supplier
+      </a>
+      <button
+        @click="updateAllSuppliers"
+         class="flex items-center text-gray-500 hover:text-gray-700 text-sm">
+      <span class="material-icons mr-1">sync</span>
+        Update All
+      </button>
+    </div>
+
+    <div class="">
+          
+     {% for supplier in item.suppliers.all %}
+        <div
+        v-for="supplier in suppliers"
+        :key="supplier.id"
+        class="flex flex-col items-start bg-gray-100 p-4 py-2 mb-4 rounded shadow-md"
+      >
+        <div class="flex items-center mb-2">
+          <span class="material-icons text-gray-500 mr-2">store</span>
+          <a href="supplier.supplier.website" target="_blank" class="text-gray-800 font-bold hover:underline">
+            {{ supplier.supplier.name }}
+          </a>
+        </div>
+        <div class="w-full">
+            <div class="flex items-center text-gray-600 text-sm mb-2">
+                <span>Part Number:</span>
+                  <a
+                  href="{{supplier.url}}"
+                  target="_blank"
+                  class="ml-2 text-blue-600 underline"
+                  >
+                  {{ supplier.symbol }}
+                </a>
+              <span
+              class="ml-2 text-gray-500 cursor-pointer hover:text-gray-800"
+              @click="copyPartNumber(supplier.symbol)"
+              >
+              <span class="material-icons">content_copy</span>
+          </span>
+      </div>
+      {% if supplier.description %}
+      <hr>
+      <p class="text-gray-900 text-sm mb-4">{{ supplier.description}}</p>
+      {% endif %}
+      <hr>
+          {% if supplier.api_data %}
+          <div>
+            <div class="text-gray-600 text-xs my-1">
+                <div class="text-gray-600 my-1">Quantities:</div>
+                <div class="flex items-center">
+                <span class="material-icons text-gray-500" title="Stock Quantity">inventory_2</span>
+                <span class="ml-2">{{ supplier.api_data.quantity }}</span>
+                </div>  
+            </div>
+          </div>
+          <div v-if="supplier.api.apiAvailable" class="w-full text-xs">
+              <div class="text-gray-600 mt-2">Price Ranges:</div>
+              <table class="w-full text-left mt-0 text-gray-600">
+                  <thead>
+                      <tr class="text-gray-600">
+                          <th class="border-b px-2 py-1">Quantity</th>
+                          <th class="border-b px-2 py-1">Price</th>
+                      </tr>
+                  </thead>
+                  <tbody>
+                    {% for count, value in supplier.api_data.prices.items %}
+                      <tr v-for=" count, value  in supplier.api.priceRanges" :key="range.quantity" class="text-gray-800">
+                          <td class="border-b px-2 py-1">{{ count }}</td>
+                          <td class="border-b px-2 py-1">${{ value }}</td>
+                      </tr>
+                      {% endfor %}
+                  </tbody>
+              </table>
+              <div class="text-gray-600 text-xs mb-1">Data Updated: {{ supplier.api_data.updated }}</div>
+          </div>
+          {% else %}
+          <div v-else class="text-gray-400 text-xs mt-2">No API available</div>
+          {% endif %}
+          <hr>
+        </div>
+        <div class="flex justify-start items-center gap-2 mt-2 w-full text-xs">
+          <a class="flex items-center text-gray-400 hover:text-gray-700" href="{{ supplier.get_delete_url }}">
+            <span class="material-icons mr-1">delete</span>
+          </a>
+          <a class="flex items-center text-gray-400 hover:text-gray-700" href="{{ supplier.get_edit_url }}">
+            <span class="material-icons mr-1">edit</span>
+          </a>
+          <button class="flex items-center text-gray-400 hover:text-gray-700" @click="addToOrder(supplier)">
+            <span class="material-icons mr-1">add_shopping_cart</span>
+          </button>
+        </div>
+        
+    </div>
+    {% endfor %}
+    
+</div>
+  </div>

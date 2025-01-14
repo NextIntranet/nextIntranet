@@ -1,0 +1,45 @@
+<div class="bg-white shadow-md rounded-lg p-6 mb-6">
+    <h4 class="text-lg font-bold text-gray-700 mb-4">Pricing Information</h4>
+    <!-- Nákupní ceny -->
+    <div class="mb-4">
+      <h5 class="text-sm font-light text-gray-600 mb-2">Purchase Prices</h5>
+      <div class="flex flex-wrap gap-2">
+        <div class="bg-blue-100 text-blue-700 text-xs font-medium px-2 py-1 rounded flex items-center gap-1" v-tooltip="'Last purchase price'">
+          <span class="material-icons">price_check</span>
+          ${{ pricing.last }}
+        </div>
+        <div class="bg-blue-100 text-blue-700 text-xs font-medium px-2 py-1 rounded flex items-center gap-1" v-tooltip="'Average purchase price'">
+          <span class="material-icons">analytics</span>
+          ${{ pricing.average }}
+        </div>
+        <div class="bg-green-100 text-green-700 text-xs font-medium px-2 py-1 rounded flex items-center gap-1" v-tooltip="'Minimum purchase price'">
+          <span class="material-icons">arrow_downward</span>
+          ${{ pricing.min }}
+        </div>
+        <div class="bg-red-100 text-red-700 text-xs font-medium px-2 py-1 rounded flex items-center gap-1" v-tooltip="'Maximum purchase price'">
+          <span class="material-icons">arrow_upward</span>
+          ${{ pricing.max }}
+        </div>
+      </div>
+    </div>
+    <!-- Prodejní ceny -->
+    <div class="mb-4">
+      <h5 class="text-sm font-light text-gray-600 mb-2">Selling Prices</h5>
+      <div class="flex flex-wrap gap-2">
+      <div class="bg-orange-100 text-orange-700 text-xs font-medium px-2 py-1 rounded flex items-center gap-1" v-tooltip="'Base selling price'">
+        <span class="material-icons">sell</span>
+        ${{ pricing.selling }}
+      </div>
+      </div>
+    </div>
+    <!-- Skladová cena -->
+    <div class="mb-4">
+      <h5 class="text-sm font-light text-gray-600 mb-2">Warehouse Price</h5>
+      <div class="flex flex-wrap gap-2">
+      <div class="bg-purple-100 text-purple-700 text-xs font-medium px-2 py-1 rounded flex items-center gap-1" v-tooltip="'Current warehouse price'">
+        <span class="material-icons">inventory</span>
+        ${{ pricing.warehouse }}
+      </div>
+      </div>
+    </div>
+  </div>

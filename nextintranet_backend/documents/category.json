@@ -1,0 +1,117 @@
+{"_id":{"$oid":"5a68c3b82208c4a21e2a9be8"},"name":"R_0402","name_cs":"R_0402","description":"","path":"/R/","parent":{"$oid":"5e34356a1287502a33477c22"},"icon":"Resistor-IEC-Standard","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68c3c52208c4a21e2a9bf3"},"name":"R_0603","name_cs":"R_0603","description":"","path":"/R/","parent":{"$oid":"5e34356a1287502a33477c22"},"icon":"Resistor-IEC-Standard","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68c3d22208c4a21e2a9bfc"},"name":"R_0805","name_cs":"R_0805","description":"","path":"/R/","parent":{"$oid":"5e34356a1287502a33477c22"},"icon":"Resistor-IEC-Standard","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68c3e92208c4a21e2a9c0b"},"name":"R_1206","name_cs":"R_1206","description":"","path":"/R/","parent":{"$oid":"5e34356a1287502a33477c22"},"icon":"Resistor-IEC-Standard","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68c3f72208c4a21e2a9c16"},"name":"R_2512","name_cs":"R_2512","description":"","path":"/R/","parent":{"$oid":"5e34356a1287502a33477c22"},"icon":"Resistor-IEC-Standard","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68c4072208c4a21e2a9c21"},"name":"R_trimm","name_cs":"Trimry","description":"","path":"/R/","parent":{"$oid":"5e34356a1287502a33477c22"},"icon":"Resistor-IEC-Trimmer","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68c4182208c4a21e2a9c2a"},"name":"R_special","name_cs":"R speciální","description":"","path":"/R/","parent":{"$oid":"5e34356a1287502a33477c22"},"icon":"Resistor-IEC-Standard","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68c4272208c4a21e2a9c39"},"name":"R_power","name_cs":"R výkonové","description":"","path":"/R/","parent":{"$oid":"5e34356a1287502a33477c22"},"icon":"Resistor-IEC-Standard","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68c43c2208c4a21e2a9c46"},"name":"C_0402","name_cs":"C 0402","description":"","path":"/C/","parent":{"$oid":"5a68c4fe2208c4a21e2a9ca3"},"icon":"Capacitor-IEC-NonPolarized","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68c4462208c4a21e2a9c4f"},"name":"C_0603","name_cs":"C 0603","description":"","path":"/C/","parent":{"$oid":"5a68c4fe2208c4a21e2a9ca3"},"icon":"Capacitor-IEC-NonPolarized","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68c48c2208c4a21e2a9c62"},"name":"C_0805","name_cs":"C 0805","description":"","path":"/C/","parent":{"$oid":"5a68c4fe2208c4a21e2a9ca3"},"icon":"Capacitor-IEC-NonPolarized","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68c4dc2208c4a21e2a9c7b"},"name":"C_1206","name_cs":"C 1206","description":"","path":"/C/","parent":{"$oid":"5a68c4fe2208c4a21e2a9ca3"},"icon":"Capacitor-IEC-NonPolarized","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68c4e42208c4a21e2a9c86"},"name":"CB","name_cs":"CB","description":"","path":"/C/","parent":{"$oid":"5a68c4fe2208c4a21e2a9ca3"},"icon":"Capacitor-IEC-NonPolarized","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68c4ec2208c4a21e2a9c91"},"name":"CC","name_cs":"CC","description":"","path":"/C/","parent":{"$oid":"5a68c4fe2208c4a21e2a9ca3"},"icon":"Capacitor-IEC-NonPolarized","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68c4f32208c4a21e2a9c9a"},"name":"CD","name_cs":"CD","description":"","path":"/C/","parent":{"$oid":"5a68c4fe2208c4a21e2a9ca3"},"icon":"Capacitor-IEC-NonPolarized","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68c4fe2208c4a21e2a9ca3"},"name":"C","name_cs":"C","description":"","path":"/","parent":{"$oid":"5e3435a61287502a33477c3d"},"icon":"Capacitor-IEC-NonPolarized","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68c52b2208c4a21e2a9cb6"},"name":"Kabely","description":"Kabely","parent":{"$oid":"5e3436771287502a33477c61"}}
+{"_id":{"$oid":"5a68c5392208c4a21e2a9cbf"},"name":"kabely_lanka","name_cs":"lanka","description":"","path":"/kabely/","parent":{"$oid":"5a68c52b2208c4a21e2a9cb6"}}
+{"_id":{"$oid":"5a68c54a2208c4a21e2a9cca"},"name":"kabely_USB","name_cs":"USB kabely","description":"","path":"/kabely/","parent":{"$oid":"5a68c52b2208c4a21e2a9cb6"}}
+{"_id":{"$oid":"5a68c55a2208c4a21e2a9cd9"},"name":"kabely_RJ45","name_cs":"RJ45 kabely","description":"","path":"/kabely/","parent":{"$oid":"5a68c52b2208c4a21e2a9cb6"}}
+{"_id":{"$oid":"5a68c5982208c4a21e2a9cec"},"name":"kabely_SATA","name_cs":"SATA kabely","description":"","path":"/kabely/","parent":{"$oid":"5a68c52b2208c4a21e2a9cb6"}}
+{"_id":{"$oid":"5a68c5a32208c4a21e2a9cf7"},"name":"kabely_KOAX","name_cs":"KOAX kabely","description":"","path":"/kabely/","parent":{"$oid":"5a68c52b2208c4a21e2a9cb6"}}
+{"_id":{"$oid":"5a68c5b12208c4a21e2a9d00"},"name":"kabely_ostatní","name_cs":"kabely ostatní","description":"","path":"/kabely/","parent":{"$oid":"5a68c52b2208c4a21e2a9cb6"}}
+{"_id":{"$oid":"5a68c6172208c4a21e2a9d1d"},"name":"kabely_FLYR-B","name_cs":"FLYR-B","description":"","path":"/kabely/","parent":{"$oid":"5a68c52b2208c4a21e2a9cb6"}}
+{"_id":{"$oid":"5a68c62b2208c4a21e2a9d26"},"name":"kablik_tuhy","name_cs":"Tuhý kablík","description":"","path":"/kabely/","parent":{"$oid":"5a68c52b2208c4a21e2a9cb6"}}
+{"_id":{"$oid":"5a68c63d2208c4a21e2a9d33"},"name":"kablik_mekky","name_cs":"Měkký kablík","description":"","path":"/kabely/","parent":{"$oid":"5a68c52b2208c4a21e2a9cb6"}}
+{"_id":{"$oid":"5a68c6512208c4a21e2a9d40"},"name":"bužírky_samosmršťovací","name_cs":"bužírky","description":"","path":"/kabely/","parent":{"$oid":"5a68c52b2208c4a21e2a9cb6"}}
+{"_id":{"$oid":"5a68c6602208c4a21e2a9d4b"},"name":"Síťové zdroje","description":"","parent":{"$oid":"5a68d47a2208c4a21e2aa15b"},"icon":"Source-COM-DC","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68c67b2208c4a21e2a9d58"},"name":"krabičky","name_cs":"Krabičky","description":"","path":"/mechanical/","parent":{"$oid":"5e3436501287502a33477c5c"}}
+{"_id":{"$oid":"5a68c68e2208c4a21e2a9d67"},"name":"3D_tiskarny","name_cs":"3D tiskárny","description":"","path":"/mechanical/","parent":"#"}
+{"_id":{"$oid":"5a68c6a12208c4a21e2a9d70"},"name":"nástroje","name_cs":"Nástroje, nářadí","description":"","path":"/mechanical/","parent":{"$oid":"5e3436501287502a33477c5c"}}
+{"_id":{"$oid":"5a68c6b12208c4a21e2a9d7b"},"name":"MLAB_PCB","name_cs":"MLAB PCB","description":"","path":"/MLAB/","parent":{"$oid":"5a68efe02208c4a21e2aa92c"}}
+{"_id":{"$oid":"5a68c6bf2208c4a21e2a9d88"},"name":"konektory","name_cs":"Konektory","description":"","path":"/","parent":{"$oid":"5e3436771287502a33477c61"}}
+{"_id":{"$oid":"5a68c6d42208c4a21e2a9d95"},"name":"konektory_mix","name_cs":"konektory mix","description":"","path":"/konektory/","parent":{"$oid":"5a68c6bf2208c4a21e2a9d88"}}
+{"_id":{"$oid":"5a68c6de2208c4a21e2a9d9e"},"name":"hřebínky","name_cs":"hřebínky","description":"","path":"/konektory/","parent":{"$oid":"5a68c6bf2208c4a21e2a9d88"}}
+{"_id":{"$oid":"5a68c6e82208c4a21e2a9da7"},"name":"kroko_svorky","name_cs":"Kroko svorky","description":"","path":"/konektory/","parent":{"$oid":"5a68c6bf2208c4a21e2a9d88"}}
+{"_id":{"$oid":"5a68c6f22208c4a21e2a9db4"},"name":"konektory_USB","name_cs":"USB konektory","description":"","path":"/konektory/","parent":{"$oid":"5a68c6bf2208c4a21e2a9d88"}}
+{"_id":{"$oid":"5a68c6fa2208c4a21e2a9dbf"},"name":"Konektory_RF","name_cs":"RF konektory","description":"Konektory RF","path":"/konektory/","parent":{"$oid":"5a68c6bf2208c4a21e2a9d88"}}
+{"_id":{"$oid":"5a68c7102208c4a21e2a9dcc"},"name":"redukce_RF","name_cs":"RF redukce","description":"","path":"/konektory/","parent":{"$oid":"5a68c6bf2208c4a21e2a9d88"}}
+{"_id":{"$oid":"5a68c71b2208c4a21e2a9dd5"},"name":"Faston","name_cs":"Faston konektory","description":"","path":"/konektory/","parent":{"$oid":"5a68c6bf2208c4a21e2a9d88"}}
+{"_id":{"$oid":"5a68c7232208c4a21e2a9dde"},"name":"WAGO","name_cs":"WAGO konektory","description":"","path":"/konektory/","parent":{"$oid":"5a68c6bf2208c4a21e2a9d88"}}
+{"_id":{"$oid":"5a68c72d2208c4a21e2a9deb"},"name":"Dutinky","name_cs":"Dutinky","description":"","path":"/konektory/","parent":{"$oid":"5a68c6bf2208c4a21e2a9d88"}}
+{"_id":{"$oid":"5a68c73d2208c4a21e2a9df8"},"name":"bananky_zdirky","name_cs":"Banánky, zdířky","description":"","path":"/konektory/","parent":{"$oid":"5a68c6bf2208c4a21e2a9d88"}}
+{"_id":{"$oid":"5a68c7532208c4a21e2a9e03"},"name":"konektory_napájení","name_cs":"Konektory napájení","description":"","path":"/konektory/","parent":{"$oid":"5a68c6bf2208c4a21e2a9d88"}}
+{"_id":{"$oid":"5a68c76a2208c4a21e2a9e10"},"name":"Držáky_baterií","description":"Pouzdra baterií","parent":{"$oid":"5e3436771287502a33477c61"}}
+{"_id":{"$oid":"5a68c77b2208c4a21e2a9e1d"},"name":"trubičková_koncovka","name_cs":"Trubičková koncovka","description":"","path":"/konektory/","parent":{"$oid":"5a68c6bf2208c4a21e2a9d88"}}
+{"_id":{"$oid":"5a68c7832208c4a21e2a9e28"},"name":"sloty","name_cs":"sloty","description":"","path":"/konektory/","parent":{"$oid":"5a68c6bf2208c4a21e2a9d88"}}
+{"_id":{"$oid":"5a68c7932208c4a21e2a9e31"},"name":"kabelové_vývodky","name_cs":"Kabelové vývodky","description":"","path":"/konektory/","parent":{"$oid":"5a68c52b2208c4a21e2a9cb6"}}
+{"_id":{"$oid":"5a68c79e2208c4a21e2a9e3a"},"name":"LCD","name_cs":"LCD","description":"","path":"/D/","parent":{"$oid":"5e34370e1287502a33477c76"}}
+{"_id":{"$oid":"5a68c7ba2208c4a21e2a9e4d"},"name":"tools","name_cs":"tools","description":"","path":"/mechanical/","parent":{"$oid":"5e3436501287502a33477c5c"}}
+{"_id":{"$oid":"5a68c7c22208c4a21e2a9e56"},"name":"antény","name_cs":"antény","description":"","path":"/RF/","parent":{"$oid":"5a68f0622208c4a21e2aa9a5"},"icon":"Antenna-COM-Aerial","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68c7cf2208c4a21e2a9e5f"},"name":"D","name_cs":"Diody","description":"","path":"/","parent":{"$oid":"5e34370e1287502a33477c76"},"icon":"Diode-COM-Standard","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68c7df2208c4a21e2a9e6a"},"name":"Transil","name_cs":"Transil","description":"","path":"/pasiv/","parent":{"$oid":"5e34370e1287502a33477c76"}}
+{"_id":{"$oid":"5a68c7ec2208c4a21e2a9e77"},"name":"photo","name_cs":"Fotodiody","description":"","path":"/pasiv/","parent":{"$oid":"5e34370e1287502a33477c76"},"icon":"Diode-COM-Photodiode","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68c7fa2208c4a21e2a9e84"},"name":"krystal","name_cs":"Krystaly","description":"","path":"/pasiv/","parent":{"$oid":"5e3435a61287502a33477c3d"},"icon":"Miscellaneous-COM-Crystal_Oscillator","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68c80e2208c4a21e2a9e8d"},"name":"pouzdra_krystal","name_cs":"Pouzdra pro krystaly","description":"","path":"/pasiv/krystal/","parent":{"$oid":"5a68c6bf2208c4a21e2a9d88"}}
+{"_id":{"$oid":"5a68c8232208c4a21e2a9e9c"},"name":"vypínače","name_cs":"Vypínače, spínače","description":"","path":"/","parent":{"$oid":"5e3436771287502a33477c61"},"icon":"Switch-COM-SPST","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68c84a2208c4a21e2a9eb2"},"name":"CPU","name_cs":"CPU","description":"","path":"/IO/","parent":{"$oid":"5a68d40b2208c4a21e2aa10a"}}
+{"_id":{"$oid":"5a68c8572208c4a21e2a9ebf"},"name":"tranzistor","name_cs":"Tranzistory","description":"","path":"/pasiv/","parent":{"$oid":"5e34370e1287502a33477c76"},"icon":"Transistor-COM-BJT-NPN","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68d35c2208c4a21e2aa09e"},"name":"stabilizátory_napětí","name_cs":"Stabilizátory napětí","description":"","path":"/pasiv/","parent":{"$oid":"5e34370e1287502a33477c76"}}
+{"_id":{"$oid":"5a68d36a2208c4a21e2aa0ab"},"name":"Cívky","description":"","parent":{"$oid":"5e3436771287502a33477c61"},"icon":"Inductor-COM-Air","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68d37a2208c4a21e2aa0b6"},"name":"cívky_výkonové","name_cs":"Cívky výkonové","description":"","path":"/cívky/","parent":{"$oid":"5a68d36a2208c4a21e2aa0ab"},"icon":"Inductor-COM-Air","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68d3892208c4a21e2aa0bf"},"name":"Jádra transformátorů","description":"Jádra transformátorů","parent":{"$oid":"5e3436771287502a33477c61"}}
+{"_id":{"$oid":"5a68d3c22208c4a21e2aa0d2"},"name":"OZ","name_cs":"Operační zesilovače","description":"","path":"/pasiv/","parent":{"$oid":"5a68d40b2208c4a21e2aa10a"}}
+{"_id":{"$oid":"5a68d3d72208c4a21e2aa0e7"},"name":"Optočlen","name_cs":"Optočleny","description":"","path":"/pasiv/","parent":{"$oid":"5e34370e1287502a33477c76"},"icon":"Miscellaneous-COM-Optocoupler","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68d3e52208c4a21e2aa0f4"},"name":"pojistky","name_cs":"Pojistky","description":"","path":"/vypínače/","parent":{"$oid":"5e3435a61287502a33477c3d"},"icon":"Fuse-IEEE-Alt","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68d3fc2208c4a21e2aa0ff"},"name":"pojistkova_pouzdra","name_cs":"Pojistková pouzdra","description":"","path":"/vypínače/pojistky/","parent":{"$oid":"5a68d3e52208c4a21e2aa0f4"}}
+{"_id":{"$oid":"5a68d40b2208c4a21e2aa10a"},"name":"IO","name_cs":"IO","description":"","path":"/","parent":{"$oid":"5e34370e1287502a33477c76"}}
+{"_id":{"$oid":"5a68d41c2208c4a21e2aa117"},"name":"IO_com","name_cs":"IO communication","description":"","path":"/IO/","parent":{"$oid":"5a68d40b2208c4a21e2aa10a"}}
+{"_id":{"$oid":"5a68d4252208c4a21e2aa122"},"name":"IO_power","name_cs":"IO power","description":"","path":"/IO/","parent":{"$oid":"5a68d40b2208c4a21e2aa10a"}}
+{"_id":{"$oid":"5a68d4382208c4a21e2aa12d"},"name":"IO_čidla","name_cs":"IO čidla","description":"","path":"/IO/","parent":{"$oid":"5a68d40b2208c4a21e2aa10a"}}
+{"_id":{"$oid":"5a68d4452208c4a21e2aa136"},"name":"IO_ostatní","name_cs":"IO ostatní","description":"","path":"/IO/","parent":{"$oid":"5a68d40b2208c4a21e2aa10a"}}
+{"_id":{"$oid":"5a68d4572208c4a21e2aa145"},"name":"IO_ADC","name_cs":"IO Analogově digitální převodníky","description":"","path":"/IO/","parent":{"$oid":"5a68d40b2208c4a21e2aa10a"}}
+{"_id":{"$oid":"5a68d47a2208c4a21e2aa15b"},"name":"Zdroje energie","description":"","parent":{"$oid":"5e3436771287502a33477c61"},"icon":"Source-COM-DC","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68d4832208c4a21e2aa166"},"name":"Ventilátor","name_cs":"Ventilátor","description":"","path":"/mechanical/","parent":{"$oid":"5e3435a61287502a33477c3d"}}
+{"_id":{"$oid":"5a68d48d2208c4a21e2aa173"},"name":"Transformátor","name_cs":"Transformátor","description":"","path":"/cívky/","parent":{"$oid":"5e3436771287502a33477c61"},"icon":"Transformer-COM-Standard","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68d4952208c4a21e2aa17e"},"name":"odroid","name_cs":"Odroid","description":"","path":"/IO/CPU/","parent":{"$oid":"5e3436771287502a33477c61"}}
+{"_id":{"$oid":"5a68eee92208c4a21e2aa849"},"path":"/C/","name_cs":"Kondenzátor B","name":"C_B","description":"","parent":{"$oid":"5a68c4fe2208c4a21e2a9ca3"},"icon":"Capacitor-IEC-NonPolarized","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68eeee2208c4a21e2aa852"},"path":"/C/","name_cs":"Kondenzátor C","name":"C_C","description":"","parent":{"$oid":"5a68c4fe2208c4a21e2a9ca3"},"icon":"Capacitor-IEC-NonPolarized","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68eef32208c4a21e2aa85b"},"path":"/C/","name_cs":"Kondenzátor D","name":"C_D","description":"","parent":{"$oid":"5a68c4fe2208c4a21e2a9ca3"},"icon":"Capacitor-IEC-NonPolarized","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68ef2f2208c4a21e2aa881"},"path":"/konektory/","name_cs":"Napájecí konektory","name":"konektory_napajeni","description":"","parent":{"$oid":"5a68c6bf2208c4a21e2a9d88"}}
+{"_id":{"$oid":"5a68ef5a2208c4a21e2aa8a2"},"path":"/D/","name_cs":"LED diody","name":"LED","description":"","parent":{"$oid":"5e34370e1287502a33477c76"},"icon":"Diode-COM-LED","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68efa72208c4a21e2aa8f6"},"path":"/mechanical/","name_cs":"Spojovací materiál","name":"spojovací_material","description":"","parent":{"$oid":"5e3436501287502a33477c5c"}}
+{"_id":{"$oid":"5a68efd62208c4a21e2aa923"},"path":"/MLAB/","name_cs":"MLAB desky","name":"MLAB_desky","description":"/mechanical/","parent":{"$oid":"5a68efe02208c4a21e2aa92c"}}
+{"_id":{"$oid":"5a68efe02208c4a21e2aa92c"},"path":"/","name_cs":"MLAB","name":"MLAB","description":"","parent":"#"}
+{"_id":{"$oid":"5a68effe2208c4a21e2aa95c"},"path":"/mechanical/","name_cs":"Motory","name":"motory","description":"","parent":{"$oid":"5e3436501287502a33477c5c"}}
+{"_id":{"$oid":"5a68f00f2208c4a21e2aa969"},"path":"/mechanical/","name_cs":"Kabelové vývody","name":"kabelové_vývody","description":"Průchodky pro kabely","parent":{"$oid":"5a68c52b2208c4a21e2a9cb6"}}
+{"_id":{"$oid":"5a68f0372208c4a21e2aa98a"},"path":"/kabely/","name_cs":"Kabely FLYRY-B","name":"kabely_FLYRY-B","description":"","parent":{"$oid":"5a68c52b2208c4a21e2a9cb6"}}
+{"_id":{"$oid":"5a68f0522208c4a21e2aa99c"},"path":"/","name_cs":"Nezařazeno","name":"Nezařazeno","description":"","parent":"#"}
+{"_id":{"$oid":"5a68f0622208c4a21e2aa9a5"},"path":"/","name_cs":"RF","name":"RF","description":"","parent":{"$oid":"5e3436771287502a33477c61"},"icon":"Antenna-COM-Aerial","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68f0e62208c4a21e2aaa54"},"path":"/vypínače/","name_cs":"Relé","name":"relé","description":"","parent":{"$oid":"5e3436771287502a33477c61"},"icon":"Relay-COM-COM-SPDT","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5a68f0fc2208c4a21e2aaa63"},"path":"/mechanical/","name_cs":"Plastový spojovací materiál","name":"spojovací_material_plast","description":"","parent":{"$oid":"5a68efa72208c4a21e2aa8f6"}}
+{"_id":{"$oid":"5a68f1182208c4a21e2aaa79"},"path":"/R/","name_cs":"Termistory","name":"R_termistor","description":"","parent":{"$oid":"5e34356a1287502a33477c22"},"icon":"Resistor-IEC-Thermistor","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5ac12125b720d56318705fd8"},"name":"MLAB_MODULE","name_cs":"MLAB moduly","description":"","path":"/MLAB/","parent":{"$oid":"5a68efe02208c4a21e2aa92c"}}
+{"_id":{"$oid":"5b0b8ea9afe1b0144375ace6"},"description":"PCB","path":"/","name":"pcb","name_cs":"PCB","parent":{"$oid":"5e3436501287502a33477c5c"}}
+{"_id":{"$oid":"5b10490aafe1b01443762d6b"},"name_cs":"testovacu_kategorie","description":"Testovaci kategorie pro ... dlouhy popis","name":"test","path":"/","parent":"#"}
+{"_id":{"$oid":"5b2982d2bc0dee071f647871"},"name_cs":"Logické obvody","description":"","path":"/IO/","name":"IO_logické","parent":{"$oid":"5a68d40b2208c4a21e2aa10a"}}
+{"_id":{"$oid":"5ce3bc5b89c20b77a27847cf"},"name_cs":"Kancelářské vybavení","description":"Kancelářské vybavení","path":"/","name":"Kancelar","parent":"#"}
+{"_id":{"$oid":"5def4b6e89c20b77a2cce081"},"name_cs":"Konektory rozteč 1,27mm","description":"","path":"/konektory/","name":"Konektory_1,27mm","parent":{"$oid":"5a68c6bf2208c4a21e2a9d88"}}
+{"_id":{"$oid":"5def4bad89c20b77a2cce0d2"},"name_cs":"Konektory rozteč 1,27mm","description":"","path":"/konektory/","name":"Konektory 1,27mm","parent":{"$oid":"5a68c6bf2208c4a21e2a9d88"}}
+{"_id":{"$oid":"5def508789c20b77a2cce758"},"name_cs":"Konektory rozteč 1,5mm","description":"","path":"/konektory/","name":"Konektory 1,5mm","parent":{"$oid":"5a68c6bf2208c4a21e2a9d88"}}
+{"_id":{"$oid":"5e34356a1287502a33477c22"},"name":"R","description":"","parent":{"$oid":"5e3435a61287502a33477c3d"},"icon":"Resistor-IEC-Standard","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5e3435a61287502a33477c3d"},"name":"pasiv","description":"Pasivní součástky","parent":{"$oid":"5e3436771287502a33477c61"}}
+{"_id":{"$oid":"5e3436501287502a33477c5c"},"name":"Mechanické","description":"Spojovací materiál, krabičky, neelektrické věci, ...","parent":"#"}
+{"_id":{"$oid":"5e3436771287502a33477c61"},"name":"Elektro","description":"Elektrické věci","parent":"#"}
+{"_id":{"$oid":"5e34370e1287502a33477c76"},"name":"polovodiče","description":"Polovodiče","parent":{"$oid":"5e3436771287502a33477c61"}}
+{"_id":{"$oid":"5e82e0221287502a334a7784"},"name":"Transil síť","description":"Transil síť","parent":{"$oid":"5a68c7df2208c4a21e2a9e6a"}}
+{"_id":{"$oid":"5fad25ad12875025b39781e4"},"name":"Držáky kabelů","description":"Držáky kabelů","parent":{"$oid":"5e3436501287502a33477c5c"}}
+{"_id":{"$oid":"5fcf60cd1287507e2b2235c8"},"name":"Zdroje","description":"","parent":{"$oid":"5e3436771287502a33477c61"},"icon":"Source-COM-DC","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"5fcf60fa1287507e2b2235cd"},"name":"Fotovoltaické články","description":"","parent":{"$oid":"5fcf60cd1287507e2b2235c8"},"icon":"Source-COM-Photovoltaic","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"6006e673128750227e0c296c"},"name":"Akumulátory","description":"","parent":{"$oid":"5a68d47a2208c4a21e2aa15b"},"icon":"Source-COM-Battery-Single","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"6006e6ed128750227e0c2976"},"name":"Baterie","description":"","parent":{"$oid":"5a68d47a2208c4a21e2aa15b"},"icon":"Source-COM-Battery-Single","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"6006e712128750227e0c297a"},"name":"Solární","description":"","parent":{"$oid":"5a68d47a2208c4a21e2aa15b"},"icon":"Source-COM-Photovoltaic","icon_source":"electronic-symbols"}
+{"_id":{"$oid":"6272c33edc56076e9a222b75"},"description":"Distanční sloupky","name":"sloupky","parent":{"$oid":"5a68efa72208c4a21e2aa8f6"}}
+{"_id":{"$oid":"639b100359afe8a1aacbd31f"},"description":"Vybavení dílny","name":"Vybavení"}
+{"_id":{"$oid":"639b102059afe8a1aacbd322"},"description":"Osazovací planžety","name":"Planžety","parent":{"$oid":"639b100359afe8a1aacbd31f"}}
+{"_id":{"$oid":"64bfb76776c82a1d3b5790d1"},"description":"Motory mix","name":"Motory","parent":{"$oid":"5e3436771287502a33477c61"}}

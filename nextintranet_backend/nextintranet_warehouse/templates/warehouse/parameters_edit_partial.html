@@ -1,0 +1,29 @@
+{% load crispy_forms_tags %}
+
+    {% csrf_token %}
+    <div id="formset-container">
+        {{ formset.management_form }}
+        {% for form in formset %}
+            <div class="flex items-center gap-4 mb-2">
+                {{ form.id }} <!-- Skryté pole pro ID -->
+                <div class="flex-1">
+                    {{ form.parameter_type|as_crispy_field }}
+                    {% if form.errors.parameter_type %}
+                        <p class="text-red-500 text-sm">{{ form.errors.parameter_type }}</p>
+                    {% endif %}
+                </div>
+                <div class="flex-1">
+                    {{ form.value|as_crispy_field }}
+                    {% if form.errors.value %}
+                        <p class="text-red-500 text-sm">{{ form.errors.value }}</p>
+                    {% endif %}
+                </div>
+                <div class="w-12">
+                    {{ form.DELETE|as_crispy_field }}
+                </div>
+                {% if form.non_field_errors %}
+                    <p class="text-red-500 text-sm">{{ form.non_field_errors }}</p>
+                {% endif %}
+            </div>
+        {% endfor %}
+    </div>
