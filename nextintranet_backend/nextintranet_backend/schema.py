@@ -12,12 +12,15 @@ from .models.user import User
 from nextintranet_warehouse.models.warehouse import Warehouse
 from nextintranet_warehouse.models.component import Component, PriceHistory, Identifier, Supplier, SupplierRelation, Tag, Packet
 from nextintranet_warehouse.models.component import ParameterType as ParameterType_model
-from nextintranet_warehouse.models.component import ComponentParameter
+from nextintranet_warehouse.models.component import ComponentParameter, Document
 from nextintranet_warehouse.models.category import Category
 
 import django_filters
 from graphene import relay
 from graphene_django.filter import DjangoFilterConnectionField
+from graphql_relay.connection.arrayconnection import offset_to_cursor, cursor_to_offset
+from graphql_relay.node.node import from_global_id, to_global_id
+
 
 from django.db.models import Q
 
@@ -56,6 +59,33 @@ class ComponentType(DjangoObjectType):
         #fields = ['id', 'name', 'description', 'category', 'suppliers', 'tags', 'packets', 'parameters', 'created_at', 'unitType', 'unitPrice', 'sellingPrice']
         interfaces = (relay.Node,)
 
+class DocumentType(DjangoObjectType):
+    """GraphQL type for the Document model."""
+    documentId = graphene.ID(source="id", required=True)
+    componentId = graphene.UUID(source="component.id", required=True)
+    url = graphene.String()
+    docTypeChoices = graphene.List(graphene.String)
+
+    class Meta:
+        model = Document
+        fields = "__all__"
+
+    def resolve_url(self, info):
+        # If an external URL is provided, use it; otherwise try to use the file URL.
+        if self.url:
+            return self.url
+        return self.file.url if self.file else None
+
+    def resolve_docTypeChoices(self, info):
+        # Returns the list of available document types from the model choices.
+        return [choice[0] for choice in Document.DOCUMENT_TYPE_CHOICES]
+
+class ComponentParameterType(DjangoObjectType):
+    class Meta:
+        model = ComponentParameter
+        fields = "__all__"
+
+
 class ComponentConnection(relay.Connection):
     """Custom connection for the Component model."""
     class Meta:
@@ -70,7 +100,7 @@ class ComponentFilter(django_filters.FilterSet):
     def filter_search(self, queryset, name, value):
         return queryset.filter(
             Q(name__icontains=value) | Q(description__icontains=value) 
-        ).distinct().order_by("id")
+        ).distinct().order_by("name")
 
 class CategoryFilter(django_filters.FilterSet):
     search = django_filters.CharFilter(method='filter_search', label="Search")
@@ -115,11 +145,124 @@ class UpdateComponent(graphene.Mutation):
                 component.description = description
             if category_id:
                 category = Category.objects.get(id=category_id)
+                print("Selected category: ", category)
                 component.category = category
             component.save()
             return UpdateComponent(component=component)
         except Component.DoesNotExist:
             raise Exception("Component not found!")
+
+class UpdateDocument(graphene.Mutation):
+    class Arguments:
+        id = graphene.UUID(required=True)
+        name = graphene.String()
+        doc_type = graphene.String()
+        url = graphene.String()
+
+    document = graphene.Field(DocumentType)
+
+    def mutate(self, info, id, name=None, doc_type=None, url=None):
+        try:
+            document = Document.objects.get(id=id)
+        except Document.DoesNotExist:
+            raise Exception("Document not found!")
+        
+        if name is not None:
+            document.name = name
+        if doc_type is not None:
+            document.doc_type = doc_type
+        if url is not None:
+            document.url = url
+        
+        document.save()
+        return UpdateDocument(document=document)
+    
+class CreateDocument(graphene.Mutation):
+    class Arguments:
+        component_id = graphene.UUID(required=True)
+        name = graphene.String(required=True)
+        doc_type = graphene.String(required=True)
+        url = graphene.String(required=True)
+
+    document = graphene.Field(DocumentType)
+
+    def mutate(self, info, component_id, name, doc_type, url):
+        try:
+            component = Component.objects.get(id=component_id)
+        except Component.DoesNotExist:
+            raise Exception("Component not found!")
+        document = Document(component=component, name=name, doc_type=doc_type, url=url)
+        document.save()
+        return CreateDocument(document=document)
+
+class DeleteDocument(graphene.Mutation):
+    class Arguments:
+        id = graphene.UUID(required=True)
+
+    document = graphene.Field(DocumentType)
+
+    def mutate(self, info, id):
+        try:
+            document = Document.objects.get(id=id)
+            document.delete()
+            return DeleteDocument(document=document)
+        except Document.DoesNotExist:
+            raise Exception("Document not found!")
+
+class CreateComponentParameter(graphene.Mutation):
+    class Arguments:
+        component_id = graphene.UUID(required=True)
+        ParameterType_id = graphene.UUID(required=True)
+        value = graphene.String(required=True)
+
+    componentParameter = graphene.Field(ComponentParameterType)
+
+    def mutate(self, info, component_id, ParameterType_id, value):
+        try:
+            component = Component.objects.get(id=component_id)
+        except Component.DoesNotExist:
+            raise Exception("Component not found!")
+        try:
+            ParameterType = ParameterType_model.objects.get(id=ParameterType_id)
+        except ParameterType_model.DoesNotExist:
+            raise Exception("ParameterType not found!")
+        
+        componentParameter = ComponentParameter(component=component, parameter_type=ParameterType, value=value)
+        componentParameter.save()
+        return CreateComponentParameter(componentParameter=componentParameter)
+
+class UpdateComponentParameter(graphene.Mutation):
+    class Arguments:
+        id = graphene.UUID(required=True)
+        value = graphene.String()
+
+    componentParameter = graphene.Field(ComponentParameterType)
+
+    def mutate(self, info, id, value=None):
+        try:
+            componentParameter = ComponentParameter.objects.get(id=id)
+        except ComponentParameter.DoesNotExist:
+            raise Exception("ComponentParameter not found!")
+        
+        if value is not None:
+            componentParameter.value = value
+        
+        componentParameter.save()
+        return UpdateComponentParameter(componentParameter=componentParameter)
+
+class DeleteComponentParameter(graphene.Mutation):
+    class Arguments:
+        id = graphene.UUID(required=True)
+
+    componentParameter = graphene.Field(ComponentParameterType)
+
+    def mutate(self, info, id):
+        try:
+            componentParameter = ComponentParameter.objects.get(id=id)
+            componentParameter.delete()
+            return DeleteComponentParameter(componentParameter=componentParameter)
+        except ComponentParameter.DoesNotExist:
+            raise Exception("ComponentParameter not found!")
 
 
 class PacketType(DjangoObjectType):
@@ -164,7 +307,6 @@ class ComponentParameterType(DjangoObjectType):
         model = ComponentParameter
         fields = "__all__"
 
-
 from nextintranet_warehouse.models.purchase import Purchase, PurchaseItem
 class PurchaseType(DjangoObjectType):
     """GraphQL type for the Purchase model."""
@@ -179,7 +321,51 @@ class PurchaseItemType(DjangoObjectType):
         """Meta information for the PurchaseItemType."""
         model = PurchaseItem
         fields = "__all__"
+    
+class UpdatePurchase(graphene.Mutation):
+    class Arguments:
+        id = graphene.UUID(required=True)
+        delivery_date = graphene.Date()
+        stocked_date = graphene.Date()
+        supplier_id = graphene.UUID()
+        status = graphene.String()
+        currency = graphene.String()
+        total_price_original = graphene.Decimal()
+        total_price_original_vat = graphene.Decimal()
+        total_price_converted = graphene.Decimal()
+        note = graphene.String()
 
+    purchase = graphene.Field(PurchaseType)
+
+    def mutate(self, info, id, delivery_date=None, stocked_date=None, supplier_id=None, 
+                status=None, currency=None, total_price_original=None, 
+                total_price_original_vat=None, total_price_converted=None, note=None):
+        try:
+            purchase = Purchase.objects.get(id=id)
+            if delivery_date is not None:
+                purchase.delivery_date = delivery_date
+            if stocked_date is not None:
+                purchase.stocked_date = stocked_date
+            if supplier_id is not None:
+                supplier = Supplier.objects.get(id=supplier_id)
+                purchase.supplier = supplier
+            if status is not None:
+                purchase.status = status
+            if currency is not None:
+                purchase.currency = currency
+            if total_price_original is not None:
+                purchase.total_price_original = total_price_original
+            if total_price_original_vat is not None:
+                purchase.total_price_original_vat = total_price_original_vat
+            if total_price_converted is not None:
+                purchase.total_price_converted = total_price_converted
+            if note is not None:
+                purchase.note = note
+            
+            purchase.save()
+            return UpdatePurchase(purchase=purchase)
+        except Purchase.DoesNotExist:
+            raise Exception("Purchase not found!")
 
 
 class Query(graphene.ObjectType):
@@ -187,6 +373,7 @@ class Query(graphene.ObjectType):
     all_users = graphene.List(UserType)
     component = graphene.Field(ComponentType, id=graphene.UUID( required=True))
     componentParameters = graphene.List(ComponentParameterType)
+    componentDocuments = graphene.List(DocumentType)
     all_parameters = graphene.List(ParameterType)
     all_packets = graphene.List(PacketType)
     warehouse = graphene.List(WarehouseType)
@@ -232,9 +419,18 @@ class Query(graphene.ObjectType):
     #     return Component.objects.all().order_by('id')
     
 
-    def resolve_components(self, info, **kwargs):
-        return Component.objects.all().order_by('id')
+    #def resolve_components(self, info, **kwargs):
+    #    return Component.objects.all().order_by('name')
 
+
+    def resolve_components(self, info, search=None, first=None, after=None, last=None, before=None):
+        queryset = Component.objects.all()
+        # Řazení
+        queryset = queryset.order_by("name")
+
+        return queryset
+  
+    
     def resolve_all_warehouses(self, info):
         """Resolve all warehouses."""
         return Warehouse.objects.all()
@@ -249,7 +445,7 @@ class Query(graphene.ObjectType):
     
     # def resolve_components(self, info):
     #     return []
-    
+
 
     def resolve_all_suppliers(self, info):
         """Resolve all suppliers."""
@@ -267,6 +463,10 @@ class Query(graphene.ObjectType):
         """Resolve all component parameters."""
         return ComponentParameter.objects.all()
 
+    def resolve_componentDocuments(self, info):
+        """Resolve all component documents."""
+        return Document.objects.all()
+
     def resolve_all_purchase(self, info):
         """Resolve all purchases."""
         return Purchase.objects.all()
@@ -280,6 +480,17 @@ class Mutation(graphene.ObjectType):
 
     create_component = CreateComponent.Field()
     update_component = UpdateComponent.Field()
+
+    create_document = CreateDocument.Field()
+    update_Document = UpdateDocument.Field()
+    delete_document = DeleteDocument.Field()
+
+
+    create_component_parameter = CreateComponentParameter.Field()
+    update_component_parameter = UpdateComponentParameter.Field()
+    delete_component_parameter = DeleteComponentParameter.Field()
+
+    update_purchase = UpdatePurchase.Field()
 
 
 

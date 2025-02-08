@@ -18,13 +18,21 @@ class PacketInline(admin.TabularInline):
     model = component.Packet
     extra = 1
 
+class DocumentInline(admin.TabularInline):
+    model = component.Document
+    extra = 1
+
+class ParameterInline(admin.TabularInline):
+    model = component.ComponentParameter
+    extra = 1
+
 
 admin.site.register(warehouse.Warehouse)
 class ComponentAdmin(admin.ModelAdmin):
     list_display = ('name', 'description', 'category')
     search_fields = ('name', 'description')
     list_filter = ('category',)
-    inlines = (SuppliersRelationInline, PacketInline)
+    inlines = (SuppliersRelationInline, PacketInline, DocumentInline, ParameterInline)
     # filter_horizontal = ('suppliers', 'tags', 'reservations', 'parameters')
 
 admin.site.register(component.Component, ComponentAdmin)
