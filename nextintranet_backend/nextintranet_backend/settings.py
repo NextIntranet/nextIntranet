@@ -128,7 +128,12 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    #'nextintranet_backend.middleware.LoginRequiredMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # 'graphql_jwt.middleware.JSONWebTokenMiddleware',
+    'nextintranet_backend.middleware.LoginRequiredMiddleware',
     'nextintranet_backend.middleware.debug_middleware',
     'nextintranet_backend.middleware.InAppMiddleware',
 ]

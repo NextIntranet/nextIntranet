@@ -20,5 +20,5 @@ urlpatterns = [
     path('positions/', WarehousePositionsListAPIView.as_view(), name='api_warehouse_positions'),
     path('categories/', CategoryListAPIView.as_view(), name='api_warehouse_categories'),
 
-    path('print/packet/<uuid:pk>/', PDFGeneratorView.as_view(), name='api_warehouse_print_packet'),
+    path('print/packet/<uuid:uuid>/', PDFGeneratorView.as_view(), name='api_warehouse_print_packet'),
 ]

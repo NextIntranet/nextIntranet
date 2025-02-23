@@ -11,7 +11,7 @@ from nextintranet_warehouse.models.component import Packet  # Upravte podle umí
 class PDFGeneratorView(View):
     def get(self, request, *args, **kwargs):
         # Načtěte objekt z modelu
-        packet = Packet.objects.get(pk=kwargs['pk'])
+        packet = Packet.objects.get(pk=kwargs['uuid'])
 
         # Inicializace FPDF
         pdf = FPDF(orientation='L', unit='mm', format=(38.1, 66.04))

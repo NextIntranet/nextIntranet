@@ -16,19 +16,7 @@ from graphene_django.views import GraphQLView
 from nextintranet_warehouse import urls_api as warehouse_api_urls
 
 
-    # path('api/v1/me/', user.UserDetailView.as_view(), name='user-detail'),
-
-    # path("api/v1/core/register/", RegisterView.as_view(), name="register"),
-    # path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
-    # path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-    # # path('api/v1/logout/', LogoutView.as_view(), name='logout'),
-    # path('api/v1/logout/', LogoutAPIView.as_view(), name='logout'),
-
-    # #path('api/v1/warehouse/components/', ComponentListAPIView.as_view(), name='component-list'),
-    # #path('api/v1/warehouse/locations/', WarehouseListAPIView.as_view(), name='warehouse-list'),
-    # #path('api/v1/warehouse/locations/<int:pk>/', WarehouseDetailAPIView.as_view(), name='warehouse-detail'),
-
-
+# /api/
 urlpatterns = [
     path('token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),

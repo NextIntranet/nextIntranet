@@ -101,6 +101,10 @@ class ComponentFilter(django_filters.FilterSet):
         return queryset.filter(
             Q(name__icontains=value) | Q(description__icontains=value) 
         ).distinct().order_by("name")
+    
+    @property
+    def count(self):
+        return self.qs.count()
 
 class CategoryFilter(django_filters.FilterSet):
     search = django_filters.CharFilter(method='filter_search', label="Search")
@@ -287,11 +291,17 @@ class SupplierType(DjangoObjectType):
         fields = "__all__"
 
 class SupplierRelationType(DjangoObjectType):
-    """GraphQL type for the Supplier model."""
+    """GraphQL type for the SupplierRelation model."""
+    url = graphene.String()
+
     class Meta:
-        """Meta information for the SupplierType."""
+        """Meta information for the SupplierRelationType."""
         model = SupplierRelation
         fields = "__all__"
+
+    def resolve_url(self, info):
+        return self.url
+    
 
 class ParameterType(DjangoObjectType):
     """GraphQL type for the Parameter model."""
@@ -415,18 +425,11 @@ class Query(graphene.ObjectType):
             raise Exception("Component not found!")
     
 
-    # def resolve_components(self, info, **kwargs):
-    #     return Component.objects.all().order_by('id')
-    
-
-    #def resolve_components(self, info, **kwargs):
-    #    return Component.objects.all().order_by('name')
-
-
     def resolve_components(self, info, search=None, first=None, after=None, last=None, before=None):
         queryset = Component.objects.all()
-        # Řazení
         queryset = queryset.order_by("name")
+
+
 
         return queryset
   

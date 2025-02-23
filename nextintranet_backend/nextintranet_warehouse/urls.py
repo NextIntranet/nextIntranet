@@ -10,6 +10,8 @@ from .views import supplier
 from .views import components
 from .views import stockOperation
 from .views import document
+from .views.packets import PDFGeneratorView
+
 
 
 # /store/
@@ -20,6 +22,7 @@ urlpatterns = [
     path('packet/<uuid:uuid>/edit/', components.PacketEditView.as_view(), name='packet-edit'),
     path('packet/<uuid:uuid>/delete/', components.PacketDeleteView.as_view(), name='packet-delete'),
     path('packet/<uuid:uuid>/operation/', stockOperation.StockOperationCreateView.as_view(), name='packet-operation-add'),
+    path('packet/<uuid:uuid>/print/', PDFGeneratorView.as_view(), name='packet-print'),
     path('component/<uuid:uuid>/new_supplier/', supplier.NewSupplierRelationView.as_view(), name='component-new-supplier'),
     path('component/<uuid:uuid>/new_packet/', components.PacketNewView.as_view(), name='component-new-packet'),
     path('component/<uuid:uuid>/parameters/edit/', components.ComponentParameterEditView.as_view(), name='component-edit-parameters'),
