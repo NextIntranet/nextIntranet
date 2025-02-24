@@ -8,7 +8,6 @@ admin.site.register(User)
 admin.site.register(UserSetting)
 
 
-
 class PrintItemInline(admin.TabularInline):
     model = PrintItem
     extra = 1
@@ -26,5 +25,3 @@ class PrintItemAdmin(admin.ModelAdmin):
 
 admin.site.register(PrintList, PrintListAdmin)
 admin.site.register(PrintItem, PrintItemAdmin)
-
-

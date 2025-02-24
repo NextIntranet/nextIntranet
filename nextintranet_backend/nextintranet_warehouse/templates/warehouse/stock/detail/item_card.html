@@ -4,7 +4,7 @@
   <div class="flex">
     <!-- Obrázek -->
     <img
-      src="item.primary_image.get_url"
+      src="{{item.primary_image.get_url |default:'https://placehold.co/300x300' }}"
       class="rounded-md shadow-sm w-1/3 object-cover skeleton"
     />
     <!-- Informace -->

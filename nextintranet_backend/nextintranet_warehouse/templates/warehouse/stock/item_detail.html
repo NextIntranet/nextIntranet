@@ -25,35 +25,6 @@
   </div>
 </div>
 
-<!-- Modal -->
-<div x-data="{ open: false }">
-  <div id="modal" x-show="open" class="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
-    <div class="bg-white rounded-lg overflow-hidden shadow-xl transform transition-all sm:max-w-lg sm:w-full">
-      <div class="px-4 py-5 sm:p-6">
-        <div class="flex justify-between items-center pb-3">
-          <h3 class="text-lg leading-6 font-medium text-gray-900">Form Title</h3>
-          <button @click="open = false" class="text-gray-400 hover:text-gray-500">
-            <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
-            </svg>
-          </button>
-        </div>
-        <div id="modal-content">
-          <!-- Form will be loaded here using htmx -->
-        </div>
-      </div>
-    </div>
-  </div>
 
-  <!-- Button to open the modal -->
-  <button @click="open = true; loadForm('/edit')" class="mt-4 bg-blue-500 text-white px-4 py-2 rounded">
-    Open Form
-  </button>
-</div>
 
-<script>
-  function loadForm(url) {
-    htmx.ajax('GET', url, { target: '#modal-content' });
-  }
-</script>
 {% endblock %}

@@ -21,10 +21,7 @@ urlpatterns = [
     path('token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('v1/me/', user.UserApiDetailedView.as_view(), name='user-detail'),
-
     path('v1/core/identifier/', identifier.IdentifierApiView.as_view(), name='identifier'),
-
     path('v1/store/', include(warehouse_api_urls)),
-
     path('v1/graphql/', GraphQLView.as_view(graphiql=True, schema=schema), name='graphql'),
 ]
