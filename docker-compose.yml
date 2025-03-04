@@ -1,0 +1,58 @@
+networks:
+  nextintranet_net:
+    driver: bridge
+  default:
+    driver: bridge
+    ipam:
+      driver: default
+
+services:
+  db_nextintranet:
+    image: postgres:17
+    volumes:
+      - ./.data/postgres:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=nextintranet
+      - POSTGRES_USER=nextintranet_user
+      - POSTGRES_PASSWORD=nextintranet_password
+    networks:
+      - nextintranet_net
+
+  web:
+    build:
+      context: nextintranet_backend
+      dockerfile: Dockerfile
+    volumes:
+      - ./nextintranet_backend:/app
+      - ./.data/:/data
+    ports:
+      - "8080:8000"
+    depends_on:
+      - db_nextintranet
+      - redis
+    networks:
+      - nextintranet_net
+
+#  frontend:
+#    build:
+#      context: nextintranet_frontend
+#      dockerfile: Dockerfile
+#    volumes:
+#      - ./nextintranet_frontend:/app
+#    ports:
+#      - "9000:9000"
+#    environment:
+#      - HOST=0.0.0.0
+#    depends_on:
+#      - web
+#    networks:
+#      - nextintranet_net
+
+  redis:
+    image: redis
+    volumes:
+      - ./.data/redis:/data  
+    depends_on:
+      - db_nextintranet
+    networks:
+      - nextintranet_net
