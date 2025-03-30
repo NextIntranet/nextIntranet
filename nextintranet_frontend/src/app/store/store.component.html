@@ -1,6 +1,9 @@
-<div class="store-container" style="display: flex; gap: 20px;">
+<div [ngClass]="{'grid grid-cols-1 gap-4': isMobile, 'grid grid-cols-12 gap-4': !isMobile}">
+
   <!-- Left Column -->
-  <div class="left-column" style="width: 300px; flex-shrink: 0;">
+  <div
+    [ngClass]="{'col-span-12': isMobile, 'col-span-3': !isMobile}"
+    class="max-w-xs">
     <!-- Search container -->
     <div class="search-container p-mb-4">
       <h2 class="font-semibold text-lg text-gray-800 mt-4">Search</h2>
@@ -40,7 +43,9 @@
   </div>
 
   <!-- Right Column -->
-  <div class="right-column" style="flex: 1;">
+  <div
+    [ngClass]="{'col-span-12': isMobile, 'col-span-9': !isMobile}"
+    class="flex-1">
     <!-- Data view with components -->
     <p-dataview
       [value]="components()"

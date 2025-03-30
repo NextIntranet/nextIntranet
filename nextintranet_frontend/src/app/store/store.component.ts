@@ -13,13 +13,13 @@ import { Subject, debounceTime, distinctUntilChanged, takeUntil } from "rxjs";
 import { InputTextModule } from "primeng/inputtext";
 import { HttpParams } from '@angular/common/http';
 import { TreeNode } from 'primeng/api';
-
-
+import { ScreenService } from 'src/app/shared/services/screen.service';
 
 import { NiCategoryTreeComponent, FilterTreeNode } from "../shared/components/ni-category-tree/ni-category-tree.component";
 import { NiLocationTreeSelectComponent } from "../shared/components/ni-location-treeselect/ni-location-treeselect.component";
 import { CategoryService } from './services/category.service';
 import { AnonymousSubject } from "rxjs/internal/Subject";
+import { Subscription } from "rxjs/internal/Subscription";
 
 @Component({
   selector: "app-store",
@@ -70,11 +70,22 @@ export class StoreComponent implements OnInit, OnDestroy {
   private categoriesLoaded = false;
   first: number = 0;
 
-  constructor() {
-  }
+
+  // Mobile state
+  isMobile: boolean = false;
+  private subscription: Subscription | undefined;
+
+  constructor(
+    private screenService: ScreenService
+  ) { }
 
   ngOnInit(): void {
     this.setupSearch();
+
+    // Subscribe to isMobile state
+    this.subscription = this.screenService.isMobile$.subscribe(
+      (isMobile) => (this.isMobile = isMobile)
+    );
 
     this.route.queryParams.pipe(takeUntil(this.destroy$)).subscribe(params => {
       console.log('Processing URL Parameters:', params);

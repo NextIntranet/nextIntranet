@@ -1,8 +1,8 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, OnDestroy } from '@angular/core';
 import { HttpClient, HttpClientModule, HttpHeaders } from '@angular/common/http';
 import { ActivatedRoute, Router, RouterModule, Routes, provideRouter } from '@angular/router';
 import { catchError } from 'rxjs/operators';
-import { throwError } from 'rxjs';
+import { throwError, Subscription } from 'rxjs';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { environment } from 'src/environment';
@@ -35,7 +35,7 @@ import { NiSuppliersListComponent } from "../shared/components/ni-suppliers-list
 // import { NiPacketEditDialogComponent } from '../shared/components/ni-packet-edit-dialog/ni-packet-edit-dialog.component';
 import { NiPacketCardComponent } from '../shared/components/ni-packet-card/ni-packet-card.component';
 import { PacketService } from './services/packet.service';
-
+import { ScreenService } from 'src/app/shared/services/screen.service';
 
 @Component({
   selector: 'app-component',
@@ -71,7 +71,7 @@ import { PacketService } from './services/packet.service';
 ],
   providers: [MessageService]
 })
-export class ComponentComponent implements OnInit {
+export class ComponentComponent implements OnInit, OnDestroy {
   componentData: any;
   loading = false;
   error: string | null = null;
@@ -93,21 +93,37 @@ export class ComponentComponent implements OnInit {
   // Packets
   creatingPacket = false;
 
+  // Mobile state
+  isMobile: boolean = false;
+  private subscription: Subscription | undefined;
 
   constructor(
     private http: HttpClient,
     private route: ActivatedRoute,
     private router: Router,
     private messageService: MessageService,
-    private packetService: PacketService
+    private packetService: PacketService,
+    private screenService: ScreenService
   ) { }
 
   ngOnInit(): void {
     this.loading = true;
+
+    // Subscribe to isMobile state
+    this.subscription = this.screenService.isMobile$.subscribe(
+      (isMobile) => (this.isMobile = isMobile)
+    );
+
     this.route.params.subscribe(params => {
       const id = params['id'];
       this.fetchComponentData(id);
     });
+  }
+
+  ngOnDestroy(): void {
+    if (this.subscription) {
+      this.subscription.unsubscribe();
+    }
   }
 
   fetchComponentData(id: string): void {

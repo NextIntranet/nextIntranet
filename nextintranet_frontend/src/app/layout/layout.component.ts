@@ -14,6 +14,8 @@ import { MessageService } from 'primeng/api';
 import { NiDriverManagerComponent } from '../shared/components/ni-driver-manager/ni-driver-manager.component';
 import { Subscription } from 'rxjs';
 import { filter } from 'rxjs/operators';
+import { ScreenService } from './../shared/services/screen.service';
+import { environment } from 'src/environment';
 
 @Component({
   selector: 'app-layout',
@@ -100,7 +102,7 @@ export class LayoutComponent implements OnInit, OnDestroy {
     this.checkScreenSize();
   }
 
-  constructor(private router: Router) {}
+  constructor(private router: Router, private screenService: ScreenService) {}
 
   ngOnInit() {
     this.checkScreenSize();
@@ -139,11 +141,12 @@ export class LayoutComponent implements OnInit, OnDestroy {
 
   checkScreenSize() {
     this.isMobile = window.innerWidth < 768;
+    this.screenService.setIsMobile(this.isMobile); // Update the service with the current state
 
     if (this.isMobile) {
       this.isSidebarVisible = false;
     } else {
-      this.isSidebarVisible = true; // Always ensure sidebar is visible on large screens
+      this.isSidebarVisible = true;
       this.isDrawerVisible = false;
     }
 

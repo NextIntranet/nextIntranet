@@ -5,14 +5,13 @@
 
   <div *ngIf="componentData && !loading && !error" class="component-data">
     <!-- Main grid layout for page -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+    <div [ngClass]="{'grid grid-cols-1 gap-0': isMobile, 'grid grid-cols-12': !isMobile}">
       <!-- Main content column (2/3 width) -->
-      <div class="col-span-1 lg:col-span-2">
-        <!-- Main component card - only contains component info -->
-        <p-card styleClass="mb-4">
+      <div class="col-span-8">
+        <!-- Main component card -->
+        <div class="mb-4">
           <!-- Edit/Save buttons -->
-
-          <div class="flex justify-between mb-3">
+          <div class="flex flex-row justify-between mb-3">
             <div>
               <h1 *ngIf="!editMode" class="text-2xl font-bold mb-2">{{ componentData.name }}</h1>
               <div *ngIf="editMode" class="mb-3">
@@ -21,24 +20,22 @@
               </div>
             </div>
             <div>
-            <div *ngIf="!editMode">
-              <i i18n-title="@@componentEditButton" title="Edit" (click)="toggleEditMode()" class="pi pi-pencil cursor-pointer"></i>
-            </div>
-            <div *ngIf="editMode" class="flex gap-2">
-              <i i18n-title="@@componentCancelButton" title="Cancel" (click)="cancelEdit()" class="pi pi-times cursor-pointer text-secondary"></i>
-              <i i18n-title="@@componentSaveButton" title="Save" (click)="saveChanges()" class="pi pi-check cursor-pointer"></i>
-            </div>
+              <div *ngIf="!editMode">
+                <i i18n-title="@@componentEditButton" title="Edit" (click)="toggleEditMode()" class="pi pi-pencil cursor-pointer"></i>
+              </div>
+              <div *ngIf="editMode" class="flex gap-2">
+                <i i18n-title="@@componentCancelButton" title="Cancel" (click)="cancelEdit()" class="pi pi-times cursor-pointer text-secondary"></i>
+                <i i18n-title="@@componentSaveButton" title="Save" (click)="saveChanges()" class="pi pi-check cursor-pointer"></i>
+              </div>
             </div>
           </div>
 
+          <!-- Nested layout for main content -->
 
-          <!-- Nested 2-column layout for main content -->
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div [ngClass]="{'grid grid-cols-1': isMobile, 'grid grid-cols-12': !isMobile}">
+
             <!-- Left side: Title, ID, Image -->
-            <div class="col-span-1">
-              <!-- Title and ID -->
-
-
+            <div class="col-span-4">
               <div class="flex items-center gap-2 mb-3">
                 <span i18n="@@componentIdLabel" class="text-sm text-gray-500">ID:</span>
                 <ni-id-print [id]="componentData.id" class="text-sm text-grapy-500"></ni-id-print>
@@ -46,14 +43,16 @@
 
               <!-- Image with fixed size -->
               <div class="mb-4">
-                <p-image
+                <div class="flex justify-center">
+                  <p-image
                   *ngIf="componentData.primary_image && !editMode"
                   [src]="componentData.primary_image"
                   [alt]="componentData.name"
-                  [style]="{'max-width': '250px', 'max-height': '200px'}"
+                  [style]="{'width': '100%', 'max-height': '300px'}"
                   imageClass="object-contain"
                   [preview]="true"
-                ></p-image>
+                  ></p-image>
+                </div>
 
                 <div *ngIf="!componentData.primary_image && !editMode"
                      class="bg-gray-200 flex items-center justify-center rounded"
@@ -81,14 +80,11 @@
             </div>
 
             <!-- Right side: Component information and description -->
-            <div class="col-span-2">
+            <div class="col-span-8">
               <!-- Product information section -->
               <div class="mb-4">
-
                 <!-- Category and Tags -->
                 <div class="mb-3">
-
-
                   <div *ngIf="!editMode && componentData.category" class="mb-2">
                     <p-tag
                       [value]="componentData.category.name"
@@ -100,10 +96,10 @@
                   <div *ngIf="editMode" class="mb-3">
                     <label i18n for="category" class="block text-sm font-medium text-gray-700 mb-1">Category</label>
                     <ni-select-category
-                                id="category"
-                                [(ngModel)]="editedComponent.category"
-                                styleClass="w-full"
-                                ></ni-select-category>
+                      id="category"
+                      [(ngModel)]="editedComponent.category"
+                      styleClass="w-full"
+                    ></ni-select-category>
                   </div>
 
                   <div *ngIf="!editMode && componentData.tags?.length" class="flex flex-wrap gap-1">
@@ -113,10 +109,10 @@
                   <div *ngIf="editMode" class="mb-3">
                     <label i18n class="block text-sm font-medium text-gray-700 mb-1">Tags</label>
                     <ni-select-tags
-                          id="tags"
-                          [(ngModel)]="editedComponent.tags"
-                          styleClass="w-full"
-                          ></ni-select-tags>
+                      id="tags"
+                      [(ngModel)]="editedComponent.tags"
+                      styleClass="w-full"
+                    ></ni-select-tags>
                   </div>
                 </div>
 
@@ -179,76 +175,73 @@
             </div>
           </div>
 
-              <!-- Description placed below the information -->
-              <div class="p-3 bg-gray-50 border border-gray-200 rounded-md shadow-sm">
-                <h3 class="text-sm font-semibold text-gray-600 mb-1">Popis</h3>
-                <p *ngIf="!editMode" class="text-gray-700">{{ componentData.description }}</p>
-                <div *ngIf="editMode">
-                  <textarea pInputTextarea [(ngModel)]="editedComponent.description" rows="5" class="w-full"></textarea>
-                </div>
-              </div>
-        </p-card>
+          <!-- Description placed below the information -->
+          <div class="p-3 bg-gray-50 border border-gray-200 rounded-md shadow-sm">
+            <h3 class="text-sm font-semibold text-gray-600 mb-1">Popis</h3>
+            <p *ngIf="!editMode" class="text-gray-700">{{ componentData.description }}</p>
+            <div *ngIf="editMode">
+              <textarea pInputTextarea [(ngModel)]="editedComponent.description" rows="5" class="w-full"></textarea>
+            </div>
+          </div>
+        </div>
 
         <!-- Tabs with detailed information -->
-        <p-tabView>
-          <!-- Suppliers Tab -->
-          <p-tabPanel header="Suppliers" *ngIf="componentData.suppliers?.length">
-            <ni-suppliers-list [componentId]="componentData.id"></ni-suppliers-list>
-          </p-tabPanel>
+        <div>
+          <p-tabView>
+            <!-- Suppliers Tab -->
+            <p-tabPanel header="Suppliers" *ngIf="componentData.suppliers?.length">
+              <ni-suppliers-list [componentId]="componentData.id"></ni-suppliers-list>
+            </p-tabPanel>
 
-          <!-- Other tabs remain unchanged -->
-          <p-tabPanel header="Umístění" *ngIf="componentData.packets?.length">
-            <p-table [value]="componentData.packets" styleClass="p-datatable-sm" [tableStyle]="{'min-width': '50rem'}">
-              <ng-template pTemplate="header">
-                <tr>
-                  <th>ID</th>
-                  <th>Umístění</th>
-                  <th>Vytvořeno</th>
-                  <th>Popis</th>
-                </tr>
-              </ng-template>
-              <ng-template pTemplate="body" let-packet>
-                <tr>
-                  <td class="text-xs">{{ packet.id }}</td>
-                  <td>{{ packet.location.full_path }}</td>
-                  <td>{{ packet.created_at | date:'dd.MM.yyyy' }}</td>
-                  <td>{{ packet.description }}</td>
-                </tr>
-              </ng-template>
-            </p-table>
-          </p-tabPanel>
+            <!-- Other tabs remain unchanged -->
+            <p-tabPanel header="Umístění" *ngIf="componentData.packets?.length">
+              <p-table [value]="componentData.packets" styleClass="p-datatable-sm" [tableStyle]="{'min-width': '50rem'}">
+                <ng-template pTemplate="header">
+                  <tr>
+                    <th>ID</th>
+                    <th>Umístění</th>
+                    <th>Vytvořeno</th>
+                    <th>Popis</th>
+                  </tr>
+                </ng-template>
+                <ng-template pTemplate="body" let-packet>
+                  <tr>
+                    <td class="text-xs">{{ packet.id }}</td>
+                    <td>{{ packet.location.full_path }}</td>
+                    <td>{{ packet.created_at | date:'dd.MM.yyyy' }}</td>
+                    <td>{{ packet.description }}</td>
+                  </tr>
+                </ng-template>
+              </p-table>
+            </p-tabPanel>
 
-          <p-tabPanel header="Parameters">
-            <div>
-              <ni-parameters-list [componentId]="componentData.id"></ni-parameters-list>
-            </div>
-          </p-tabPanel>
-        </p-tabView>
+            <p-tabPanel header="Parameters">
+              <div>
+                <ni-parameters-list [componentId]="componentData.id"></ni-parameters-list>
+              </div>
+            </p-tabPanel>
+          </p-tabView>
+        </div>
       </div>
 
       <!-- Right column with expandable location cards -->
-      <div class="col-span-1">
-        <p-card>
+      <div class="col-span-4">
+
+        <p-card class="block">
           <ng-template pTemplate="header">
             <div class="flex justify-between items-center p-3 bg-blue-50">
               <h3 class="text-lg font-semibold text-blue-800 m-0">Warehouse locations</h3>
               <div>
-              <span *ngIf="componentData.packets?.length" class="bg-blue-100 text-blue-800 py-1 px-2 rounded-full text-sm font-semibold">
-                {{ componentData.packets.length }}
-              </span>
+                <span *ngIf="componentData.packets?.length" class="bg-blue-100 text-blue-800 py-1 px-2 rounded-full text-sm font-semibold">
+                  {{ componentData.packets.length }}
+                </span>
                 <i class="pi pi-plus text-blue-800 cursor-pointer" (click)="createNewPacket()"></i>
               </div>
             </div>
           </ng-template>
 
           <!-- TODO: This should be placed in own component, that will be able to refresh only packets.. -->
-            <ng-template pTemplate="body" style="padding: 0pt !important ;" class="p-0">
-
-              <div *ngIf="!componentData.packets?.length" class="p-1 text-center text-gray-500">
-                <i class="pi pi-inbox text-3xl mb-2 block"></i>
-                <p>No packets in warehouse..</p>
-              </div>
-
+          <ng-template pTemplate="body" style="padding: 0pt !important ;" class="p-0">
               <div *ngIf="componentData.packets?.length" class="p-m-0 p-mb-0 p-0">
                 <!-- Dummy packet card for creating new packet -->
                 <ni-packet-card *ngIf="creatingPacket" [isDummy]="true" [componentId]="componentData.id" ></ni-packet-card>
