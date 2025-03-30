@@ -1,0 +1,26 @@
+
+<h1>Categories</h1>
+
+<ni-categoryTree />
+
+
+
+{{ categories }}
+
+<div class="categories-container">
+  <div class="categories-tree">
+    <ul>
+      <li *ngFor="let category of categories" (click)="onSelectCategory(category)">
+        {{ category?.name }}
+        <ul *ngIf="category?.children">
+          <li *ngFor="let child of category.children" (click)="onSelectCategory(child)">
+            {{ child?.name }}
+          </li>
+        </ul>
+      </li>
+    </ul>
+  </div>
+  <div class="category-details" *ngIf="selectedCategory">
+    <h2>{{ selectedCategory?.name }}</h2>
+    <p>{{ selectedCategory?.description }}</p> </div>
+</div>

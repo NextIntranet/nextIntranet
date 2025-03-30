@@ -1,0 +1,42 @@
+<div class="p-fluid ni-packet-operation-create">
+  <table class="p-datatable full-width">
+    <tbody>
+      <tr>
+        <td><label for="operationType">Operation Type</label></td>
+        <td>
+          <p-dropdown
+            id="operationType"
+            [(ngModel)]="operation.operation_type"
+            [options]="operationTypes"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="Select Operation Type"
+            class="bordered-input">
+          </p-dropdown>
+        </td>
+      </tr>
+      <tr>
+        <td><label for="quantity">Quantity</label></td>
+        <td>
+          <input id="quantity" type="number" [(ngModel)]="operation.quantity" class="p-inputtext p-component bordered-input" />
+        </td>
+      </tr>
+      <tr>
+        <td><label for="unitPrice">Unit Price</label></td>
+        <td>
+          <input id="unitPrice" type="number" [(ngModel)]="operation.unit_price" class="p-inputtext p-component bordered-input" />
+        </td>
+      </tr>
+      <tr>
+        <td><label for="description">Description</label></td>
+        <td>
+          <textarea id="description" [(ngModel)]="operation.description" rows="3" class="p-inputtextarea p-component bordered-input"></textarea>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="button-group">
+    <button pButton label="Cancel" icon="pi pi-times" class="p-button-text" (click)="cancel()">CANCEL</button>
+    <button pButton label="Save" icon="pi pi-check" class="p-button-primary" (click)="saveOperation()">SAVE</button>
+  </div>
+</div>

@@ -1,0 +1,71 @@
+<div class="card">
+
+
+  <p-dataView
+        [value]="suppliers"
+        [rows]="rows"
+        [first]="first"
+        [paginator]="false"
+        [rowsPerPageOptions]="[250]"
+        (onPage)="onPageChange($event)">
+    <ng-template #header>
+      <div class="flex justify-content-between">
+        <h3>Suppliers</h3>
+      </div>
+    </ng-template>
+
+    <ng-template #list let-suppliersInView>
+      <p-table [value]="suppliers" styleClass="p-datatable-sm">
+        <ng-template #header>
+          <tr>
+            <th>Název</th>
+            <th>URL</th>
+            <th>Link Template</th>
+            <th style="width: 150px">Akce</th>
+          </tr>
+        </ng-template>
+        <ng-template #body let-supplier let-i="id">
+          <tr>
+            <td class="p-0">
+              <span *ngIf="editingSupplier !== supplier">{{supplier.name}}</span>
+              <input *ngIf="editingSupplier === supplier" type="text" pInputText [(ngModel)]="supplier.name">
+            </td>
+            <td class="p-0">
+                <a *ngIf="editingSupplier !== supplier" [href]="supplier.website" target="_blank">
+                  <i class="pi pi-globe" *ngIf="supplier.website"></i> {{supplier.website}}
+                </a>
+              <input *ngIf="editingSupplier === supplier" type="text" pInputText [(ngModel)]="supplier.website">
+            </td>
+            <td class="p-0">
+              <span *ngIf="editingSupplier !== supplier">{{supplier.link_template}}</span>
+              <input *ngIf="editingSupplier === supplier" type="text" pInputText [(ngModel)]="supplier.link_template">
+            </td>
+            <td class="p-0">
+              <div class="flex justify-content-end">
+                <!-- Edit mode buttons -->
+                <i *ngIf="editingSupplier === supplier" class="pi pi-check px-2 p-mr-2 p-cursor-pointer p-text-success"
+                  (click)="onEditSave(supplier)"></i>
+                <i *ngIf="editingSupplier === supplier" class="pi pi-times px-2 p-cursor-pointer p-text-danger"
+                  (click)="onEditCancel(supplier, i)"></i>
+
+                <!-- View mode icons -->
+                <i *ngIf="editingSupplier !== supplier" class="pi pi-pencil px-2 p-mr-2 p-cursor-pointer p-text-primary"
+                  (click)="onEditInit(supplier)"></i>
+                <i *ngIf="editingSupplier !== supplier" class="pi pi-trash px-2 p-cursor-pointer p-text-danger"
+                  (click)="deleteSupplier(supplier)"></i>
+              </div>
+            </td>
+          </tr>
+        </ng-template>
+      </p-table>
+    </ng-template>
+  </p-dataView>
+
+  <div class="p-2"></div>
+
+  <p-inputgroup  class="w-full md:!w-[30rem]" size="small">
+    <p-inputgroup-addon> Add supplier </p-inputgroup-addon>
+    <input pInputText id="name" type="text" pInputText [(ngModel)]="newSupplier.name" placeholder="Name">
+    <p-button pButton type="button" label="Přidat dodavatele" (click)="addSupplier()" class="p-button-success"></p-button>
+  </p-inputgroup>
+</div>

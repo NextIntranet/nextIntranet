@@ -1,0 +1,111 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Přidejte zde další vlastní styly */
+.table-container {
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+.table-caption {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.table-footer {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.refresh-button {
+  padding: 0.5rem 1rem;
+  background-color: #3B82F6;
+  color: white;
+  border: none;
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+
+.refresh-button:hover {
+  background-color: #2563EB;
+}
+
+.component-image {
+  object-fit: contain;
+  width: 100px;
+  height: 100px;
+}
+
+/* Grid a Flex styly */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 1rem;
+}
+
+.col-span-12 {
+  grid-column: span 12 / span 12;
+}
+
+.flex {
+  display: flex;
+}
+
+.flex-row {
+  flex-direction: row;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.p-4 {
+  padding: 1rem;
+}
+
+.border-b {
+  border-bottom-width: 1px;
+}
+
+.border-gray-200 {
+  border-color: #e5e7eb;
+}
+
+.w-2\/12 {
+  width: 16.666667%;
+}
+
+.w-7\/12 {
+  width: 58.333333%;
+}
+
+.w-3\/12 {
+  width: 25%;
+}
+
+.pl-4 {
+  padding-left: 1rem;
+}
+
+.text-right {
+  text-align: right;
+}
+
+.text-xl {
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+}
+
+.font-bold {
+  font-weight: 700;
+}
+
+.mr-2 {
+  margin-right: 0.5rem;
+}

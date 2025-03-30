@@ -1,12 +1,14 @@
 /** @type {import('tailwindcss').Config} */
-export default {
+module.exports = {
   content: [
-    './src/**/*.{html,js,ts,jsx,tsx,vue}',
-    './node_modules/quasar/dist/**/*.{html,js,ts,jsx,tsx,vue}',
+      "./src/**/*.{html,ts}",
+      "./node_modules/primeng/**/*.{js,ts,jsx,tsx}"
+  ],
+  presets: [
+      require('tailwindcss-primeui')
   ],
   theme: {
-    extend: {},
+      extend: {},
   },
   plugins: [],
 }
-

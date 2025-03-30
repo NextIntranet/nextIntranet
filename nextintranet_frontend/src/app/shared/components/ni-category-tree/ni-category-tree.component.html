@@ -1,0 +1,18 @@
+<div>
+
+  <p-tree
+    [value]="treeData"
+    selectionMode="checkbox"
+    [(selection)]="selectedNodes"
+    (selectionChange)="onSelectionChange()"
+     styleClass="w-full md:w-[30rem]"
+    >
+
+    <ng-template pTemplate="default" let-node>
+      <div class="tree-node-content">
+        <span  class="node-label" pTooltip="{node.description}">{{ node.name }}</span>
+      </div>
+    </ng-template>
+  </p-tree>
+
+</div>
