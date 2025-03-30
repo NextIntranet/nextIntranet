@@ -18,7 +18,7 @@ interface LocationResponse {
   providedIn: 'root'
 })
 export class LocationService {
-  @Input() apiUrl = 'http://localhost:8080/api/v1/store/location/';
+  @Input() apiUrl = `${environment.apiUrl}/api/v1/store/location/`;
   private cache = new Map<string, { data: any; expiry: number }>();
   private cacheDuration = 5 * 60 * 1000; // 5 minutes
 

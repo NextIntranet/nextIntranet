@@ -4,6 +4,7 @@ import { HttpClient } from "@angular/common/http";
 import { UniversalStorageService } from "../core/universal-storage.service";
 import { Observable } from "rxjs";
 import { map } from "rxjs/operators";
+import { environment } from "../../environment";
 
 interface TokenResponse {
   access: string;
@@ -16,7 +17,7 @@ interface TokenResponse {
 export class AuthService {
   private readonly TOKEN_KEY = "authToken";
   private readonly TOKEN_REFRESH_KEY = "authTokenRefresh";
-  private readonly API_URL = "http://localhost:8080";
+  private readonly API_URL = environment.apiUrl;
 
   constructor(
     private router: Router,

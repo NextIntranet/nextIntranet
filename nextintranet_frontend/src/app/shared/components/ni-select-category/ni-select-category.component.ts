@@ -32,7 +32,6 @@ import { CategoryService } from 'src/app/store/services/category.service';
   imports: [SelectModule, FormsModule, CommonModule]
 })
 export class NiSelectCategoryComponent implements OnInit, ControlValueAccessor {
-  // @Input() apiUrl = 'http://localhost:8080/api/v1/store/categories/';
   @Input() labelField = 'name';
   @Input() valueField = 'id';
   @Input() placeholder = 'Select...';

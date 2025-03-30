@@ -5,6 +5,7 @@ import { CommonModule } from '@angular/common';
 import { catchError, throwError } from 'rxjs';
 import { MessageService } from 'primeng/api';
 import { SelectModule } from 'primeng/select';
+import { environment } from 'src/environment';
 
 @Component({
   selector: 'ni-select-parameterTypes',
@@ -31,7 +32,7 @@ import { SelectModule } from 'primeng/select';
   imports: [SelectModule, FormsModule, CommonModule]
 })
 export class NiSelectParameterTypesComponent implements OnInit, ControlValueAccessor {
-  @Input() apiUrl = 'http://localhost:8080/api/v1/store/parameterTypes/';
+  @Input() apiUrl = `${environment.apiUrl}/api/v1/store/parameterTypes/`;
   @Input() labelField = 'name';
   @Input() valueField = 'id';
   @Input() placeholder = 'Select...';

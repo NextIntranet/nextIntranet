@@ -5,6 +5,7 @@ import { catchError } from 'rxjs/operators';
 import { throwError } from 'rxjs';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { environment } from 'src/environment';
 
 // PrimeNG imports
 import { CardModule } from 'primeng/card';
@@ -117,7 +118,7 @@ export class ComponentComponent implements OnInit {
       'Authorization': `Bearer ${token}`
     });
 
-    this.http.get(`http://localhost:8080/api/v1/store/component/${id}`, { headers })
+    this.http.get(`${environment.apiUrl}/api/v1/store/component/${id}`, { headers })
       .pipe(
         catchError(error => {
           console.log('Chyba při načítání dat:', error);
@@ -170,7 +171,7 @@ export class ComponentComponent implements OnInit {
     });
 
     // Adjust this endpoint to match your actual API
-    this.http.get<any[]>(`http://localhost:8080/api/v1/store/packet/${packetId}/operations`, { headers })
+    this.http.get<any[]>(`${environment.apiUrl}/api/v1/store/packet/${packetId}/operations`, { headers })
       .pipe(
         catchError(error => {
           console.error('Chyba při načítání operací:', error);
@@ -223,7 +224,7 @@ export class ComponentComponent implements OnInit {
     this.toSave.category = this.editedComponent.category ? this.editedComponent.category : null;
 
     this.http.patch(
-      `http://localhost:8080/api/v1/store/component/${this.componentData.id}/`,
+      `${environment.apiUrl}/api/v1/store/component/${this.componentData.id}/`,
       this.toSave,
       { headers }
     )

@@ -3,11 +3,13 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable, of } from 'rxjs';
 import { tap } from 'rxjs/operators';
 
+import { environment } from '../../../environment';
+
 @Injectable({
   providedIn: 'root'
 })
 export class SupplierService {
-  private baseUrl = 'http://localhost:8080/api/v1/store/supplier/';
+  private baseUrl = `${environment.apiUrl}/api/v1/store/supplier/`;
   private cache = new Map<string, { data: any; expiry: number }>();
   private cacheDuration = 5 * 60 * 1000; // 5 minutes
 

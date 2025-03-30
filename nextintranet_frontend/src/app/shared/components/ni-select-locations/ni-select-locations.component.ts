@@ -6,6 +6,7 @@ import { catchError, throwError } from 'rxjs';
 import { MessageService } from 'primeng/api';
 import { SelectModule } from 'primeng/select';
 import { TreeSelectModule } from 'primeng/treeselect';
+import { environment } from 'src/environment';
 
 @Component({
   selector: 'ni-select-location',
@@ -32,7 +33,7 @@ import { TreeSelectModule } from 'primeng/treeselect';
   imports: [SelectModule, FormsModule, CommonModule, TreeSelectModule]
 })
 export class NiSelectLocationComponent implements OnInit, ControlValueAccessor {
-  @Input() apiUrl = 'http://localhost:8080/api/v1/store/locations/';
+  @Input() apiUrl = `${environment.apiUrl}/api/v1/store/locations/`;
   @Input() labelField = 'name';
   @Input() valueField = 'id';
   @Input() placeholder = 'Select...';

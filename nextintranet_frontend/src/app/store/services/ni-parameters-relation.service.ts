@@ -1,12 +1,13 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { environment } from '../../../environment';
 
 @Injectable({
   providedIn: 'root'
 })
 export class NiParametersRelationService {
-  private baseUrl = 'http://localhost:8080/api/v1/store/parameter/';
+  private baseUrl = `${environment.apiUrl}/api/v1/store/parameter/`;
 
   constructor(private http: HttpClient) {}
 

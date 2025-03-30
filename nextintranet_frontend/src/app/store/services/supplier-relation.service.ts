@@ -1,13 +1,14 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { environment } from '../../../environment';
 
 @Injectable({
   providedIn: 'root'
 })
 export class SupplierRelationService {
-  private baseUrl = 'http://localhost:8080/api/v1/store/supplier/relation/';
-  private componentUrl = 'http://localhost:8080/api/v1/store/component/';
+  private baseUrl = `${environment.apiUrl}/api/v1/store/supplier/relation/`;
+  private componentUrl = `${environment.apiUrl}/api/v1/store/component/`;
 
   constructor(private http: HttpClient) {}
 

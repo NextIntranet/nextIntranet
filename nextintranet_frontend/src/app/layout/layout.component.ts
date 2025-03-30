@@ -1,6 +1,6 @@
-import { Component, OnInit, HostListener } from '@angular/core';
+import { Component, OnInit, HostListener, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterModule } from '@angular/router';
+import { Router, RouterModule, NavigationEnd } from '@angular/router';
 import { MenubarModule } from 'primeng/menubar';
 import { SidebarModule } from 'primeng/sidebar';
 import { ButtonModule } from 'primeng/button';
@@ -12,6 +12,8 @@ import { ChipModule } from 'primeng/chip';
 import { HostBinding } from '@angular/core';
 import { MessageService } from 'primeng/api';
 import { NiDriverManagerComponent } from '../shared/components/ni-driver-manager/ni-driver-manager.component';
+import { Subscription } from 'rxjs';
+import { filter } from 'rxjs/operators';
 
 @Component({
   selector: 'app-layout',
@@ -34,7 +36,7 @@ import { NiDriverManagerComponent } from '../shared/components/ni-driver-manager
   templateUrl: './layout.component.html',
   styleUrls: ['./layout.component.css'],
 })
-export class LayoutComponent implements OnInit {
+export class LayoutComponent implements OnInit, OnDestroy {
   isSidebarVisible: boolean = true;
   isSidebarCollapsed: boolean = false;
   isDrawerVisible: boolean = false;
@@ -50,8 +52,12 @@ export class LayoutComponent implements OnInit {
     {
       label: 'Warehouse',
       icon: 'pi pi-shopping-cart',
-      expanded: true,
       items: [
+        {
+          label: 'Warehouse',
+          icon: 'pi pi-box',
+          routerLink: '/store'
+        },
         {
           label: 'Locations',
           icon: 'pi pi-list',
@@ -72,7 +78,6 @@ export class LayoutComponent implements OnInit {
     {
       label: 'Uživatel',
       icon: 'pi pi-user',
-      expanded: true,
       items: [
         {
           label: 'Přihlášení',
@@ -88,13 +93,48 @@ export class LayoutComponent implements OnInit {
     }
   ];
 
+  private routerSubscription: Subscription | undefined;
+
   @HostListener('window:resize', ['$event'])
   onResize(event: any) {
     this.checkScreenSize();
   }
 
+  constructor(private router: Router) {}
+
   ngOnInit() {
     this.checkScreenSize();
+    this.updateMenuExpansion();
+
+    // Subscribe to router events to update menu expansion on navigation
+    this.routerSubscription = this.router.events
+      .pipe(filter(event => event instanceof NavigationEnd))
+      .subscribe(() => {
+        this.updateMenuExpansion();
+      });
+  }
+
+  ngOnDestroy() {
+    if (this.routerSubscription) {
+      this.routerSubscription.unsubscribe();
+    }
+  }
+
+  updateMenuExpansion() {
+    const currentUrl = this.router.url;
+
+    this.menu.forEach(item => {
+      if (item.items) {
+        // Check if any child item matches the current route
+        const hasActiveChild = item.items.some(subItem =>
+          subItem.routerLink &&
+          currentUrl.startsWith(subItem.routerLink.toString())
+        );
+
+        // Expand parent item if a child is active
+        item.expanded = hasActiveChild;
+      }
+    });
   }
 
   checkScreenSize() {
@@ -114,9 +154,7 @@ export class LayoutComponent implements OnInit {
     } else {
       this.ViewerType = 'Browser';
     }
-
   }
-
 
   getChipColor(ViewerType: string) {
     switch (ViewerType) {
@@ -130,7 +168,6 @@ export class LayoutComponent implements OnInit {
         return 'gray';
     }
   }
-
 
   toggleSidebar() {
     if (this.isMobile) {
@@ -148,7 +185,6 @@ export class LayoutComponent implements OnInit {
     this.isDrawerVisible = !this.isDrawerVisible;
   }
 
-  // Method to prevent drawer closing when clicking inside
   onDrawerContentClick(event: Event) {
     event.stopPropagation();
   }

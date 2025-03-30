@@ -5,6 +5,7 @@ import { CommonModule } from '@angular/common';
 import { catchError, throwError } from 'rxjs';
 import { MessageService } from 'primeng/api';
 import { MultiSelectModule } from 'primeng/multiselect';
+import { environment } from 'src/environment';
 
 @Component({
   selector: 'ni-select-tags',
@@ -32,7 +33,7 @@ import { MultiSelectModule } from 'primeng/multiselect';
   imports: [MultiSelectModule, FormsModule, CommonModule]
 })
 export class NiSelectTagsComponent implements OnInit, ControlValueAccessor {
-  @Input() apiUrl = 'http://localhost:8080/api/v1/store/tags/';
+  @Input() apiUrl = `${environment.apiUrl}/api/v1/store/tags/`;
   @Input() labelField = 'name';
   @Input() valueField = 'id';
   @Input() placeholder = 'Select...';
