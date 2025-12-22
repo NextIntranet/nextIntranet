@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NextBrowser</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            overflow: hidden;
+        }
+        #app {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        nav {
+            background: #282c34;
+            color: white;
+            padding: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        nav button {
+            background: #61dafb;
+            border: none;
+            padding: 10px 15px;
+            cursor: pointer;
+            border-radius: 5px;
+            color: black;
+        }
+        nav button:hover {
+            background: #21a1f1;
+        }
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background: #f0f0f0;
+            overflow: hidden;
+            padding: 0;
+        }
+        webview {
+            width: 100%;
+            height: 100%;
+            flex-grow: 1;
+            border: none;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+        }
+        th {
+            background-color: #f4f4f4;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <nav>
+            <span>{{ title }}</span> <span>{{remoteUrl}}</span>
+            <div>
+                <button @click="showSettings">Settings</button>
+                <button @click="showReader">Reader</button>
+                <button @click="showWebView">Home</button>
+            </div>
+        </nav>
+        <main>
+
+            <div v-if="currentView === 'reader'">
+              <h2>Reader</h2>
+              <p>Reader content goes here...</p>
+
+              <h1>Serial Communication with Scanner</h1>
+              <button @click="connectScanner">Connect Scanner</button>
+              <button @click="sendToScanner">Send Data to Scanner</button>
+              <button @click="disconnectScanner">Disconnect Scanner</button>
+              <div id="scanner-data"></div>
+              <div>
+                <h3>Scanner Status</h3>
+                <p>{{ scannerData }}</p>
+              </div>
+            </div>
+              
+            <webview
+                v-if="currentView === 'webview'"
+                :src="remoteUrl"
+                :key="remoteUrl"
+                preload="./preload.js"
+                partition="persist:shared-session"
+                @ipc-message="handleIPCMessage"
+                @console-message="handleConsoleMessage"
+
+            ></webview>
+
+            <div v-if="currentView === 'settings'">
+                <h2>Remote Page Settings</h2>
+                <form @submit.prevent="updateRemoteUrl">
+                    <label for="remoteUrlInput">Remote URL:</label>
+                    <input id="remoteUrlInput" v-model="remoteUrl" type="text" required />
+                    <br />
+                    <button type="submit">Save Remote URL</button>
+                </form>
+
+                <h2>Printer Settings</h2>
+                <form @submit.prevent="addPrinterPreset">
+                    <label for="printerType">Printer Type:</label>
+                    <input id="printerType" v-model="newPreset.printerType" type="text" required />
+                    <br />
+
+                    <label for="printerName">Printer Name:</label>
+                    <input id="printerName" v-model="newPreset.printerName" type="text" required />
+                    <br />
+
+                    <label for="printerOptions">Printer Options:</label>
+                    <input id="printerOptions" v-model="newPreset.printerOptions" type="text" required />
+                    <br />
+
+                    <label for="printerDescription">Printer Description:</label>
+                    <input id="printerDescription" v-model="newPreset.printerDescription" type="text" required />
+                    <br />
+
+                    <button type="submit">Add Preset</button>
+                </form>
+
+                <h3>Presets</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Name</th>
+                            <th>Options</th>
+                            <td>Description</td>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="(preset, index) in printerPresets" :key="index">
+                            <td>{{ preset.printerType }}</td>
+                            <td>{{ preset.printerName }}</td>
+                            <td>{{ preset.printerOptions }}</td>
+                            <td>{{ preset.printerDescription }}</td>
+                            <td>
+                                <button @click="setActivePreset(index)">Set Active</button>
+                                <button @click="removePreset(index)">Delete</button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <h3>Active Preset</h3>
+                <p v-if="activePresetIndex !== null">
+                    Type: {{ activePreset.printerType }}<br />
+                    Name: {{ activePreset.printerName }}<br />
+                    Options: {{ activePreset.printerOptions }}
+                    Description: {{ activePreset.printerDescription }}
+                </p>
+                <p v-else>No active preset selected.</p>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const { createApp, ref, watch } = Vue;
+
+        const app = createApp({
+            setup() {
+                const title = ref('NextBrowser app');
+                const remoteUrl = ref('http://localhost:8080/'); // Výchozí URL
+                const currentView = ref('webview'); // 'webview' nebo 'settings'
+                const scannerStatus = ref('Scanner is not connected');
+                const scannerData = ref('No data received');
+
+                // Persistentní uložiště pro tiskárny
+                const printerPresets = ref(JSON.parse(localStorage.getItem('printerPresets')) || []);
+                const activePresetIndex = ref(Number(localStorage.getItem('activePresetIndex')) || null);
+
+                const newPreset = ref({
+                    printerType: '',
+                    printerName: '',
+                    printerOptions: '',
+                    printerDescription: '',
+                });
+
+                const showSettings = () => {
+                    currentView.value = 'settings';
+                };
+
+                const showWebView = () => {
+                    currentView.value = 'webview';
+                };
+
+                const showReader = () => {
+                    console.log('Showing reader...');
+                    currentView.value = 'reader';
+                };
+
+
+
+                const addPrinterPreset = async () => {
+                  printerPresets.value.push({ ...newPreset.value });
+                  newPreset.value.printerType = '';
+                  newPreset.value.printerName = '';
+                  newPreset.value.printerOptions = '';
+                  newPreset.value.printerDescription = '';
+                  await savePresets();
+              };
+              
+              const removePreset = async (index) => {
+                  printerPresets.value.splice(index, 1);
+                  if (activePresetIndex.value === index) {
+                      activePresetIndex.value = null;
+                  }
+                  await savePresets();
+              };
+              
+              const setActivePreset = async (index) => {
+                  activePresetIndex.value = index;
+                  await savePresets();
+              };
+
+                const savePresets = async () => {
+                  console.log('Saving printer presets: (vue)', printerPresets.value, activePresetIndex.value);
+                  await window.electronAPI.setPrinterSettings({
+                      printerPresets: JSON.parse(JSON.stringify(printerPresets.value)),
+                      activePresetIndex: activePresetIndex.value,
+                  });
+                };
+                
+                const loadPresets = async () => {
+                    const settings = await window.electronAPI.getPrinterSettings();
+                    printerPresets.value = settings.printerPresets || [];
+                    activePresetIndex.value = settings.activePresetIndex || null;
+                };
+                loadPresets();
+
+                const saveActivePresetIndex = () => {
+                    localStorage.setItem('activePresetIndex', activePresetIndex.value);
+                };
+
+                const activePreset = ref({});
+                watch(
+                    () => activePresetIndex.value,
+                    (index) => {
+                        activePreset.value = index !== null ? printerPresets.value[index] : {};
+                    },
+                );
+
+                const updateRemoteUrl = () => {
+                    alert(`Remote URL updated to: ${remoteUrl.value}`);
+                    showWebView(); // Přepne zpět na WebView
+                };
+
+
+                const handleIPCMessage = (event) => {
+                  console.log('IPC Message received:', event.channel, event.args);
+                  if (event.channel === 'print-label') {
+                    const { endpoint, bagId } = event.args[0];
+                    console.log(`Request from WebView to print label: Endpoint: ${endpoint}, BagId: ${bagId}`);
+
+                  } else if (event.channel === 'reader-result') {
+                    const index = event.args[0];
+                    console.log('Reader result:', index);
+                    scannerData.value = index;
+
+                  }
+              };
+              
+
+
+
+              const handleConsoleMessage = (event) => {
+                console.log(`WebView console: Level: ${event.level}, Message: ${event.message}`);
+            };
+
+
+
+            
+            const connectScanner = async () => {
+              console.log('Attempting to connect to scanner...');
+              const response = await window.electronAPI.connectSerial('/dev/ttyACM0', 9600);
+              console.log('Connect response:', response);
+            };
+
+            const sendToScanner = async () => {
+              console.log('Sending data to scanner...');
+                const response = await window.electronAPI.sendSerial('\u0007');
+              console.log('Send response:', response);
+            };
+
+            const disconnectScanner = async () => {
+              console.log('Attempting to disconnect from scanner...');
+              const response = await window.electronAPI.disconnectSerial();
+              console.log('Disconnect response:', response);
+            };
+
+
+
+            
+            window.electronAPI.onReaderData((data) => {
+              console.log('Přijatá data ze sériového portu:', data);
+              scannerData.value = data;
+
+              if (data.action && data.action.type === 'link') {
+                console.log('Action type is link');
+                remoteUrl.value = data.action.value;
+                showWebView();
+              }
+            });
+
+
+
+
+
+
+                return {
+                    title,
+                    remoteUrl,
+                    currentView,
+                    printerPresets,
+                    activePresetIndex,
+                    newPreset,
+                    activePreset,
+                    showSettings,
+                    showWebView,
+                    addPrinterPreset,
+                    removePreset,
+                    setActivePreset,
+                    updateRemoteUrl,
+                    handleIPCMessage,
+                    handleConsoleMessage,
+                    showReader,
+
+                    connectScanner,
+                    sendToScanner,
+                    disconnectScanner,
+                    scannerData,
+                    
+
+                };
+            },
+        });
+        app.mount('#app');
+    </script>
+</body>
+</html>

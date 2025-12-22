@@ -1,4 +1,4 @@
-import { Component, Input, forwardRef, OnInit, Output, EventEmitter } from '@angular/core';
+import { Component, Input, forwardRef, OnInit, OnChanges, SimpleChanges, Output, EventEmitter } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR, FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { InputTextModule } from 'primeng/inputtext';
@@ -24,15 +24,20 @@ interface Supplier {
 @Component({
   selector: 'ni-suppliers-list',
   template: `
-    <p-table [value]="suppliers" dataKey="name" editMode="row" [loading]="loading" styleClass="p-datatable-sm">
-      <ng-template pTemplate="header">
-        <tr>
-          <th>Supplier</th>
-          <th>Symbol</th>
-          <th>Notes</th>
-          <th></th>
-        </tr>
-      </ng-template>
+    <div class="p-4 bg-white rounded-lg shadow">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-lg font-semibold text-gray-800 m-0">Dodavatelé</h3>
+        <button pButton type="button" label="Přidat" icon="pi pi-plus" (click)="addSupplier()" class="p-button-sm p-button-success"></button>
+      </div>
+      <p-table [value]="suppliers" dataKey="name" editMode="row" [loading]="loading" styleClass="p-datatable-sm p-datatable-striped">
+        <ng-template pTemplate="header">
+          <tr>
+            <th style="width: 30%">Dodavatel</th>
+            <th style="width: 25%">Symbol</th>
+            <th style="width: 35%">Poznámky</th>
+            <th style="width: 10%">Akce</th>
+          </tr>
+        </ng-template>
       <ng-template pTemplate="body" let-supplier let-editing="editing" let-ri="id">
         <tr [pEditableRow]="supplier">
           <td>
@@ -83,8 +88,7 @@ interface Supplier {
         </tr>
       </ng-template>
     </p-table>
-    <hr>
-    <button pButton type="button" label="Add Supplier" icon="pi pi-plus" (click)="addSupplier()"></button>
+    </div>
   `,
   styles: [`
     :host ::ng-deep .p-datatable-table-container {
@@ -102,7 +106,7 @@ interface Supplier {
   standalone: true,
   imports: [FormsModule, CommonModule, InputTextModule, ButtonModule, TableModule, ToastModule, ConfirmDialogModule, NiSelectSupplierComponent]
 })
-export class NiSuppliersListComponent implements ControlValueAccessor, OnInit {
+export class NiSuppliersListComponent implements ControlValueAccessor, OnInit, OnChanges {
   @Input() componentId: string = '';
   suppliers: Supplier[] = [];
   selectedSupplierId: string = '';
@@ -120,7 +124,15 @@ export class NiSuppliersListComponent implements ControlValueAccessor, OnInit {
   ) {}
 
   ngOnInit(): void {
-    this.loadSuppliers();
+    if (this.componentId) {
+      this.loadSuppliers();
+    }
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['componentId'] && !changes['componentId'].firstChange && this.componentId) {
+      this.loadSuppliers();
+    }
   }
 
   loadSuppliers(): void {

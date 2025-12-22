@@ -24,9 +24,67 @@ from django.urls import reverse
 from django.contrib import messages
 from django import forms
 
+from django.db.models import Q
+
+from ..models.component import Component
+from ..models.component import Tag
+from ..models.category import Category
 from .category import CategorySerializer
 from .document import DocumentSerializer
 from .warehouse import WarehouseSerializer
+from .tags import TagSerializer
+from .parameters import ComponentParameterSerializer
+import django_tables2 as tables
+
+from django_select2.forms import ModelSelect2Widget, Select2Widget
+
+from nextintranet_backend.views.crud import create_crud_urls
+from nextintranet_backend.help.crud import NIT_Table
+
+
+
+from django.forms.models import inlineformset_factory
+from nextintranet_warehouse.models.component import ComponentParameter, ParameterType
+
+from crispy_forms.helper import FormHelper
+from crispy_forms.layout import Layout, Row, Column
+from django.views.generic.edit import FormView
+from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
+from django.shortcuts import render
+
+
+from django.shortcuts import redirect, render, get_object_or_404
+from django.views.generic.edit import CreateView
+from django.urls import reverse_lazy
+from ..models.component import Component
+from ..forms.components import ComponentForm, ComponentParameterFormSet, DocumentFormSet, SupplierRelationFormSet, PacketFormSet
+
+
+
+
+class ComponentTableView(NIT_Table):
+    class Meta(NIT_Table.Meta):
+        model = Component
+        #fields = ('id', 'name', 'description', 'category')
+
+    id = tables.LinkColumn('component-detail', args=[tables.A('pk')], verbose_name='ID')
+
+urlpatterns = create_crud_urls(Component, table_class_object=ComponentTableView)
+
+
+
+class ComponentForm(forms.ModelForm):
+    class Meta:
+        model = Component
+        fields = ['name', 'description', 'category', 'primary_image']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control'}),
+            'description': forms.Textarea(attrs={'class': 'form-control'}),
+            'category': ModelSelect2Widget(model=Component, search_fields=['name__icontains']),
+            'primary_image': ModelSelect2Widget(model=Component, search_fields=['name__icontains']),
+        }
+
 
 
 class PacketSerializer(serializers.ModelSerializer):
@@ -46,7 +104,7 @@ class SupplierRelationSerializer(serializers.ModelSerializer):
     class Meta:
         model = SupplierRelation
         fields = '__all__'
-    
+
     def get_url(self, obj):
         return obj.url
 
@@ -65,46 +123,139 @@ class StandardResultsSetPagination(PageNumberPagination):
             'results': data
         })
 
+def get_url(self, obj):
+    return obj.url
 
 class ComponentSerializer(serializers.ModelSerializer):
-    category = CategorySerializer()
-    primary_image = DocumentSerializer()
-    packets = PacketSerializer(many=True)
-    suppliers = SupplierRelationSerializer(many=True)
+    
+    category = serializers.PrimaryKeyRelatedField(
+        queryset=Category.objects.all()
+    )
+
+    tags = serializers.PrimaryKeyRelatedField(
+        queryset=Tag.objects.all(),
+        many=True
+    )
+
+    packets = PacketSerializer(many=True, read_only=True)
+    suppliers = SupplierRelationSerializer(many=True, read_only=True)
+    
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+
+        data['category'] = CategorySerializer(instance.category).data
+        data['tags'] = TagSerializer(instance.tags, many=True).data
+        return data
 
     class Meta:
         model = Component
         fields = '__all__'
 
+
+
 class ComponentListAPIView(generics.ListAPIView):
-    queryset = Component.objects.all()
     serializer_class = ComponentSerializer
     pagination_class = StandardResultsSetPagination
     permission_classes = [IsAuthenticated]
 
-class ComponentDetailAPIView(generics.RetrieveAPIView):
+    def get_queryset(self):
+        queryset = Component.objects.all()
+        name = self.request.query_params.get('name', None)
+        description = self.request.query_params.get('description', None)
+        search = self.request.query_params.get('search', None)
+        categories = self.request.query_params.get('categories', None)
+        locations = self.request.query_params.get('locations', None)
+        if categories:
+            categories = categories.split(',')
+            categories = Category.objects.filter(id__in=categories)
+        
+        filters = []
+        if categories:
+            filters.append(Q(category__in=categories))
+
+        if search:
+            filters.append(
+            Q(name__icontains=search) |
+            Q(description__icontains=search) |
+            Q(id__icontains=search)
+            )
+        
+        if name:
+            filters.append(Q(name__icontains=name))
+        
+        if description:
+            filters.append(Q(description__icontains=description))
+
+        if locations:
+            locations = locations.split(',')
+            locations = Warehouse.objects.filter(id__in=locations).get_descendants(include_self=True).distinct() 
+            filters.append(Q(packets__location__in=locations))
+
+        if filters:
+            queryset = queryset.filter(*filters)
+        return queryset.order_by('id')
+
+
+
+class ComponentDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Component.objects.all()
     serializer_class = ComponentSerializer
-    # lookup_field = ['id']
     permission_classes = [IsAuthenticated]
-
-
-
-from django_select2.forms import ModelSelect2Widget, Select2Widget
 
 
 class PacketForm(forms.ModelForm):
     """Form for creating and updating Packet instances."""
-    
+
     class Meta:
         """Meta class to specify the model and fields."""
-        
+
         model = Packet
         fields = ['component', 'location', 'is_trackable', 'description']
 
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+class ComponentParameterListAPIView(generics.ListCreateAPIView):
+    queryset = ComponentParameter.objects.all()
+    serializer_class = ComponentParameterSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        component_id = self.kwargs.get('pk')
+        queryset = ComponentParameter.objects.all()
+        if component_id:
+            queryset = queryset.filter(component=component_id)
+        return queryset
+
+    def post(self, request, pk, *args, **kwargs):
+        component = get_object_or_404(Component, pk=pk)
+        data = request.data.copy()
+        # Ensure component is set in payload
+        if not data.get('component'):
+            data['component'] = str(component.id)
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=201, headers=headers)
+
+class ComponentParameterCreateAPIView(generics.CreateAPIView):
+    queryset = ComponentParameter.objects.all()
+    serializer_class = ComponentParameterSerializer
+    permission_classes = [IsAuthenticated]
+
+    def perform_create(self, serializer):
+        component_id = self.kwargs.get('pk')
+        component = get_object_or_404(Component, pk=component_id)
+        
+        cp = ComponentParameter(
+            component=component,
+            parameter_type = ParameterType.objects.all().first(),
+        )
+        
+        cp.save()
 
 class PacketNewView(CreateView):
     model = Packet
@@ -117,7 +268,7 @@ class PacketNewView(CreateView):
         component = get_object_or_404(Component, pk=component_uuid)
         initial['component'] = component
         return initial
-    
+
     def get_form(self, form_class=None):
         form = super().get_form(form_class)
         form.fields['component'].widget.attrs['readonly'] = True
@@ -128,7 +279,7 @@ class PacketNewView(CreateView):
         form.save()
         messages.success(self.request, 'Packet created.')
         return redirect(reverse('component-detail', kwargs={'uuid': component_uuid}))
-    
+
 class PacketEditView(FormView):
     template_name = 'warehouse/packet_edit.html'
     form_class = PacketForm
@@ -142,7 +293,7 @@ class PacketEditView(FormView):
         form.save()
         messages.success(self.request, 'Packet saved.')
         return redirect(reverse('component-detail', kwargs={'uuid': form.cleaned_data['component'].id}))
-    
+
 class PacketDeleteView(CreateView):
     model = Packet
 
@@ -152,20 +303,35 @@ class PacketDeleteView(CreateView):
         packet.delete()
         messages.success(self.request, 'Packet deleted.')
         return redirect(reverse('component-detail', kwargs={'uuid': component_uuid}))
-    
 
 
 
-from django.forms.models import inlineformset_factory
-from nextintranet_warehouse.models.component import ComponentParameter, ParameterType
 
-from crispy_forms.helper import FormHelper
-from crispy_forms.layout import Layout, Row, Column
-from django.views.generic.edit import FormView
-from django.http import HttpResponse
-from django.shortcuts import get_object_or_404
-from django.shortcuts import render
 
+class SupplierForm(forms.ModelForm):
+    class Meta:
+        model = Supplier
+        fields = ['name', 'contact_info', 'website', 'link_template', 'min_order_quantity']
+        widgets = {
+            'name': forms.TextInput(attrs={'class': 'form-control'}),
+            'contact_info': forms.Textarea(attrs={'class': 'form-control'}),
+            'website': forms.URLInput(attrs={'class': 'form-control'}),
+            'link_template': forms.TextInput(attrs={'class': 'form-control'}),
+            'min_order_quantity': forms.NumberInput(attrs={'class': 'form-control'}),
+        }
+
+
+class SupplierRelationForm(forms.ModelForm):
+    class Meta:
+        model = SupplierRelation
+        fields = ['component', 'supplier', 'symbol', 'custom_url' , 'description', 'api_data']
+        widgets = {
+            'component': forms.Select(attrs={'class': 'form-control'}),
+            'supplier': forms.Select(attrs={'class': 'form-control'}),
+            'symbol': forms.TextInput(attrs={'class': 'form-control'}),
+            'description': forms.Textarea(attrs={'class': 'form-control'}),
+            'api_data': forms.Textarea(attrs={'class': 'form-control', 'readonly': 'readonly'}),
+        }
 
 
 class ComponentParameterForm(forms.ModelForm):
@@ -183,15 +349,6 @@ class ComponentParameterForm(forms.ModelForm):
             )
         )
 
-ComponentParameterFormSet = inlineformset_factory(
-    Component,
-    ComponentParameter,
-    fields=('parameter_type', 'value'),
-    extra=1,
-    can_delete=True
-    )
-
-
 
 class ComponentParameterEditView(FormView):
     template_name = 'warehouse/parameters_edit.html'
@@ -199,8 +356,8 @@ class ComponentParameterEditView(FormView):
     model = Component
     inline_model = ComponentParameter
     form_class = ComponentParameterForm
-    formset_extra = 1  # Počet prázdných řádků pro nové parametry
-    formset_can_delete = True  # Umožňuje mazání parametrů
+    formset_extra = 1
+    formset_can_delete = True
 
     def dispatch(self, request, *args, **kwargs):
         """Načte hlavní objekt (Component)."""
@@ -208,7 +365,6 @@ class ComponentParameterEditView(FormView):
         return super().dispatch(request, *args, **kwargs)
 
     def get_formset(self, data=None):
-        """Vytvoří inline formset."""
         InlineFormset = inlineformset_factory(
             self.model,
             self.inline_model,
@@ -217,42 +373,36 @@ class ComponentParameterEditView(FormView):
             can_delete=self.formset_can_delete
         )
         return InlineFormset(instance=self.component, data=data)
-    
+
     def get(self, request, *args, **kwargs):
-        """Obsluhuje GET požadavek - načte formset."""
         formset = self.get_formset()
         return self.render_to_response(formset, self.template_name)
 
     def post(self, request, *args, **kwargs):
-        """Obsluhuje POST požadavek - uloží změny ve formsetu."""
         formset = self.get_formset(data=request.POST)
-        print("POST")
-        print(request.POST)
-        print(formset.is_valid())
         if formset.is_valid():
             instances = formset.save(commit=False)
-            print("Instances:", instances)
             for instance in instances:
                 instance.component = self.component
                 instance.save()
             # Zpracování smazaných objektů
-            print("Objects to delete:", formset.deleted_objects)
             for instance in formset.deleted_objects:
                 instance.delete()
-            return self.render_to_response(formset, self.template_partial_name)
+            # For HTMX requests - return partial template
+            if request.headers.get('HX-Request'):
+                return self.render_to_response(formset, self.template_partial_name)
+            return redirect('component-detail', uuid=self.component.id)
         else:
-            # Debugging: vypíšeme chyby
-            print("Formset errors:", formset.errors)
-            print("Non-form errors:", formset.non_form_errors())
-        return self.render_to_response(formset, self.template_partial_name)
+            # Return errors in the appropriate template
+            template = self.template_partial_name if request.headers.get('HX-Request') else self.template_name
+            return self.render_to_response(formset, template)
 
     def render_to_response(self, formset, template):
-        formset = self.get_formset()
+        # Use the provided formset instead of creating a new one
         return render(self.request, template, {
             'formset': formset,
             'component': self.component,
         })
-
 
 
 def add_row(request, uuid):
@@ -266,3 +416,49 @@ def add_row(request, uuid):
     )
     empty_form = InlineFormset(instance=component).empty_form
     return render(request, 'warehouse/parameter_row.html', {'form': empty_form})
+
+
+
+class ComponentCreateView(CreateView):
+    model = Component
+    form_class = ComponentForm
+    template_name = "warehouse/component/component_form.html"
+    success_url = reverse_lazy("component-list")
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        if self.request.POST:
+            context["parameter_formset"] = ComponentParameterFormSet(self.request.POST)
+            context["document_formset"] = DocumentFormSet(self.request.POST, self.request.FILES)
+            context["supplier_formset"] = SupplierRelationFormSet(self.request.POST)
+            context["packet_formset"] = PacketFormSet(self.request.POST)
+        else:
+            context["parameter_formset"] = ComponentParameterFormSet()
+            context["document_formset"] = DocumentFormSet()
+            context["supplier_formset"] = SupplierRelationFormSet()
+            context["packet_formset"] = PacketFormSet()
+        return context
+
+    def form_valid(self, form):
+        context = self.get_context_data()
+        parameter_formset = context["parameter_formset"]
+        document_formset = context["document_formset"]
+        supplier_formset = context["supplier_formset"]
+        packet_formset = context["packet_formset"]
+
+        if (parameter_formset.is_valid() and document_formset.is_valid() and
+            supplier_formset.is_valid() and packet_formset.is_valid()):
+            self.object = form.save()
+            parameter_formset.instance = self.object
+            parameter_formset.save()
+            document_formset.instance = self.object
+            document_formset.save()
+            supplier_formset.instance = self.object
+            supplier_formset.save()
+            packet_formset.instance = self.object
+            packet_formset.save()
+            return redirect(self.object.get_absolute_url())
+        else:
+            return self.render_to_response(self.get_context_data(form=form))
+
+

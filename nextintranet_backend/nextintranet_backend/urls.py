@@ -34,6 +34,7 @@ from django.urls import include
 
 from .views import home
 from .views import auth
+from .views import user
 from .urls_api import urlpatterns as api_urls
 
 
@@ -41,7 +42,6 @@ from nextintranet_warehouse import urls as warehouse_urls
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-
     path('api/', include(api_urls)),
 
     path("select2/", include("django_select2.urls")),
@@ -54,6 +54,8 @@ urlpatterns = [
     path('reset/<uidb64>/<token>/', auth_views.PasswordResetConfirmView.as_view(), name='password_reset_confirm'),
 
     path('', home.HomeView.as_view(), name='home'),
+
+    path('user/', include(user.urlpatterns)),
 
     # path('warehouse/', include(warehouse_urls)),
     path('store/', include(warehouse_urls)), # deprecated

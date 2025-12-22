@@ -4,7 +4,7 @@ import { CommonModule } from '@angular/common';
 import { DynamicDialogConfig, DynamicDialogRef, DynamicDialogModule } from 'primeng/dynamicdialog';
 import { PacketOperationsService } from '../../../store/services/packetOperations.service';
 import { DialogModule } from 'primeng/dialog';
-import { DropdownModule } from 'primeng/dropdown';
+import { SelectModule } from 'primeng/select';
 import { InputTextModule } from 'primeng/inputtext';
 
 interface Operation {
@@ -24,7 +24,7 @@ interface Operation {
   templateUrl: './ni-packet-operation-create.component.html',
   styleUrls: ['./ni-packet-operation-create.component.scss'],
   standalone: true,
-  imports: [CommonModule, FormsModule, DynamicDialogModule, DialogModule, InputTextModule, DropdownModule]
+  imports: [CommonModule, FormsModule, DynamicDialogModule, DialogModule, InputTextModule, SelectModule]
 })
 export class NiPacketOperationCreateComponent {
   operation: Operation = {

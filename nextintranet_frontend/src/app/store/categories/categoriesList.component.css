@@ -1,0 +1,26 @@
+/* Categories component styles */
+:host {
+  display: block;
+  height: 100%;
+}
+
+.categories-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 1rem;
+}
+
+.categories-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+  flex-shrink: 0;
+}
+
+.categories-tree-wrapper {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}

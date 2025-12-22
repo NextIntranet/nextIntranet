@@ -1,0 +1,93 @@
+<div class="production-edit-container">
+  <div class="header">
+    <h2>{{ isEditMode ? 'Upravit výrobní projekt' : 'Nový výrobní projekt' }}</h2>
+  </div>
+
+  <form [formGroup]="productionForm" (ngSubmit)="onSubmit()" class="production-form">
+    <div class="form-grid">
+      <div class="field">
+        <label for="name">Název *</label>
+        <input 
+          id="name" 
+          type="text" 
+          pInputText 
+          formControlName="name"
+          [class.ng-invalid]="productionForm.get('name')?.invalid && productionForm.get('name')?.touched"
+        />
+        <small class="p-error" *ngIf="productionForm.get('name')?.invalid && productionForm.get('name')?.touched">
+          Název je povinný
+        </small>
+      </div>
+
+      <div class="field">
+        <label for="folder">Složka *</label>
+        <p-select 
+          id="folder"
+          formControlName="folder"
+          [options]="folders"
+          optionLabel="full_path"
+          optionValue="id"
+          placeholder="Vyberte složku"
+          [class.ng-invalid]="productionForm.get('folder')?.invalid && productionForm.get('folder')?.touched"
+        ></p-select>
+        <small class="p-error" *ngIf="productionForm.get('folder')?.invalid && productionForm.get('folder')?.touched">
+          Složka je povinná
+        </small>
+      </div>
+
+      <div class="field full-width">
+        <label for="description">Popis</label>
+        <textarea 
+          id="description" 
+          pInputText
+          formControlName="description"
+          rows="4"
+          class="w-full"
+        ></textarea>
+      </div>
+
+      <div class="field full-width">
+        <label for="link">Link (URL)</label>
+        <input 
+          id="link" 
+          type="url" 
+          pInputText 
+          formControlName="link"
+          placeholder="https://..."
+        />
+      </div>
+
+      <div class="field full-width">
+        <label for="component_reference">Reference na skladovou položku</label>
+        <input 
+          id="component_reference" 
+          type="text" 
+          pInputText 
+          formControlName="component_reference"
+          placeholder="UUID skladové položky"
+        />
+        <small class="help-text">Volitelné: UUID součástky ze skladu, pokud projekt odpovídá konkrétní položce</small>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button 
+        pButton 
+        type="button" 
+        label="Zrušit" 
+        icon="pi pi-times" 
+        class="p-button-secondary"
+        (click)="onCancel()"
+        [disabled]="loading"
+      ></button>
+      <button 
+        pButton 
+        type="submit" 
+        [label]="isEditMode ? 'Uložit' : 'Vytvořit'" 
+        icon="pi pi-check"
+        [loading]="loading"
+        [disabled]="loading"
+      ></button>
+    </div>
+  </form>
+</div>

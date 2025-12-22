@@ -2,7 +2,7 @@ import { Component, OnInit, HostListener, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule, NavigationEnd } from '@angular/router';
 import { MenubarModule } from 'primeng/menubar';
-import { SidebarModule } from 'primeng/sidebar';
+import { DrawerModule } from 'primeng/drawer';
 import { ButtonModule } from 'primeng/button';
 import { RippleModule } from 'primeng/ripple';
 import { PanelMenuModule } from 'primeng/panelmenu';
@@ -24,7 +24,7 @@ import { environment } from 'src/environment';
     CommonModule,
     RouterModule,
     MenubarModule,
-    SidebarModule,
+    DrawerModule,
     ButtonModule,
     RippleModule,
     PanelMenuModule,
@@ -62,8 +62,8 @@ export class LayoutComponent implements OnInit, OnDestroy {
         },
         {
           label: 'Locations',
-          icon: 'pi pi-list',
-          routerLink: '/store'
+          icon: 'pi pi-map-marker',
+          routerLink: '/store/locations'
         },
         {
           label: 'Suppliers',
@@ -74,6 +74,17 @@ export class LayoutComponent implements OnInit, OnDestroy {
           label: 'Kategorie',
           icon: 'pi pi-tags',
           routerLink: '/store/categories'
+        }
+      ]
+    },
+    {
+      label: 'Výroba',
+      icon: 'pi pi-cog',
+      items: [
+        {
+          label: 'Výrobní projekty',
+          icon: 'pi pi-folder',
+          routerLink: '/production'
         }
       ]
     },

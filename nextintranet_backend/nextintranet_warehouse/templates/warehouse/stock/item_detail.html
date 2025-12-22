@@ -1,30 +1,26 @@
 {% extends 'base_layout.html' %}
 
 {% block content %}
-<div class="container mx-auto py-8">
-  <div class="flex items-center mb-6">
-    <button onclick="javascript:history.back()" class="mr-2 text-gray-500 hover:text-gray-700">
-      <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
-      </svg>
+<div class="container py-4">
+  <div class="d-flex align-items-center mb-4">
+    <button onclick="javascript:history.back()" class="btn btn-link text-secondary p-0 me-2">
+      <i class="bi bi-arrow-left"></i>
     </button>
-    <h1 class="text-3xl font-bold text-gray-800">Item Details</h1>
+    <h1 class="h3 fw-bold text-dark">Item Details</h1>
   </div>
-  <div class="flex flex-wrap -mx-4">
-    <div class="w-full lg:w-2/3 px-4">
+  <div class="row">
+    <div class="col-lg-8">
       {% include 'warehouse/stock/detail/item_card.html' %}
       {% include 'warehouse/stock/detail/item_parameters.html'%}
       {% include 'warehouse/stock/detail/warehouse_stock.html'%}
       {% include 'warehouse/stock/detail/documents.html'%}
     </div>
-    <div class="w-full lg:w-1/3 px-4">
+    <div class="col-lg-4">
       {% include 'warehouse/stock/detail/pricing_information.html' %}
       {% include 'warehouse/stock/detail/suppliers.html' %}
       {% include 'warehouse/stock/detail/actions.html' %}
     </div>
   </div>
 </div>
-
-
 
 {% endblock %}

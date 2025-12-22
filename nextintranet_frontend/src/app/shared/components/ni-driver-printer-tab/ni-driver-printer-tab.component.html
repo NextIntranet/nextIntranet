@@ -3,12 +3,12 @@
   <div class="grid grid-cols-3 gap-4">
     <div class="flex flex-col gap-2">
       <label for="printer" class="font-medium">Printer</label>
-      <p-dropdown id="printer" [options]="[{label: 'PDF printer', value: 'pdf_printer'}]"
-                  [(ngModel)]="selectedPrinter" optionLabel="label" placeholder="Select printer"></p-dropdown>
+      <p-select id="printer" [options]="[{label: 'PDF printer', value: 'pdf_printer'}]"
+                  [(ngModel)]="selectedPrinter" optionLabel="label" placeholder="Select printer"></p-select>
     </div>
     <div class="flex flex-col gap-2">
       <label for="layout" class="font-medium">Layout</label>
-      <p-dropdown id="layout" [options]="availablePrintFormats"
+      <p-select id="layout" [options]="availablePrintFormats"
                   [(ngModel)]="selectedLayout" optionLabel="label"
                   (onChange)="onFormatChange($event)" placeholder="Select layout">
         <ng-template pTemplate="item" let-format>
@@ -17,13 +17,13 @@
             <small *ngIf="format.description">{{format.description}}</small>
           </div>
         </ng-template>
-      </p-dropdown>
+      </p-select>
     </div>
     <div class="flex flex-col gap-2">
       <label class="font-medium">Print Mode</label>
-      <p-dropdown id="printMode" [options]="[{label: 'Queue', value: 'queue'}, {label: 'Direct', value: 'direct'}]"
+      <p-select id="printMode" [options]="[{label: 'Queue', value: 'queue'}, {label: 'Direct', value: 'direct'}]"
           [(ngModel)]="printMode" optionLabel="label" placeholder="Select print mode"
-          (onChange)="onPrintModeChange($event.value)"></p-dropdown>
+          (onChange)="onPrintModeChange($event)"></p-select>
     </div>
   </div>
 

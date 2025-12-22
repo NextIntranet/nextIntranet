@@ -1,0 +1,228 @@
+<div class="manufacturing-container" *ngIf="realization">
+  <p-toast></p-toast>
+  
+  <div class="header">
+    <div class="header-left">
+      <button pButton icon="pi pi-arrow-left" class="p-button-text" (click)="onBack()"></button>
+      <div>
+        <h2>{{ realization.name }}</h2>
+        <p class="subtitle">Výroba - {{ realization.production_name }}</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button pButton label="Dokončit výrobu" icon="pi pi-check" class="p-button-success" (click)="onComplete()"></button>
+    </div>
+  </div>
+
+  <p-card>
+    <div class="progress-section">
+      <h3>Průběh výroby</h3>
+      <div class="progress-info">
+        <span>{{ usedComponents.size }} / {{ components.length }} součástek použito</span>
+        <span>{{ progress | number:'1.0-0' }}%</span>
+      </div>
+      <p-progressBar [value]="progress"></p-progressBar>
+    </div>
+  </p-card>
+
+  <p-card class="barcode-card">
+    <h3>Skenování čárového kódu</h3>
+    <div class="barcode-input-section">
+      <span class="p-input-icon-left" style="width: 100%;">
+        <i class="pi pi-barcode"></i>
+        <input 
+          type="text" 
+          pInputText 
+          [(ngModel)]="barcodeInput"
+          (keyup.enter)="onBarcodeScanned()"
+          placeholder="Naskenujte čárový kód součástky..."
+          class="w-full"
+          autofocus
+        />
+      </span>
+      <button 
+        pButton 
+        label="Vyhledat" 
+        icon="pi pi-search"
+        (click)="onBarcodeScanned()"
+        [disabled]="!barcodeInput"
+      ></button>
+    </div>
+    <small class="help-text">
+      Naskenujte čárový kód součástky nebo ji označte ručně v tabulce níže
+    </small>
+  </p-card>
+
+  <p-card class="components-card">
+    <h3>Seznam součástek (hierarchické zobrazení)</h3>
+    
+    <p-treeTable 
+      [value]="treeNodes" 
+      [tableStyle]="{'min-width': '50rem'}"
+      *ngIf="treeNodes.length > 0">
+      <ng-template pTemplate="header">
+        <tr>
+          <th style="width: 8%">Ref</th>
+          <th style="width: 18%">Originál</th>
+          <th style="width: 2%"></th>
+          <th style="width: 18%">Použitá</th>
+          <th style="width: 10%">Sáček</th>
+          <th style="width: 8%">Val</th>
+          <th style="width: 12%">Footprint</th>
+          <th style="width: 6%">Ks</th>
+          <th style="width: 6%">Stav</th>
+          <th style="width: 6%"></th>
+        </tr>
+      </ng-template>
+      <ng-template pTemplate="body" let-rowNode let-rowData="rowData">
+        <tr [ngClass]="{
+          'used-row': rowData.allUsed, 
+          'partial-row': rowData.partiallyUsed,
+          'group-row': rowData.isGroup,
+          'item-row': !rowData.isGroup
+        }">
+          <td class="text-center">
+            <span class="ref-badge">{{ rowData.ref || '-' }}</span>
+          </td>
+          <td>
+            <div class="component-display">
+              <p-treeTableToggler [rowNode]="rowNode" *ngIf="rowData.isGroup"></p-treeTableToggler>
+              <div class="component-box" *ngIf="rowData.component_id">
+                <span class="component-name">{{ rowData.component_name || rowData.component_id }}</span>
+                <button 
+                  pButton 
+                  icon="pi pi-external-link"
+                  class="p-button-text p-button-sm component-open-btn"
+                  [routerLink]="['/store/component', rowData.component_id]"
+                  [pTooltip]="'Otevřít součástku'">
+                </button>
+              </div>
+              <span class="text-muted" *ngIf="!rowData.component_id">Nepřiřazeno</span>
+            </div>
+          </td>
+          <td class="text-center">
+            <button 
+              pButton 
+              icon="pi pi-arrow-right"
+              class="p-button-text p-button-sm p-button-rounded"
+              [pTooltip]="'Použít originál'"
+              (click)="copyOriginalToUsed(rowData)"
+              [disabled]="!rowData.component_id">
+            </button>
+          </td>
+          <td>
+            <!-- Show box when component is selected -->
+            <div class="component-box" *ngIf="getAlternative(rowData)">
+              <span class="component-name">{{ getAlternativeName(rowData) }}</span>
+              <div class="component-actions">
+                <button 
+                  pButton 
+                  icon="pi pi-external-link"
+                  class="p-button-text p-button-sm component-open-btn"
+                  [routerLink]="['/store/component', getAlternativeId(rowData)]"
+                  [pTooltip]="'Otevřít součástku'">
+                </button>
+                <button 
+                  pButton 
+                  icon="pi pi-times"
+                  class="p-button-text p-button-sm component-open-btn"
+                  (click)="clearAlternative(rowData)"
+                  [pTooltip]="'Odebrat'">
+                </button>
+              </div>
+            </div>
+            <!-- Show autocomplete when empty -->
+            <p-autoComplete
+              *ngIf="!getAlternative(rowData)"
+              [suggestions]="availableComponents"
+              (completeMethod)="onComponentSearch($event)"
+              (onSelect)="onAlternativeSelected(rowData, $event)"
+              field="label"
+              placeholder="Vyberte..."
+              [style]="{'width':'100%'}"
+              [dropdown]="true"
+              styleClass="p-inputtext-sm"
+            >
+            </p-autoComplete>
+          </td>
+          <td>
+            <!-- Packet column - TODO: implement packet selection -->
+            <span class="text-muted">-</span>
+          </td>
+          <td class="text-center">
+            <span class="value-badge">{{ rowData.value || '-' }}</span>
+          </td>
+          <td class="text-center">
+            <span class="footprint-badge">{{ rowData.footprint || '-' }}</span>
+          </td>
+          <td class="text-center">
+            <span *ngIf="rowData.isGroup" class="count-badge">{{ rowData.usedCount }}/{{ rowData.count }}</span>
+            <span *ngIf="!rowData.isGroup" class="count-badge">1</span>
+          </td>
+          <td class="text-center">
+            <p-tag 
+              *ngIf="rowData.isGroup && rowData.allUsed"
+              value="✓ Vše" 
+              severity="success"
+              styleClass="p-tag-sm"
+            ></p-tag>
+            <p-tag 
+              *ngIf="rowData.isGroup && rowData.partiallyUsed"
+              value="≈ Část." 
+              severity="warn"
+              styleClass="p-tag-sm"
+            ></p-tag>
+            <p-tag 
+              *ngIf="rowData.isGroup && !rowData.allUsed && !rowData.partiallyUsed"
+              value="✗" 
+              severity="secondary"
+              styleClass="p-tag-sm"
+            ></p-tag>
+            <p-tag 
+              *ngIf="!rowData.isGroup && rowData.used"
+              value="✓" 
+              severity="success"
+              styleClass="p-tag-sm"
+            ></p-tag>
+            <p-tag 
+              *ngIf="!rowData.isGroup && !rowData.used"
+              value="✗" 
+              severity="secondary"
+              styleClass="p-tag-sm"
+            ></p-tag>
+          </td>
+          <td class="text-center">
+            <button 
+              *ngIf="rowData.isGroup"
+              pButton 
+              [icon]="rowData.allUsed ? 'pi pi-times' : 'pi pi-check'"
+              class="p-button-text p-button-sm p-button-rounded"
+              [ngClass]="rowData.allUsed ? 'p-button-danger' : 'p-button-success'"
+              [pTooltip]="rowData.allUsed ? 'Zrušit vše' : 'Označit vše'"
+              (click)="toggleGroup(rowNode)">
+            </button>
+            <button 
+              *ngIf="!rowData.isGroup"
+              pButton 
+              [icon]="rowData.used ? 'pi pi-times' : 'pi pi-check'"
+              class="p-button-text p-button-sm p-button-rounded"
+              [ngClass]="rowData.used ? 'p-button-danger' : 'p-button-success'"
+              [pTooltip]="rowData.used ? 'Zrušit' : 'Označit'"
+              (click)="toggleComponent(rowData.id)">
+            </button>
+          </td>
+        </tr>
+      </ng-template>
+    </p-treeTable>
+
+    <div class="empty-state" *ngIf="components.length === 0">
+      <i class="pi pi-inbox"></i>
+      <p>Žádné součástky v této realizaci</p>
+    </div>
+  </p-card>
+</div>
+
+<div *ngIf="loading" class="loading-container">
+  <i class="pi pi-spin pi-spinner"></i>
+  <p>Načítání...</p>
+</div>

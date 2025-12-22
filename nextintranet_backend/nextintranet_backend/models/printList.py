@@ -37,7 +37,7 @@ class PrintList(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.name:
-            self.name = f"PrintList {now().strftime('%Y-%m-%d')} {self.owner.username}"
+            self.name = f"PrintList {now().strftime('%Y-%m-%d')} {self.owner}"
         super().save(*args, **kwargs)
 
     def __str__(self):

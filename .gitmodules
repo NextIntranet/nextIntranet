@@ -1,0 +1,3 @@
+[submodule "nextintranet_frontend/public/assets/electronic-symbols"]
+	path = nextintranet_frontend/public/assets/electronic-symbols
+	url = https://github.com/UniversalScientificTechnologies/electronic-symbols.git

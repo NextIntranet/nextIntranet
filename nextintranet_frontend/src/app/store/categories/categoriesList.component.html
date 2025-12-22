@@ -1,26 +1,105 @@
-
-<h1>Categories</h1>
-
-<ni-categoryTree />
-
-
-
-{{ categories }}
-
 <div class="categories-container">
-  <div class="categories-tree">
-    <ul>
-      <li *ngFor="let category of categories" (click)="onSelectCategory(category)">
-        {{ category?.name }}
-        <ul *ngIf="category?.children">
-          <li *ngFor="let child of category.children" (click)="onSelectCategory(child)">
-            {{ child?.name }}
-          </li>
-        </ul>
-      </li>
-    </ul>
+  <p-toast></p-toast>
+  
+  <!-- Fixed header with all controls -->
+  <div class="categories-header">
+    <h2 class="text-2xl font-bold">Categories</h2>
+    <div class="flex gap-2 flex-1 justify-end">
+      <span class="p-input-icon-left" style="width: 250px; position: relative;">
+        <i class="pi pi-search" style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%);"></i>
+        <input pInputText type="text" [(ngModel)]="filterText" (input)="filterTree()" placeholder="Search..." style="width: 100%; padding-left: 2.5rem;" />
+      </span>
+      <button pButton icon="pi pi-plus" pTooltip="Expand All" tooltipPosition="bottom" (click)="expandAll()" class="p-button-outlined"></button>
+      <button pButton icon="pi pi-minus" pTooltip="Collapse All" tooltipPosition="bottom" (click)="collapseAll()" class="p-button-outlined"></button>
+      <button pButton icon="pi pi-plus" label="New" (click)="openNewDialog()" class="p-button-success"></button>
+      <button pButton icon="pi pi-pencil" label="Edit" (click)="openEditDialog()" [disabled]="!selectedCategory" class="p-button-warning"></button>
+      <button pButton icon="pi pi-trash" label="Delete" (click)="deleteCategory()" [disabled]="!selectedCategory" class="p-button-danger"></button>
+    </div>
   </div>
-  <div class="category-details" *ngIf="selectedCategory">
-    <h2>{{ selectedCategory?.name }}</h2>
-    <p>{{ selectedCategory?.description }}</p> </div>
+
+  <!-- Scrollable tree content as table -->
+  <div class="categories-tree-wrapper">
+    <p-treeTable 
+      [value]="filteredCategories" 
+      selectionMode="single" 
+      [(selection)]="selectedCategory"
+      (onNodeSelect)="onNodeSelect($event)"
+      [tableStyle]="{'min-width':'50rem'}">
+      <ng-template pTemplate="header">
+        <tr>
+          <th style="width: 45%">Name</th>
+          <th style="width: 35%">Description</th>
+          <th style="width: 5%">Icon</th>
+          <th style="width: 5%">Color</th>
+          <th style="width: 10%">Actions</th>
+        </tr>
+      </ng-template>
+      <ng-template pTemplate="body" let-rowNode let-rowData="rowData">
+        <tr [ttSelectableRow]="rowNode">
+          <td>
+            <p-treeTableToggler [rowNode]="rowNode"></p-treeTableToggler>
+            <app-category-icon [icon]="rowData.icon" [color]="rowData.color" class="mr-2"></app-category-icon>
+            <a [routerLink]="['/store/category', rowData.id]" (click)="$event.stopPropagation()" class="font-semibold hover:text-blue-600">
+              {{ rowData.name }}
+            </a>
+          </td>
+          <td>
+            <span class="text-sm text-gray-600">{{ rowData.description || '-' }}</span>
+          </td>
+          <td>
+            <app-category-icon [icon]="rowData.icon" [color]="rowData.color"></app-category-icon>
+          </td>
+          <td>
+            <span *ngIf="rowData.color" class="w-6 h-6 rounded border inline-block" [style.background-color]="rowData.color"></span>
+            <span *ngIf="!rowData.color" class="text-gray-400 text-xs">-</span>
+          </td>
+          <td>
+            <button pButton icon="pi pi-eye" [routerLink]="['/store/category', rowData.id]" (click)="$event.stopPropagation()" class="p-button-sm p-button-text" pTooltip="View Details"></button>
+          </td>
+        </tr>
+      </ng-template>
+    </p-treeTable>
+  </div>
+
+  <p-dialog
+    [(visible)]="displayDialog" 
+    [header]="isEditMode ? 'Edit Category' : 'New Category'" 
+    [modal]="true"
+    [style]="{width: '450px'}">
+    <div class="p-fluid">
+      <div class="mb-3">
+        <label for="name" class="block mb-2">Name</label>
+        <input pInputText id="name" [(ngModel)]="categoryData.name" class="w-full" />
+      </div>
+      <div class="mb-3">
+        <label for="description" class="block mb-2">Description</label>
+        <input pInputText id="description" [(ngModel)]="categoryData.description" class="w-full" />
+      </div>
+      <div class="mb-3">
+        <label for="icon" class="block mb-2">Icon</label>
+        <input pInputText id="icon" [(ngModel)]="categoryData.icon" class="w-full" placeholder="pi-tag, symbol:Resistor-IEC-Standard, or img:myicon.png" />
+        <small class="text-gray-500 block">
+          • 'pi-*' - PrimeNG icons (e.g., pi-tag)<br>
+          • 'symbol:*' - Electronic symbols (e.g., symbol:Resistor-IEC-Standard)<br>
+          • 'img:*' - Custom images from /assets/icons/ (e.g., img:myicon.png)
+        </small>
+      </div>
+      <div class="mb-3">
+        <label for="color" class="block mb-2">Color</label>
+        <div class="flex items-center gap-2">
+          <p-colorPicker [(ngModel)]="categoryData.color" [inline]="false"></p-colorPicker>
+          <button pButton icon="pi pi-times" (click)="categoryData.color = ''" label="Clear" class="p-button-sm p-button-text"></button>
+        </div>
+      </div>
+      <div *ngIf="!isEditMode && selectedCategory" class="mb-3">
+        <p class="text-sm text-gray-600">
+          Parent: <strong>{{ selectedCategory.label }}</strong>
+        </p>
+      </div>
+    </div>
+    <ng-template pTemplate="footer">
+      <button pButton label="Cancel" icon="pi pi-times" (click)="displayDialog=false" class="p-button-text"></button>
+      <button pButton label="Save" icon="pi pi-check" (click)="saveCategory()" class="p-button-primary"></button>
+    </ng-template>
+  </p-dialog>
 </div>

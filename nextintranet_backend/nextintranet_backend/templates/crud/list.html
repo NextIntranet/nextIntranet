@@ -1,0 +1,22 @@
+{% extends 'base_layout.html' %}
+{% load render_table from django_tables2 %}
+{% load i18n %}
+
+{% block content %}
+    <div class="d-flex justify-content-between align-items-center">
+        <h1>{{ model_verbose }}</h1>
+        <div>
+        {% if request.user.is_superuser %}
+            {% if admin_url %}
+                <a href="{{ admin_url }}" class="btn btn-info">{% trans "Admin" %}</a>
+            {% endif %}
+        {% endif %}
+        {% url model_name|add:'-create' as create_url %}
+        {% if create_url %}
+            <a href="{{ create_url }}" class="btn btn-success">{% trans "Add" %}</a>
+        {% endif %}
+        </div>
+    </div>
+
+    {% render_table table %}
+{% endblock %}

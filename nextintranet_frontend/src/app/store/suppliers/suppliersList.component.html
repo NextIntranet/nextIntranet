@@ -1,71 +1,88 @@
-<div class="card">
+<div class="suppliers-container">
+  <p-toast></p-toast>
+  
+  <!-- Fixed header with all controls -->
+  <div class="suppliers-header">
+    <h2 class="text-2xl font-bold">Suppliers</h2>
+    <div class="flex gap-2">
+      <span class="p-input-icon-left" style="width: 250px; position: relative;">
+        <i class="pi pi-search" style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%);"></i>
+        <input pInputText type="text" [(ngModel)]="filterText" (input)="filterSuppliers()" placeholder="Search..." style="width: 100%; padding-left: 2.5rem;" />
+      </span>
+      <button pButton icon="pi pi-plus" label="Add Supplier" (click)="showAddDialog = true" class="p-button-success"></button>
+    </div>
+  </div>
 
+  <!-- Table content -->
+  <div class="suppliers-table-wrapper">
+    <p-table [value]="filteredSuppliers" styleClass="p-datatable-sm" [tableStyle]="{'min-width': '50rem'}">
+      <ng-template pTemplate="header">
+        <tr>
+          <th style="width: 25%">Name</th>
+          <th style="width: 30%">Website</th>
+          <th style="width: 30%">Link Template</th>
+          <th style="width: 15%">Actions</th>
+        </tr>
+      </ng-template>
+      <ng-template pTemplate="body" let-supplier let-i="rowIndex">
+        <tr>
+          <td>
+            <a *ngIf="editingSupplier !== supplier" [routerLink]="['/store/supplier', supplier.id]" class="font-semibold hover:text-blue-600">
+              {{supplier.name}}
+            </a>
+            <input *ngIf="editingSupplier === supplier" type="text" pInputText [(ngModel)]="supplier.name" class="w-full">
+          </td>
+          <td>
+            <a *ngIf="editingSupplier !== supplier && supplier.website" [href]="supplier.website" target="_blank" class="text-blue-600 hover:underline">
+              <i class="pi pi-external-link mr-1"></i> {{supplier.website}}
+            </a>
+            <span *ngIf="editingSupplier !== supplier && !supplier.website" class="text-gray-400">No website</span>
+            <input *ngIf="editingSupplier === supplier" type="text" pInputText [(ngModel)]="supplier.website" class="w-full">
+          </td>
+          <td>
+            <span *ngIf="editingSupplier !== supplier">{{supplier.link_template || '-'}}</span>
+            <input *ngIf="editingSupplier === supplier" type="text" pInputText [(ngModel)]="supplier.link_template" class="w-full">
+          </td>
+          <td>
+            <div class="flex gap-2">
+              <button *ngIf="editingSupplier === supplier" pButton icon="pi pi-check" (click)="onEditSave(supplier)" class="p-button-sm p-button-success p-button-text"></button>
+              <button *ngIf="editingSupplier === supplier" pButton icon="pi pi-times" (click)="onEditCancel(supplier, i)" class="p-button-sm p-button-secondary p-button-text"></button>
+              <button *ngIf="editingSupplier !== supplier" pButton icon="pi pi-eye" [routerLink]="['/store/supplier', supplier.id]" class="p-button-sm p-button-info p-button-text"></button>
+              <button *ngIf="editingSupplier !== supplier" pButton icon="pi pi-pencil" (click)="onEditInit(supplier)" class="p-button-sm p-button-warning p-button-text"></button>
+              <button *ngIf="editingSupplier !== supplier" pButton icon="pi pi-trash" (click)="deleteSupplier(supplier)" class="p-button-sm p-button-danger p-button-text"></button>
+            </div>
+          </td>
+        </tr>
+      </ng-template>
+      <ng-template pTemplate="emptymessage">
+        <tr>
+          <td colspan="4" class="text-center p-4 text-gray-500">
+            No suppliers found
+          </td>
+        </tr>
+      </ng-template>
+    </p-table>
+  </div>
 
-  <p-dataView
-        [value]="suppliers"
-        [rows]="rows"
-        [first]="first"
-        [paginator]="false"
-        [rowsPerPageOptions]="[250]"
-        (onPage)="onPageChange($event)">
-    <ng-template #header>
-      <div class="flex justify-content-between">
-        <h3>Suppliers</h3>
+  <!-- Add Supplier Dialog -->
+  <p-dialog [(visible)]="showAddDialog" header="Add New Supplier" [modal]="true" [style]="{width: '450px'}">
+    <div class="p-fluid">
+      <div class="mb-3">
+        <label for="name" class="block mb-2">Name</label>
+        <input pInputText id="name" [(ngModel)]="newSupplier.name" class="w-full" />
       </div>
+      <div class="mb-3">
+        <label for="website" class="block mb-2">Website</label>
+        <input pInputText id="website" [(ngModel)]="newSupplier.website" class="w-full" />
+      </div>
+      <div class="mb-3">
+        <label for="link_template" class="block mb-2">Link Template</label>
+        <input pInputText id="link_template" [(ngModel)]="newSupplier.link_template" class="w-full" />
+      </div>
+    </div>
+    <ng-template pTemplate="footer">
+      <button pButton label="Cancel" icon="pi pi-times" (click)="showAddDialog=false" class="p-button-text"></button>
+      <button pButton label="Add" icon="pi pi-check" (click)="addSupplier()" class="p-button-primary"></button>
     </ng-template>
-
-    <ng-template #list let-suppliersInView>
-      <p-table [value]="suppliers" styleClass="p-datatable-sm">
-        <ng-template #header>
-          <tr>
-            <th>Název</th>
-            <th>URL</th>
-            <th>Link Template</th>
-            <th style="width: 150px">Akce</th>
-          </tr>
-        </ng-template>
-        <ng-template #body let-supplier let-i="id">
-          <tr>
-            <td class="p-0">
-              <span *ngIf="editingSupplier !== supplier">{{supplier.name}}</span>
-              <input *ngIf="editingSupplier === supplier" type="text" pInputText [(ngModel)]="supplier.name">
-            </td>
-            <td class="p-0">
-                <a *ngIf="editingSupplier !== supplier" [href]="supplier.website" target="_blank">
-                  <i class="pi pi-globe" *ngIf="supplier.website"></i> {{supplier.website}}
-                </a>
-              <input *ngIf="editingSupplier === supplier" type="text" pInputText [(ngModel)]="supplier.website">
-            </td>
-            <td class="p-0">
-              <span *ngIf="editingSupplier !== supplier">{{supplier.link_template}}</span>
-              <input *ngIf="editingSupplier === supplier" type="text" pInputText [(ngModel)]="supplier.link_template">
-            </td>
-            <td class="p-0">
-              <div class="flex justify-content-end">
-                <!-- Edit mode buttons -->
-                <i *ngIf="editingSupplier === supplier" class="pi pi-check px-2 p-mr-2 p-cursor-pointer p-text-success"
-                  (click)="onEditSave(supplier)"></i>
-                <i *ngIf="editingSupplier === supplier" class="pi pi-times px-2 p-cursor-pointer p-text-danger"
-                  (click)="onEditCancel(supplier, i)"></i>
-
-                <!-- View mode icons -->
-                <i *ngIf="editingSupplier !== supplier" class="pi pi-pencil px-2 p-mr-2 p-cursor-pointer p-text-primary"
-                  (click)="onEditInit(supplier)"></i>
-                <i *ngIf="editingSupplier !== supplier" class="pi pi-trash px-2 p-cursor-pointer p-text-danger"
-                  (click)="deleteSupplier(supplier)"></i>
-              </div>
-            </td>
-          </tr>
-        </ng-template>
-      </p-table>
-    </ng-template>
-  </p-dataView>
-
-  <div class="p-2"></div>
-
-  <p-inputgroup  class="w-full md:!w-[30rem]" size="small">
-    <p-inputgroup-addon> Add supplier </p-inputgroup-addon>
-    <input pInputText id="name" type="text" pInputText [(ngModel)]="newSupplier.name" placeholder="Name">
-    <p-button pButton type="button" label="Přidat dodavatele" (click)="addSupplier()" class="p-button-success"></p-button>
-  </p-inputgroup>
+  </p-dialog>
 </div>

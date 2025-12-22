@@ -1,0 +1,44 @@
+{% extends "base_layout.html" %}
+{% load crispy_forms_tags %}
+{% block content %}
+  <h2>{% if form.instance.pk %}Edit Component{% else %}Create Component{% endif %}</h2>
+  
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    {% crispy form %}
+
+    <h3>Component Parameters</h3>
+    {{ parameter_formset.management_form }}
+    {% for form in parameter_formset %}
+      <div class="form-inline">
+        {{ form | crispy }}
+      </div>
+    {% endfor %}
+
+    <h3>Documents</h3>
+    {{ document_formset.management_form }}
+    {% for form in document_formset %}
+      <div class="form-inline">
+        {{ form | crispy }}
+      </div>
+    {% endfor %}
+
+    <h3>Suppliers</h3>
+    {{ supplier_formset.management_form }}
+    {% for form in supplier_formset %}
+      <div class="form-inline">
+        {{ form | crispy }}
+      </div>
+    {% endfor %}
+
+    <h3>Packets</h3>
+    {{ packet_formset.management_form }}
+    {% for form in packet_formset %}
+      <div class="form-inline">
+        {{ form | crispy }}
+      </div>
+    {% endfor %}
+
+    <button type="submit">Save</button>
+  </form>
+{% endblock %}

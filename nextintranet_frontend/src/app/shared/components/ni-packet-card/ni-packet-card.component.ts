@@ -10,8 +10,9 @@ import { NiSelectLocationComponent } from '../ni-select-location/ni-select-locat
 import { PacketOperationsService } from '../../../store/services/packetOperations.service';
 import { PacketService } from '../../../store/services/packet.service';
 import { NiIdPrintComponent } from '../ni-id-print/ni-id-print.component';
-import { NiPacketOperationCreateComponent } from '../ni-packet-operation-create/ni-packet-operation-create.component';
 import { NiPrintButtonComponent } from '../ni-print-button/ni-print-button.component';
+import { NiPacketOperationCreateComponent } from '../ni-packet-operation-create/ni-packet-operation-create.component';
+import { Router } from '@angular/router';
 
 @Component({
   selector: 'ni-packet-card',
@@ -28,7 +29,6 @@ import { NiPrintButtonComponent } from '../ni-print-button/ni-print-button.compo
     DynamicDialogModule,
     NiSelectLocationComponent,
     NiIdPrintComponent,
-    NiPacketOperationCreateComponent,
     NiPrintButtonComponent
 ],
   providers: [DialogService]
@@ -46,7 +46,8 @@ export class NiPacketCardComponent {
   constructor(
     private operationsService: PacketOperationsService,
     private packetService: PacketService,
-    private dialogService: DialogService
+    private dialogService: DialogService,
+    private router: Router
   ) {}
 
   isEditMode: boolean = false;
@@ -77,7 +78,8 @@ export class NiPacketCardComponent {
     }
   }
 
-  openPacketEdit() {
+  openPacketEdit(event?: Event) {
+    if (event) event.stopPropagation();
     console.log('openPacketEdit');
     this.isEditMode = true;
     if(!this.isDummy) {
@@ -170,8 +172,15 @@ export class NiPacketCardComponent {
     }
   }
 
-  openPacketDialog() {
+  openPacketDialog(event?: Event) {
+    if (event) event.stopPropagation();
     console.log('openPacketDialog');
+  }
+
+  goToPacket() {
+    if (this.isEditMode || this.isDummy) return;
+    const id = this.localPacket?.id || this.packet?.id;
+    if (id) this.router.navigate(['/store/packet', id]);
   }
 
   openCreateOperationDialog() {
@@ -181,11 +190,13 @@ export class NiPacketCardComponent {
       data: { packetId: this.packet.id }
     });
 
-    ref.onClose.subscribe((newOperation) => {
-      if (newOperation) {
-        this.operations.push(newOperation);
-      }
-    });
+    if (ref && ref.onClose) {
+      ref.onClose.subscribe((newOperation) => {
+        if (newOperation) {
+          this.operations.push(newOperation);
+        }
+      });
+    }
   }
 
   updatePacketInfo(){

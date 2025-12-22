@@ -1,0 +1,18 @@
+{% extends 'base_layout.html' %}
+{% load crispy_forms_tags %}
+
+{% block content %}
+
+
+<form hx-post="{{ request.path }}" method="post">
+    {% csrf_token %}
+    <span id="component-form">
+    {{ message }}
+    {{ form|crispy }}
+    </span>
+    <div class="form-group mt-4">
+        <button type="submit" class="btn btn-primary mr-2" name="action" value="save">Save</button>
+        <button type="button" class="btn btn-secondary" hx-post="{{ request.path }}" hx-target="#component-form" hx-select="#component-form" name="action" value="validate">Validate</button>
+    </div>
+</form>
+{% endblock %}

@@ -2,7 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
-import { DropdownModule } from 'primeng/dropdown';
+import { SelectModule } from 'primeng/select';
 import { ToastModule } from 'primeng/toast';
 import { TableModule } from 'primeng/table';
 import { RadioButtonModule } from 'primeng/radiobutton';
@@ -16,7 +16,7 @@ import { PrintService, PrintItem, PrintFormat } from '../../../store/services/ni
     CommonModule,
     FormsModule,
     ButtonModule,
-    DropdownModule,
+    SelectModule,
     ToastModule,
     TableModule,
     RadioButtonModule

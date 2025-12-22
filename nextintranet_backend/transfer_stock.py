@@ -26,6 +26,9 @@ with open('documents/stock.json', 'r', encoding='utf-8') as file:
 print(">>")
 for line in lines:
     try:
+        print(" \n\n\n")
+        print("========================================================")
+        print("========================================================")
         entry = json.loads(line)
         print(entry)
 
@@ -41,7 +44,7 @@ for line in lines:
             defaults={
                 'description': entry.get('description', ''),
                 'category': category,
-                'unit_type': 'float',  # Většinou kvůli cenám
+                'unit_type': 'pcs',
                 'internal_price': entry.get('price', {}).get('$numberDouble'),
             }
         )
@@ -65,47 +68,66 @@ for line in lines:
                 }
             )
 
+        if 'img_title' in entry:
+            component.primary_image = entry['img_title']['url']
+
         # Propojení kategorií a dalších atributů
         if 'tags' in entry:
             for tag in entry['tags']:
                 tag_obj, _ = Tag.objects.get_or_create(name=tag['id'])
                 component.tags.add(tag_obj)
 
-        # Zpracování primary image
-        img_title = entry.get('img_title', {}).get('url')
-        if img_title:
-            document, _ = Document.objects.get_or_create(
-                url=img_title,
-                defaults={
-                    'name': f"Primary image for {component.name}",
-                    'doc_type': 'image',
-                }
-            )
-            component.primary_image = document
-            component.save()
-            print(f"Nastaven primary_image pro komponentu {component.name}")
+        # # Zpracování primary image
+        # print("IMG")
+        # img_title = entry.get('img_title', {}).get('url', None)
+        # if img_title:
+        #     document, _ = Document.objects.get_or_create(
+        #         url=img_title,
+        #         defaults={
+        #             'name': f"Primary image for {component.name}",
+        #             'doc_type': 'image',
+        #         }
+        #     )
+        #     component.primary_image = document
+        #     component.save()
+        #     print(f"Nastaven primary_image pro komponentu {component.name}")
 
         # Vytvoření packetů
+        print("PCKT")
         for packet_entry in entry.get('packets', []):
+            print("PACKET.... ", packet_entry)
             location_id = packet_entry.get('position', {}).get('$oid')
             location = None
-            print("PAcket entry", packet_entry)
             print("Location ID", location_id)
             if location_id:
                 location = Warehouse.objects.filter(id=oid_to_uuid4(location_id)).first()
 
-            if location and component:
+            if component:
+                print("Pridavam packet")
 
-
-                Packet.objects.get_or_create(
+                packet = Packet.objects.get_or_create(
+                    id = oid_to_uuid4(packet_entry['_id']['$oid']),
                     component=component,
                     location=location,
                     defaults={
                         'description': packet_entry.get('description', ''),
                     }
                 )
+        
+        print("DOC")
+        for document in entry.get('documents', []):
+            print("DOCUMENT.... ", document)
+            doc = Document.objects.get_or_create(
+                component=component,
+                url=document['url'],
+                name=document.get('type', ''),
+                doc_type=document.get('type', 'other')
+            )
 
     except Exception as e:
         print(f"Chyba při parsování JSON: {e}")
+    
+    finally:
+        component.save()
 
 print("Import dokončen.")

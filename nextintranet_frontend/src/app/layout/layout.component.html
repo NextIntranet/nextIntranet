@@ -45,9 +45,9 @@
   </div>
 
   <!-- Mobile Drawer -->
-  <p-sidebar [(visible)]="isDrawerVisible" position="left" styleClass="mobile-sidebar" [modal]="true" [showCloseIcon]="true" [closeOnEscape]="true" [dismissible]="false">
+  <p-drawer [(visible)]="isDrawerVisible" position="left" styleClass="mobile-sidebar" [modal]="true" [showCloseIcon]="true">
     <div class="mobile-sidebar-content" (click)="onDrawerContentClick($event)">
       <p-panelMenu [model]="menu" [multiple]="false" styleClass="mobile-menu"></p-panelMenu>
     </div>
-  </p-sidebar>
+  </p-drawer>
 </div>

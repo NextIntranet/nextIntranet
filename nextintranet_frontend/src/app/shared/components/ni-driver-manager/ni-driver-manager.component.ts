@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ButtonModule } from 'primeng/button';
 import { DialogModule } from 'primeng/dialog';
-import { TabViewModule } from 'primeng/tabview';
+import { TabsModule } from 'primeng/tabs';
 import { ToastModule } from 'primeng/toast';
 import { MessageService } from 'primeng/api';
 
@@ -19,7 +19,7 @@ import { NiDriverPrinterTabComponent } from '../ni-driver-printer-tab/ni-driver-
     FormsModule,
     ButtonModule,
     DialogModule,
-    TabViewModule,
+    TabsModule,
     ToastModule,
     NiDriverControlTabComponent,
     NiDriverPrinterTabComponent

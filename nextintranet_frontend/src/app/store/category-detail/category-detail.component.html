@@ -1,0 +1,111 @@
+<div class="p-4">
+  <p-toast></p-toast>
+  <p-progressSpinner *ngIf="loading"></p-progressSpinner>
+
+  <div *ngIf="!loading && category">
+    <div class="flex items-center justify-between mb-4">
+      <div class="flex items-center gap-3">
+        <button pButton icon="pi pi-arrow-left" [routerLink]="['/store/categories']" class="p-button-text"></button>
+        <app-category-icon [icon]="category.icon" [color]="category.color" style="font-size: 2rem;"></app-category-icon>
+        <h1 class="text-3xl font-bold">{{ category.name }}</h1>
+      </div>
+      <div class="flex gap-2">
+        <button *ngIf="!editMode" pButton icon="pi pi-pencil" label="Edit" (click)="toggleEditMode()" class="p-button-warning"></button>
+        <button *ngIf="editMode" pButton icon="pi pi-times" label="Cancel" (click)="cancelEdit()" class="p-button-secondary"></button>
+        <button *ngIf="editMode" pButton icon="pi pi-check" label="Save" (click)="saveChanges()" class="p-button-success"></button>
+      </div>
+    </div>
+
+    <p-card class="mb-4">
+      <ng-template pTemplate="header">
+        <div class="p-3 bg-blue-50">
+          <h2 class="text-xl font-semibold m-0">Category Details</h2>
+        </div>
+      </ng-template>
+
+      <div class="flex flex-col gap-3">
+        <div class="flex justify-between items-center p-3 bg-gray-50 rounded">
+          <span class="font-semibold text-gray-600">Name:</span>
+          <span *ngIf="!editMode" class="text-gray-900">{{ category.name }}</span>
+          <input *ngIf="editMode" pInputText [(ngModel)]="editedCategory.name" class="flex-1 ml-4" />
+        </div>
+        
+        <div class="flex flex-col p-3 bg-gray-50 rounded">
+          <span class="font-semibold text-gray-600 mb-2">Description:</span>
+          <span *ngIf="!editMode" class="text-gray-900">{{ category.description || '-' }}</span>
+          <input *ngIf="editMode" pInputText [(ngModel)]="editedCategory.description" class="w-full" />
+        </div>
+
+        <div class="flex flex-col p-3 bg-gray-50 rounded">
+          <span class="font-semibold text-gray-600 mb-2">Icon:</span>
+          <div *ngIf="!editMode" class="flex items-center gap-2">
+            <app-category-icon [icon]="category.icon" [color]="category.color"></app-category-icon>
+            <span class="text-gray-900">{{ category.icon || '-' }}</span>
+          </div>
+          <div *ngIf="editMode">
+            <input pInputText [(ngModel)]="editedCategory.icon" placeholder="pi-tag, symbol:Resistor-IEC-Standard, or img:myicon.png" class="w-full mb-2" />
+            <small class="text-gray-500 block text-xs">
+              • 'pi-*' - PrimeNG icons<br>
+              • 'symbol:*' - Electronic symbols<br>
+              • 'img:*' - Custom images
+            </small>
+          </div>
+        </div>
+
+        <div class="flex justify-between items-center p-3 bg-gray-50 rounded">
+          <span class="font-semibold text-gray-600">Color:</span>
+          <div *ngIf="!editMode" class="flex items-center gap-2">
+            <span class="w-6 h-6 rounded border" [style.background-color]="category.color || '#666'"></span>
+            <span class="text-gray-900">{{ category.color || 'None' }}</span>
+          </div>
+          <div *ngIf="editMode" class="flex items-center gap-2">
+            <p-colorPicker [(ngModel)]="editedCategory.color" [inline]="false"></p-colorPicker>
+            <button pButton icon="pi pi-times" (click)="editedCategory.color = ''" class="p-button-sm p-button-text" pTooltip="Clear color"></button>
+          </div>
+        </div>
+
+        <div class="flex justify-between items-center p-3 bg-gray-50 rounded" *ngIf="category.parent">
+          <span class="font-semibold text-gray-600">Parent Category:</span>
+          <a [routerLink]="['/store/category', category.parent]" class="text-blue-600 hover:underline">
+            View Parent
+          </a>
+        </div>
+
+        <div class="flex justify-between items-center p-3 bg-gray-50 rounded" *ngIf="!category.parent">
+          <span class="font-semibold text-gray-600">Parent Category:</span>
+          <span class="text-gray-400">Root category</span>
+        </div>
+      </div>
+    </p-card>
+
+    <p-card *ngIf="category.children && category.children.length > 0">
+      <ng-template pTemplate="header">
+        <div class="p-3 bg-green-50">
+          <h2 class="text-xl font-semibold m-0">Sub-categories</h2>
+        </div>
+      </ng-template>
+      <ul class="list-disc list-inside">
+        <li *ngFor="let child of category.children" class="mb-2">
+          <a [routerLink]="['/store/category', child.id]" class="text-blue-600 hover:underline">
+            {{ child.name }}
+          </a>
+          <span *ngIf="child.description" class="text-gray-600 text-sm ml-2">- {{ child.description }}</span>
+        </li>
+      </ul>
+    </p-card>
+
+    <p-card *ngIf="!category.children || category.children.length === 0">
+      <ng-template pTemplate="header">
+        <div class="p-3 bg-green-50">
+          <h2 class="text-xl font-semibold m-0">Sub-categories</h2>
+        </div>
+      </ng-template>
+      <p class="text-gray-500">No sub-categories</p>
+    </p-card>
+  </div>
+
+  <div *ngIf="!loading && !category" class="text-center p-4">
+    <p class="text-gray-500">Category not found</p>
+    <button pButton label="Back to Categories" [routerLink]="['/store/categories']" class="mt-3"></button>
+  </div>
+</div>

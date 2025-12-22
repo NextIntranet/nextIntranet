@@ -35,9 +35,8 @@ class DocumentSerializer(serializers.ModelSerializer):
         model = Document
         fields = '__all__'
 
-
     def get_get_url(self, obj):
-        return obj.get_url
+        return obj
 
 
 
@@ -97,7 +96,6 @@ class ComponentDocumentEditView(FormView):
             for instance in formset.deleted_objects:
                 instance.delete()
             messages.success(self.request, 'Documents saved.')
-            #return redirect(reverse('component-detail', kwargs={'uuid': self.component.id}))
             return self.render_to_response(self.get_formset(), self.template_partial_name)
         else:
             print("Formset errors:", formset.errors)

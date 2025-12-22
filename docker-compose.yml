@@ -11,10 +11,12 @@ services:
     image: postgres:17
     volumes:
       - ./.data/postgres:/var/lib/postgresql/data
+    env_file:
+      - .env
     environment:
-      - POSTGRES_DB=nextintranet
-      - POSTGRES_USER=nextintranet_user
-      - POSTGRES_PASSWORD=nextintranet_password
+      - POSTGRES_DB=${POSTGRES_DB:-nextintranet}
+      - POSTGRES_USER=${POSTGRES_USER:-nextintranet_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-nextintranet_password}
     networks:
       - nextintranet_net
 
@@ -27,31 +29,48 @@ services:
       - ./.data/:/data
     ports:
       - "8080:8000"
+    env_file:
+      - .env
     depends_on:
       - db_nextintranet
       - redis
     networks:
       - nextintranet_net
 
-#  frontend:
-#    build:
-#      context: nextintranet_frontend
-#      dockerfile: Dockerfile
-#    volumes:
-#      - ./nextintranet_frontend:/app
-#    ports:
-#      - "9000:9000"
-#    environment:
-#      - HOST=0.0.0.0
-#    depends_on:
-#      - web
-#    networks:
-#      - nextintranet_net
+  frontend:
+    build:
+      context: nextintranet_frontend
+      dockerfile: Dockerfile
+    volumes:
+      - ./nextintranet_frontend:/app
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - API_URL=${API_URL:-http://web:8000/api}
+      - HOST=0.0.0.0
+    command: npm run start -- --host 0.0.0.0 --disable-host-check
+    ports:
+      - "4200:4200"
+    networks:
+      - nextintranet_net
+    depends_on:
+      - web
+
+  nginx:
+    image: nginx:alpine
+    volumes:
+      - ./nginx_config/nginx.conf:/etc/nginx/conf.d/default.conf
+    ports:
+      - "9000:80"
+    depends_on:
+      - frontend
+      - web
+    networks:
+      - nextintranet_net
 
   redis:
     image: redis
     volumes:
-      - ./.data/redis:/data  
+      - ./.data/redis:/data
     depends_on:
       - db_nextintranet
     networks:

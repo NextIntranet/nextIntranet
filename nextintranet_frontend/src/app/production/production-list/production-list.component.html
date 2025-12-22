@@ -1,0 +1,59 @@
+<div class="production-list-container">
+  <div class="header">
+    <h2>Výrobní projekty</h2>
+    <div class="search-bar">
+      <input 
+        type="text" 
+        pInputText 
+        [(ngModel)]="searchTerm" 
+        (keyup.enter)="onSearch()"
+        placeholder="Hledat výrobní projekt..."
+      />
+      <button pButton type="button" icon="pi pi-search" (click)="onSearch()"></button>
+      <button pButton type="button" label="Nový projekt" icon="pi pi-plus" [routerLink]="['create']"></button>
+    </div>
+  </div>
+
+  <div class="productions-grid" *ngIf="!loading && productions.length > 0">
+    <p-card *ngFor="let production of productions" class="production-card">
+      <div class="card-content">
+        <div class="card-header">
+          <h3>
+            <a [routerLink]="['/production', production.id]">{{ production.name }}</a>
+          </h3>
+          <span class="folder-path">{{ production.folder_path }}</span>
+        </div>
+
+        <p class="description" *ngIf="production.description">
+          {{ production.description }}
+        </p>
+
+        <div class="card-footer">
+          <div class="badges">
+            <span class="badge">
+              <i class="pi pi-file"></i> {{ production.templates_count || 0 }} šablon
+            </span>
+            <span class="badge">
+              <i class="pi pi-box"></i> {{ production.realizations_count || 0 }} realizací
+            </span>
+          </div>
+          
+          <a *ngIf="production.link" [href]="production.link" target="_blank" class="link-icon">
+            <i class="pi pi-external-link"></i>
+          </a>
+        </div>
+      </div>
+    </p-card>
+  </div>
+
+  <div class="empty-state" *ngIf="!loading && productions.length === 0">
+    <i class="pi pi-inbox"></i>
+    <p>Zatím nejsou vytvořeny žádné výrobní projekty</p>
+    <button pButton label="Vytvořit první projekt" icon="pi pi-plus" [routerLink]="['create']"></button>
+  </div>
+
+  <div class="loading-state" *ngIf="loading">
+    <i class="pi pi-spin pi-spinner"></i>
+    <p>Načítání...</p>
+  </div>
+</div>

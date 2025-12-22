@@ -1,0 +1,325 @@
+.manufacturing-container {
+  padding: 1.5rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.header-left h2 {
+  margin: 0;
+}
+
+.subtitle {
+  margin: 0.25rem 0 0 0;
+  color: var(--text-color-secondary);
+  font-size: 0.875rem;
+}
+
+.header-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.progress-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.progress-section h3 {
+  margin: 0;
+}
+
+.progress-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.875rem;
+  color: var(--text-color-secondary);
+}
+
+.barcode-card {
+  margin-top: 1.5rem;
+}
+
+.barcode-card h3 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+}
+
+.barcode-input-section {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.barcode-input-section input {
+  flex: 1;
+}
+
+.help-text {
+  font-size: 0.875rem;
+  color: var(--text-color-secondary);
+}
+
+.components-card {
+  margin-top: 1.5rem;
+}
+
+.components-card h3 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+}
+
+.group-row {
+  background-color: var(--surface-100);
+}
+
+.group-row td {
+  border-top: 3px solid var(--surface-400) !important;
+  padding-top: 0.25rem !important;
+}
+
+.group-row .component-box {
+  background-color: var(--surface-0);
+  border-width: 2px;
+}
+
+.group-row .component-name {
+  font-weight: 700;
+}
+
+.item-row {
+  background-color: var(--surface-0);
+}
+
+.item-row .component-name {
+  font-weight: 400;
+}
+
+.group-row.used-row {
+  background-color: var(--green-100);
+}
+
+.group-row.partial-row {
+  background-color: var(--yellow-100);
+}
+
+.item-row.used-row {
+  background-color: var(--green-50);
+}
+
+.item-row.partial-row {
+  background-color: var(--yellow-50);
+}
+
+.notes-inline {
+  color: var(--text-color-secondary);
+  font-size: 0.875rem;
+  font-style: italic;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.text-muted {
+  color: var(--text-color-secondary);
+}
+
+.component-display {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.component-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--surface-border);
+  border-radius: 3px;
+  background: var(--surface-0);
+  flex: 1;
+  min-height: 1.6rem;
+  font-size: 0.75rem;
+}
+
+.pending-box {
+  background: var(--yellow-50);
+  border: 1px solid var(--yellow-300);
+}
+
+.component-name {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-color);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.component-open-btn {
+  padding: 0.2rem;
+  margin-left: 0.2rem;
+  min-width: auto;
+  width: 1.3rem;
+  height: 1.3rem;
+}
+
+.component-open-btn .pi {
+  font-size: 0.65rem;
+}
+
+.component-actions {
+  display: flex;
+  gap: 0.1rem;
+  margin-left: 0.2rem;
+}
+
+.ref-badge {
+  display: inline-block;
+  padding: 0.1rem 0.3rem;
+  background: var(--blue-100);
+  border-radius: 2px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  font-family: monospace;
+  color: var(--blue-800);
+}
+
+.value-badge {
+  display: inline-block;
+  padding: 0.1rem 0.3rem;
+  background: var(--surface-100);
+  border-radius: 2px;
+  font-size: 0.7rem;
+  font-family: monospace;
+}
+
+.footprint-badge {
+  display: inline-block;
+  padding: 0.1rem 0.3rem;
+  background: var(--surface-100);
+  border-radius: 2px;
+  font-size: 0.65rem;
+  font-family: monospace;
+  color: var(--text-color-secondary);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.count-badge {
+  font-weight: 600;
+  font-size: 0.75rem;
+}
+
+::ng-deep .p-tag-sm {
+  padding: 0.15rem 0.3rem;
+  font-size: 0.65rem;
+  line-height: 1;
+}
+
+::ng-deep .p-treetable .p-treetable-tbody > tr > td {
+  padding: 0.1rem 0.3rem;
+  vertical-align: middle;
+  line-height: 1.1;
+}
+
+::ng-deep .p-treetable .p-treetable-tbody > tr.group-row > td {
+  border-top: 3px solid var(--surface-500) !important;
+  padding-top: 0.2rem !important;
+  padding-bottom: 0.2rem !important;
+}
+
+::ng-deep .p-treetable .p-treetable-thead > tr > th {
+  padding: 0.4rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+::ng-deep .p-autocomplete {
+  width: 100%;
+}
+
+::ng-deep .p-autocomplete-input {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.4rem;
+}
+
+::ng-deep .p-autocomplete-dropdown {
+  width: 1.8rem;
+}
+
+::ng-deep .p-button-sm {
+  padding: 0.25rem;
+  font-size: 0.75rem;
+}
+
+::ng-deep .p-treetable-toggler {
+  width: 1.2rem;
+  height: 1.2rem;
+  margin-right: 0.2rem;
+}
+
+::ng-deep .p-treetable-toggler .p-treetable-toggler-icon {
+  font-size: 0.7rem;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  color: var(--text-color-secondary);
+}
+
+.empty-state i {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+}
+
+.loading-container i {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+}
+
+.w-full {
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+  
+  .barcode-input-section {
+    flex-direction: column;
+  }
+}

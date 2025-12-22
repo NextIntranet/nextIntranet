@@ -5,6 +5,7 @@ import { TooltipModule } from 'primeng/tooltip';
 
 @Component({
   selector: 'ni-id-print',
+  standalone: true,
   template: `
     <div class="id-container {{ class }}" pTooltip="{{ id }}" tooltipPosition="top">
       <span class="id-text">{{ formattedId }}</span>

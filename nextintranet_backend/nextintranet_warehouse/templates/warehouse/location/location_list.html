@@ -1,0 +1,13 @@
+{% extends 'base_layout.html' %}
+{% load render_table from django_tables2 %}
+{% load crispy_forms_tags %}
+
+{% block content %}
+
+{% render_table table %}
+
+{% endblock %}
+
+{% block scripts %}
+
+{% endblock %}

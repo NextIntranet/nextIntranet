@@ -28,7 +28,7 @@ export class CategoryService {
     );
   }
 
-  getCategoryById(id: number): Observable<any> {
+  getCategoryById(id: string): Observable<any> {
     const cacheKey = `category_${id}`;
     const cached = this.cache.get(cacheKey);
 
@@ -36,7 +36,7 @@ export class CategoryService {
       return of(cached.data);
     }
 
-    return this.http.get<any>(`${this.apiUrl}/${id}`).pipe(
+    return this.http.get<any>(`${this.apiUrl}${id}/`).pipe(
       tap(data => this.cache.set(cacheKey, { data, expiry: Date.now() + this.cacheDuration }))
     );
   }
@@ -53,14 +53,13 @@ export class CategoryService {
     this.cache.clear();
     return this.http.post<any>(this.apiUrl, category);
   }
-
-  updateCategory(id: number, category: any): Observable<any> {
+  updateCategory(id: string, category: any): Observable<any> {
     this.cache.clear();
-    return this.http.put<any>(`${this.apiUrl}/${id}`, category);
+    return this.http.put<any>(`${this.apiUrl}${id}/`, category);
   }
 
-  deleteCategory(id: number): Observable<void> {
+  deleteCategory(id: string): Observable<void> {
     this.cache.clear();
-    return this.http.delete<void>(`${this.apiUrl}/${id}`);
+    return this.http.delete<void>(`${this.apiUrl}${id}/`);
   }
 }

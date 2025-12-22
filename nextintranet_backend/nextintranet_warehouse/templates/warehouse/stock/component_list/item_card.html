@@ -1,128 +1,147 @@
 {% load i18n %}
+{% load format_uuid %}
 
-<div id="item-container2">
-{% for item in page.object_list %}
-<div class="border-b border-gray-200 bg-gray-50 my-3 rounded-md">
-    <!-- Header -->
-    <div class="flex text-xs justify-between items-center p-4 bg-gray-50 py-1">
-        <div class="text-xs text-gray-400 flex items-center">
-            <span class="mr-2">{% trans "UUID" %}:</span> {{ item.id }}
-            <button
-                class="ml-2 text-blue-500 hover:text-blue-700"
-                title="{% trans "Copy UUID" %}"
-                onclick="navigator.clipboard.writeText('{{ item.id }}'); alert('{% blocktrans %}UUID copied: {{ item.id }}{% endblocktrans %}')"
-            >
-                <span class="material-icons text-sm">content_copy</span>
-            </button>
-        </div>
-        <!-- Actions -->
-        <div class="flex space-x-4">
-            <button class="text-blue-500 hover:text-blue-700" title="{% trans "Edit" %}">
-                <span class="material-icons">edit</span>
-            </button>
-            <button class="text-red-500 hover:text-red-700" title="{% trans "Delete" %}">
-                <span class="material-icons">delete</span>
-            </button>
-        </div>
-    </div>
-
-    <!-- Item Content -->
-    <div class="flex p-4 py-1">
-        <!-- Image -->
-        <img
-            src="{{ item.primary_image_url|default:'https://placehold.co/300x300' }}"
-            alt="{% trans "Item image" %}"
-            class="w-24 h-24 object-cover rounded"
-            onerror="this.src='https://placehold.co/300x300';"
-        />
-        <!-- Details -->
-        <div class="flex-1 ml-4">
-            <div class="flex justify-between items-center">
-                <div class="flex">
-                    <a href="/store/component/{{ item.id }}" target="_blank" class="mr-2 text-gray-400 hover:text-gray-600" title="{% trans "Open in a new tab" %}">
-                        <span class="material-icons text-sm flex items-center justify-center">open_in_new</span>
-                    </a>
-                    <a href="/store/component/{{ item.id }}" class="text-blue-500 hover:text-blue-700">
-                        <h2 class="text-lg font-bold">{{ item.name }}</h2>
-                    </a>
+<div id="item-container">
+    {% for item in page_obj %}
+        <div class="border-bottom border-secondary-subtle bg-light my-3 rounded shadow-sm">
+            <div class="d-flex justify-content-between align-items-center p-3 bg-light">
+                <div class="text-secondary small d-flex align-items-center">
+                    <span class="me-2">{% trans "UUID" %}:</span> {{ item.id | format_uuid }}
+                    <button
+                        class="btn btn-link text-primary p-0 ms-2"
+                        title="{% trans "Copy UUID" %}"
+                        onclick="navigator.clipboard.writeText('{{ item.id }}'); alert('{% blocktrans %}UUID copied: {{ item.id }}{% endblocktrans %}')"
+                    >
+                        <i class="bi bi-clipboard"></i>
+                    </button>
                 </div>
-                <span class="text-xs bg-gray-200 px-2 py-1 rounded flex items-center">
-                    <span class="material-icons text-sm mr-1">category</span> {{ item.category.name }}
-                </span>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-link text-primary p-0" title="{% trans "Edit" %}">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    <button class="btn btn-link text-danger p-0" title="{% trans "Delete" %}">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
             </div>
-            <div class="mt-1">
-                {% for tag in item.tags.all %}
-                <span class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded mr-1">{{ tag.name }}</span>
-                {% endfor %}
-            </div>
-            <p class="mt-2 text-sm text-gray-600">{{ item.description }}</p>
-            <span class="text-xs px-2 py-1 rounded">
-                {% trans item.get_status_display %}
-            </span>
-        </div>
 
-        <!-- Prices and Stock -->
-        <div class="ml-2 pl-2 text-sm border-l-2">
-            <div class="mb-2">
-                <p class="flex items-center text-gray-800">
-                    <span class="material-icons text-blue-500 mr-2">attach_money</span>
-                    {% trans "Public price" %}:
-                    <span class="ml-2 font-bold">{{ item.selling_price }} Kč</span>
-                </p>
-                <p class="flex items-center text-gray-800">
-                    <span class="material-icons text-green-500 mr-2">price_change</span>
-                    {% trans "Internal price" %}:
-                    <span class="ml-2 font-bold">{{ item.internal_price }} Kč</span>
-                </p>
-            </div>
-            <div>
-                <p class="flex items-center text-gray-800">
-                    <span class="material-icons text-yellow-500 mr-2">inventory</span>
-                    {% trans "In this warehouse" %}:
-                    <span class="ml-2 font-bold">{{ item.stock_local }}</span>
-                </p>
-                <p class="flex items-center text-gray-800">
-                    <span class="material-icons text-orange-500 mr-2">store</span>
-                    {% trans "In all warehouses" %}:
-                    <span class="ml-2 font-bold">{{ item.stock_total }}</span>
-                </p>
-                <p class="flex items-center text-gray-800">
-                    <span class="material-icons text-red-500 mr-2">local_shipping</span>
-                    {% trans "At supplier" %}:
-                    <span class="ml-2 font-bold">{{ item.stock_supplier }}</span>
-                </p>
+            <div class="d-flex p-3">
+                <img
+                    src="{{ item.primary_image |default:'https://placehold.co/300x300' }}"
+                    alt="{% trans "Item image" %}"
+                    class="rounded"
+                    width="100"
+                    height="100"
+                    onerror="this.src='https://placehold.co/300x300';"
+                />
+                <div class="flex-grow-1 ms-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="d-flex">
+                            <a href="/store/component/{{ item.id }}" target="_blank" class="me-2 text-secondary text-decoration-none">
+                                <i class="bi bi-box-arrow-up-right"></i>
+                            </a>
+                            <a href="/store/component/{{ item.id }}" class="text-primary text-decoration-none">
+                                <h2 class="h6 fw-bold">{{ item.name }}</h2>
+                            </a>
+                        </div>
+                        <span class="badge bg-secondary-subtle text-secondary d-flex align-items-center">
+                            <i class="bi bi-tags me-1"></i> {{ item.category.name }}
+                        </span>
+                    </div>
+                    <div class="mt-1">
+                        {% for tag in item.tags.all %}
+                        <span class="badge bg-primary-subtle text-primary">{{ tag.name }}</span>
+                        {% endfor %}
+                    </div>
+                    <p class="mt-2 text-muted small">{{ item.description }}</p>
+                    <span class="badge bg-info-subtle text-info">
+                        {% trans item.get_status_display %}
+                    </span>
+                </div>
             </div>
         </div>
+    {% empty %}
+        <div class="text-center py-4">
+            <p class="text-muted small">
+                No more items to load.
+            </p>
+        </div>
+    {% endfor %}
+</div>
+<div id="item-control">
+     
+<span class="htmx-indicator">
+    <div class="spinner-border spinner-border-sm" role="status">
+        <span class="visually-hidden">Loading...</span>
     </div>
-</div>
-{% endfor %}
-</div>
+</span>
 
 
-{% if page.has_next %}
-<div class="text-center py-4" id="loading-button">
-<div>
-    <p class="text-gray-600 text-sm pb-2">
-        Displaying 1 - <span class="font-bold">{{ page.end_index }}</span> of <span class="font-bold">{{ page.paginator.count }}</span> items
-    </p>
+{% if page_obj.has_next %}
+    <div id="load-more-container" class="text-center py-4">
+        <button id="load-more-button" class="btn btn-primary"
+            hx-get="?page={{ page_obj.next_page_number }}&{{ query_string }}"
+            hx-target="#item-control"
+            hx-swap="outerHTML"
+            hx-trigger="revealed"
+            hx-target="#item-control"
+            hx-indicator=".htmx-indicator">
 
-<button class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-full"
-hx-get="?page={{ page.next_page_number }}&q={{ request.GET.q|urlencode }}"
-hx-target="#loading-button"
-hx-source="#item-container2"
-hx-swap="outerHTML"
-hx-trigger="click reveal"
->
-Load more items ... page: {{ page.next_page_number }}
-</button>
-</div>
-{% else %}
-<div class="text-center py-4">
-    <p class="text-gray-500 text-sm">
-        No more items to load.
-    </p>
-</div>
+            Load more...
+        </button>
+       
+    </div>
 {% endif %}
 
+{% if page_obj.paginator.num_pages > 1 %}
+    <div class="d-flex justify-content-center align-items-center my-4">
+        <nav aria-label="{% trans 'Page navigation' %}">
+            <ul class="pagination">
+                {% if page_obj.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page=1&{{ query_string }}">
+                            <i class="bi bi-chevron-double-left"></i>
+                        </a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.previous_page_number }}&{{ query_string }}">
+                            <i class="bi bi-chevron-left"></i>
+                        </a>
+                    </li>
+                {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link"><i class="bi bi-chevron-double-left"></i></span>
+                    </li>
+                    <li class="page-item disabled">
+                        <span class="page-link"><i class="bi bi-chevron-left"></i></span>
+                    </li>
+                {% endif %}
+                
+                <li class="page-item active">
+                    <span class="page-link">{{ page_obj.number }} / {{ page_obj.paginator.num_pages }}</span>
+                </li>
 
-
+                {% if page_obj.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.next_page_number }}&{{ query_string }}">
+                            <i class="bi bi-chevron-right"></i>
+                        </a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&{{ query_string }}">
+                            <i class="bi bi-chevron-double-right"></i>
+                        </a>
+                    </li>
+                {% else %}
+                    <li class="page-item disabled">
+                        <span class="page-link"><i class="bi bi-chevron-right"></i></span>
+                    </li>
+                    <li class="page-item disabled">
+                        <span class="page-link"><i class="bi bi-chevron-double-right"></i></span>
+                    </li>
+                {% endif %}
+            </ul>
+        </nav>
+    </div>
+{% endif %}
+</div>

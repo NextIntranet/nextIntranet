@@ -1,0 +1,10 @@
+{% extends 'base_layout.html' %}
+
+{% block content %}
+    <h1>Opravdu chcete smazat tuto položku?</h1>
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-danger">Ano, smazat</button>
+        <a href="{% url model_name|add:'-list' %}" class="btn btn-secondary">Zrušit</a>
+    </form>
+{% endblock %}

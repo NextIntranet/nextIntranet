@@ -4,6 +4,11 @@ from ..models.user import User
 from ..models.userSettings import UserSetting
 from ..models.printList import PrintList, PrintItem
 
+admin.site.site_header = 'NextIntranet Administration'
+admin.site.site_title = 'NextIntranet administration panel'
+admin.site.index_title = 'Welcome to NextIntranet administration panel'
+
+
 admin.site.register(User)
 admin.site.register(UserSetting)
 

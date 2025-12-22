@@ -1,0 +1,106 @@
+<div class="production-detail-container" *ngIf="production">
+  <p-toast></p-toast>
+  
+  <div class="header">
+    <div class="header-left">
+      <button pButton icon="pi pi-arrow-left" class="p-button-text" [routerLink]="['/production']"></button>
+      <h2>{{ production.name }}</h2>
+    </div>
+    <div class="header-actions">
+      <button pButton label="Upravit" icon="pi pi-pencil" (click)="onEdit()"></button>
+      <button pButton label="Smazat" icon="pi pi-trash" class="p-button-danger" (click)="onDelete()"></button>
+    </div>
+  </div>
+
+  <p-card>
+    <div class="production-info">
+      <div class="info-row">
+        <strong>Složka:</strong>
+        <span>{{ production.folder_name }}</span>
+      </div>
+      
+      <div class="info-row" *ngIf="production.description">
+        <strong>Popis:</strong>
+        <span>{{ production.description }}</span>
+      </div>
+      
+      <div class="info-row" *ngIf="production.link">
+        <strong>Link:</strong>
+        <a [href]="production.link" target="_blank">{{ production.link }}</a>
+      </div>
+      
+      <div class="info-row" *ngIf="production.component_reference_detail">
+        <strong>Skladová položka:</strong>
+        <a [routerLink]="['/store/component', production.component_reference]">
+          {{ production.component_reference_detail.name }}
+        </a>
+      </div>
+      
+      <div class="info-row">
+        <strong>Vytvořeno:</strong>
+        <span>{{ production.created_at | date:'dd.MM.yyyy HH:mm' }}</span>
+      </div>
+    </div>
+  </p-card>
+
+  <p-tabs>
+    <p-tabpanel header="Šablony">
+      <div class="tab-content">
+        <div class="tab-header">
+          <h3>Šablony ({{ templates.length }})</h3>
+          <button pButton label="Nová šablona" icon="pi pi-plus" (click)="onCreateTemplate()"></button>
+        </div>
+        
+        <div class="templates-list" *ngIf="templates.length > 0">
+          <p-card *ngFor="let template of templates" class="template-card">
+            <div class="template-info">
+              <h4>
+                <a [routerLink]="['/production/template', template.id]">{{ template.name }}</a>
+              </h4>
+              <p *ngIf="template.version">Verze: {{ template.version }}</p>
+              <p *ngIf="template.description">{{ template.description }}</p>
+              <span class="badge">{{ template.components_count }} součástek</span>
+            </div>
+          </p-card>
+        </div>
+        
+        <div *ngIf="templates.length === 0" class="empty-state">
+          <i class="pi pi-inbox"></i>
+          <p>Zatím nejsou vytvořeny žádné šablony</p>
+        </div>
+      </div>
+    </p-tabpanel>
+
+    <p-tabpanel header="Realizace">
+      <div class="tab-content">
+        <div class="tab-header">
+          <h3>Realizace ({{ realizations.length }})</h3>
+          <button pButton label="Nová realizace" icon="pi pi-plus" (click)="onCreateRealization()"></button>
+        </div>
+        
+        <div class="realizations-list" *ngIf="realizations.length > 0">
+          <p-card *ngFor="let realization of realizations" class="realization-card">
+            <div class="realization-info">
+              <h4>
+                <a [routerLink]="['/production/manufacturing', realization.id]">{{ realization.name }}</a>
+              </h4>
+              <p>Šablona: {{ realization.template_name }}</p>
+              <p>Status: <span class="status-badge status-{{ realization.status }}">{{ realization.status }}</span></p>
+              <span class="badge">{{ realization.components_count }} součástek</span>
+            </div>
+          </p-card>
+        </div>
+        
+        <div *ngIf="realizations.length === 0" class="empty-state">
+          <i class="pi pi-inbox"></i>
+          <p>Zatím nejsou vytvořeny žádné realizace</p>
+        </div>
+      </div>
+    </p-tabpanel>
+  </p-tabs>
+</div>
+
+<div *ngIf="loading" class="loading-container">
+  <i class="pi pi-spin pi-spinner"></i>
+  <p>Načítání...</p>
+</div>

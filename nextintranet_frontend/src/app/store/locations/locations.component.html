@@ -1,0 +1,92 @@
+<div class="locations-container">
+  <p-toast></p-toast>
+  
+  <!-- Fixed header with all controls -->
+  <div class="locations-header">
+    <h2 class="text-2xl font-bold">Warehouse Locations</h2>
+    <div class="flex gap-2 flex-1 justify-end">
+      <span class="p-input-icon-left" style="width: 250px; position: relative;">
+        <i class="pi pi-search" style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%);"></i>
+        <input pInputText type="text" [(ngModel)]="filterText" (input)="filterTree()" placeholder="Search..." style="width: 100%; padding-left: 2.5rem;" />
+      </span>
+      <button pButton icon="pi pi-plus" pTooltip="Expand All" tooltipPosition="bottom" (click)="expandAll()" class="p-button-outlined"></button>
+      <button pButton icon="pi pi-minus" pTooltip="Collapse All" tooltipPosition="bottom" (click)="collapseAll()" class="p-button-outlined"></button>
+      <button pButton icon="pi pi-plus" label="New" (click)="openNewDialog()" class="p-button-success"></button>
+      <button pButton icon="pi pi-pencil" label="Edit" (click)="openEditDialog()" [disabled]="!selectedLocation" class="p-button-warning"></button>
+      <button pButton icon="pi pi-trash" label="Delete" (click)="deleteLocation()" [disabled]="!selectedLocation" class="p-button-danger"></button>
+    </div>
+  </div>
+  <!-- Scrollable tree content as table -->
+  <div class="locations-tree-wrapper">
+    <p-treeTable 
+      [value]="filteredLocations" 
+      selectionMode="single" 
+      [(selection)]="selectedLocation"
+      (onNodeSelect)="onNodeSelect($event)"
+      [tableStyle]="{'min-width':'50rem'}">
+      <ng-template pTemplate="header">
+        <tr>
+          <th style="width: 40%">Name</th>
+          <th style="width: 40%">Description</th>
+          <th style="width: 10%">Type</th>
+          <th style="width: 10%">Actions</th>
+        </tr>
+      </ng-template>
+      <ng-template pTemplate="body" let-rowNode let-rowData="rowData">
+        <tr [ttSelectableRow]="rowNode">
+          <td>
+            <p-treeTableToggler [rowNode]="rowNode"></p-treeTableToggler>
+            <i [class]="rowData?.can_store_items ? 'pi pi-box text-blue-600 mr-2' : 'pi pi-folder text-gray-500 mr-2'"></i>
+            <a [routerLink]="['/store/location', rowData.id]" class="font-semibold hover:text-blue-600">
+              {{ rowData.name }}
+            </a>
+          </td>
+          <td>
+            <span class="text-sm text-gray-600">{{ rowData.description || '-' }}</span>
+          </td>
+          <td>
+            <p-tag *ngIf="rowData.can_store_items" value="Physical" severity="success" [style]="{'font-size': '0.75rem'}"></p-tag>
+            <p-tag *ngIf="!rowData.can_store_items" value="Logical" severity="info" [style]="{'font-size': '0.75rem'}"></p-tag>
+          </td>
+          <td>
+            <button pButton icon="pi pi-eye" [routerLink]="['/store/location', rowData.id]" class="p-button-sm p-button-text" pTooltip="View Details"></button>
+          </td>
+        </tr>
+      </ng-template>
+    </p-treeTable>
+  </div>
+
+  <p-dialog
+    [(visible)]="displayDialog" 
+    [header]="isEditMode ? 'Edit Location' : 'New Location'" 
+    [modal]="true"
+    [style]="{width: '450px'}">
+    <div class="p-fluid">
+      <div class="mb-3">
+        <label for="name" class="block mb-2">Name</label>
+        <input pInputText id="name" [(ngModel)]="locationData.name" class="w-full" />
+      </div>
+      <div class="mb-3">
+        <label for="description" class="block mb-2">Description</label>
+        <input pInputText id="description" [(ngModel)]="locationData.description" class="w-full" />
+      </div>
+      <div class="mb-3 flex items-center gap-2">
+        <p-checkbox 
+          inputId="can_store_items" 
+          [(ngModel)]="locationData.can_store_items" 
+          [binary]="true">
+        </p-checkbox>
+        <label for="can_store_items">Can store items (fyzická lokace)</label>
+      </div>
+      <div *ngIf="!isEditMode && selectedLocation" class="mb-3">
+        <p class="text-sm text-gray-600">
+          Parent: <strong>{{ selectedLocation.label }}</strong>
+        </p>
+      </div>
+    </div>
+    <ng-template pTemplate="footer">
+      <button pButton label="Cancel" icon="pi pi-times" (click)="displayDialog=false" class="p-button-text"></button>
+      <button pButton label="Save" icon="pi pi-check" (click)="saveLocation()" class="p-button-primary"></button>
+    </ng-template>
+  </p-dialog>
+</div>

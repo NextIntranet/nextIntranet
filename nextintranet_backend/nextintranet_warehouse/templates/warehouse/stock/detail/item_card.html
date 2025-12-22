@@ -1,58 +1,54 @@
+{% load format_uuid %}
 
-<div class="bg-white shadow-md rounded-lg overflow-hidden border border-gray-200 mb-6">        
-  <div class="bg-white p-6 pb-2 relative">
-  <div class="flex">
-    <!-- Obrázek -->
-    <img
-      src="{{item.primary_image.get_url |default:'https://placehold.co/300x300' }}"
-      class="rounded-md shadow-sm w-1/3 object-cover skeleton"
-    />
-    <!-- Informace -->
-    <div class="pl-6">
-      <h2 class="text-2xl font-semibold text-gray-700 mb-2">{{ item.name }}
-        <a
-          href="./edit/"
-          class="text-gray-400 hover:text-gray-700"
-          title="Edit item"
-        >
-          <span class="material-icons text-sm">edit</span>
-        </a>
-      </h2>
-
-      <div class="text-xs text-gray-400 flex items-center">
-        <button
-        @click="copyToClipboard(item.id)"
-        class="text-gray-300 hover:text-gray-700 mr-1"
-        title="Zkopírovat UUID"
-        >
-        <span class="material-icons text-sm">content_copy</span>
-        </button>
-        {{ item.id }}
-      </div>
+<div class="card border border-secondary-subtle mb-4">
+  <div class="card-body">
+    <div class="d-flex">
+      <!-- Obrázek -->
+      <img
+        src="{{item.primary_image |default:'https://placehold.co/300x300' }}"
+        class="rounded shadow-sm w-25 object-fit-cover"
+      />
+      <!-- Informace -->
+      <div class="ps-4 flex-grow-1">
+        <h2 class="h4 fw-semibold text-secondary mb-2">
+          {{ item.name }}
+          <a href="./edit/" class="text-muted text-decoration-none" title="Edit item">
+            <span class="material-icons small">edit</span>
+          </a>
+        </h2>
+        <div class="text-body-secondary small d-flex align-items-center">
+          <button
+            @click="copyToClipboard(item.id)"
+            class="btn btn-link text-muted p-0 me-1"
+            title="Zkopírovat UUID"
+          >
+            <span class="material-icons small">content_copy</span>
+          </button>
+          {{ item.id | format_uuid }}
+        </div>
         <!-- Kategorie -->
-      <div class="text-gray-600 text-sm font-semibold mb-2">Kategorie</div>
-      <div class="flex items-center mb-2">
-        <span class="bg-blue-100 text-blue-800 text-xs font-semibold mr-2 px-2.5 py-0.5 rounded-md flex items-center">
-          <img :src="`http://t/icons/.svg`" class="h-4 w-4 inline-block mr-1" />
-          {{ item.category.name }}
-        </span>
-      </div>
-      <!-- Tagy -->
-      <div class="text-gray-600 text-sm font-semibold mb-2">Tagy</div>
-      <div class="flex flex-wrap gap-1">
-        <span
-          v-for="tag in item.tags"
-          :key="tag"
-          class="bg-gray-200 text-gray-700 text-xs font-medium px-2 py-0.5 rounded-full shadow-sm"
-        >
-          {{ tag }}
-        </span>
+        <div class="text-secondary small fw-semibold mt-3">Kategorie</div>
+        <div class="d-flex align-items-center mb-2">
+          <span class="badge bg-primary-subtle text-primary d-flex align-items-center">
+            <img :src="`http://t/icons/.svg`" class="h-100 me-1" style="width: 16px;" />
+            {{ item.category.name }}
+          </span>
+        </div>
+        <!-- Tagy -->
+        <div class="text-secondary small fw-semibold mb-2">Tagy</div>
+        <div class="d-flex flex-wrap gap-1">
+          <span
+            v-for="tag in item.tags"
+            :key="tag"
+            class="badge bg-secondary-subtle text-secondary fw-medium shadow-sm"
+          >
+            {{ tag }}
+          </span>
+        </div>
       </div>
     </div>
+    <div class="bg-light p-3 rounded mt-3">
+      <p class="text-dark text-wrap">{{ item.description }}</p>
+    </div>
   </div>
-  <div class="bg-gray-100 p-4 py-2 mt-2 rounded-md">
-    <p class="text-gray-800 whitespace-pre-line">{{ item.description }}</p>
-  </div> 
-  
-</div>
 </div>

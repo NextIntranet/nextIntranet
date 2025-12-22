@@ -1,0 +1,30 @@
+{% extends 'base_layout.html'%}
+
+{% block content %}
+
+
+<h1>Stocktaking</h1>
+<h3>Locations</h3>
+<ul>
+    {% for location in locations %}
+        <li>
+            {{ location }}
+        </li>
+    {% endfor %}
+</ul>   
+
+<h3>Packets</h3>
+<ul>
+
+    {% for packet in packets %}
+        <li>
+            
+        {{ packet.is_stocktaked }} {{ packet }}
+        
+            
+        </li>
+    {% endfor %}
+    
+</ul>
+
+{% endblock %}

@@ -1,0 +1,18 @@
+{% extends 'base_layout.html' %}
+{% load crispy_forms_tags %}
+{% load format_uuid %}
+
+{% block title %}Supplier edit{% endblock %}
+
+{% block content %}
+
+<form method="post">
+    {% csrf_token %}
+    {{ form|crispy }}
+    <div class="form-group">
+        <button type="submit" class="btn btn-primary">Uložit</button>
+        <a href="{% url 'supplier-list' %}" class="btn btn-secondary">Zpět</a>
+    </div>
+</form>
+
+{% endblock %}

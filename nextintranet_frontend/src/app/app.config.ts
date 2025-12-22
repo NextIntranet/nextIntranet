@@ -17,6 +17,7 @@ import { HTTP_INTERCEPTORS } from "@angular/common/http";
 
 
 import { withFetch } from '@angular/common/http';
+import { MessageService } from 'primeng/api';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -29,6 +30,7 @@ export const appConfig: ApplicationConfig = {
         preset: Aura,
       },
     }),
+    MessageService,
 
     provideHttpClient(
       withInterceptors([

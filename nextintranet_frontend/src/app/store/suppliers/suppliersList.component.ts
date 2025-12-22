@@ -1,6 +1,7 @@
 import { Component, inject, OnInit } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
+import { RouterModule } from '@angular/router';
 import { SupplierService } from '../services/supplier.service';
 
 // PrimeNG imports
@@ -11,8 +12,9 @@ import { InputTextModule } from 'primeng/inputtext';
 import { RippleModule } from 'primeng/ripple';
 import { PaginatorModule } from 'primeng/paginator';
 
-import { InputGroupModule } from 'primeng/inputgroup';
-import { InputGroupAddonModule } from 'primeng/inputgroupaddon';
+import { DialogModule } from 'primeng/dialog';
+import { ToastModule } from 'primeng/toast';
+import { MessageService } from 'primeng/api';
 
 
 @Component({
@@ -23,21 +25,25 @@ import { InputGroupAddonModule } from 'primeng/inputgroupaddon';
   imports: [
     CommonModule,
     FormsModule,
+    RouterModule,
     TableModule,
     DataViewModule,
     ButtonModule,
     InputTextModule,
-    RippleModule,
-    PaginatorModule,
-    InputGroupModule,
-    InputGroupAddonModule
-  ]
+    DialogModule,
+    ToastModule
+  ],
+  providers: [MessageService]
 })
 export class SuppliersListComponent implements OnInit {
 
   supplierService = inject(SupplierService);
+  messageService = inject(MessageService);
 
   suppliers: any[] = [];
+  filteredSuppliers: any[] = [];
+  filterText: string = '';
+  showAddDialog: boolean = false;
   editingSupplier: any | null = null;
   clonedSupplier: { [id: string]: any } = {};
 
@@ -57,8 +63,22 @@ export class SuppliersListComponent implements OnInit {
   loadSuppliers(): void {
     this.supplierService.getSuppliers(this.currentPage, this.rows).subscribe((response: any) => {
       this.suppliers = response.results;
+      this.filteredSuppliers = [...this.suppliers];
       this.totalRecords = response.count;
     });
+  }
+
+  filterSuppliers(): void {
+    if (!this.filterText) {
+      this.filteredSuppliers = [...this.suppliers];
+      return;
+    }
+    const filterLower = this.filterText.toLowerCase();
+    this.filteredSuppliers = this.suppliers.filter(s => 
+      s.name?.toLowerCase().includes(filterLower) ||
+      s.website?.toLowerCase().includes(filterLower) ||
+      s.link_template?.toLowerCase().includes(filterLower)
+    );
   }
 
   onEditInit(supplier: any): void {
@@ -74,8 +94,10 @@ export class SuppliersListComponent implements OnInit {
         const index = this.suppliers.findIndex(s => s.id === supplier.id);
         if (index !== -1) {
           this.suppliers[index] = updatedSupplier;
+          this.filteredSuppliers = [...this.suppliers];
         }
         delete this.clonedSupplier[supplier.id];
+        this.messageService.add({severity: 'success', summary: 'Success', detail: 'Supplier updated'});
       });
     }
     this.editingSupplier = null;
@@ -92,14 +114,19 @@ export class SuppliersListComponent implements OnInit {
   addSupplier(): void {
     this.supplierService.createSupplier(this.newSupplier).subscribe((newSupplier: any) => {
       this.suppliers.push(newSupplier);
+      this.filteredSuppliers = [...this.suppliers];
       this.newSupplier = { name: '' };
+      this.showAddDialog = false;
+      this.messageService.add({severity: 'success', summary: 'Success', detail: 'Supplier added'});
     });
   }
 
   deleteSupplier(supplier: any): void {
-    if (supplier.id) {
+    if (supplier.id && confirm('Are you sure you want to delete this supplier?')) {
       this.supplierService.deleteSupplier(supplier.id).subscribe(() => {
         this.suppliers = this.suppliers.filter(s => s.id !== supplier.id);
+        this.filteredSuppliers = [...this.suppliers];
+        this.messageService.add({severity: 'success', summary: 'Success', detail: 'Supplier deleted'});
       });
     }
   }

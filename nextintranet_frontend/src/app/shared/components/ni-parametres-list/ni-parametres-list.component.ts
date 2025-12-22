@@ -1,4 +1,4 @@
-import { Component, Input, forwardRef, OnInit } from '@angular/core';
+import { Component, Input, forwardRef, OnInit, OnChanges, SimpleChanges } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR, FormsModule } from '@angular/forms';
 import { CommonModule } from '@angular/common';
 import { InputTextModule } from 'primeng/inputtext';
@@ -22,14 +22,19 @@ interface Parameter {
 @Component({
   selector: 'ni-parameters-list',
   template: `
-    <p-table [value]="parameters" dataKey="name" editMode="row" [loading]="loading" styleClass="p-datatable-sm">
-      <ng-template pTemplate="header">
-        <tr>
-          <th>Name</th>
-          <th>Value</th>
-          <th></th>
-        </tr>
-      </ng-template>
+    <div class="p-4 bg-white rounded-lg shadow">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-lg font-semibold text-gray-800 m-0">Parametry</h3>
+        <button pButton type="button" label="Přidat" icon="pi pi-plus" (click)="addParameter()" class="p-button-sm p-button-success"></button>
+      </div>
+      <p-table [value]="parameters" dataKey="name" editMode="row" [loading]="loading" styleClass="p-datatable-sm p-datatable-striped">
+        <ng-template pTemplate="header">
+          <tr>
+            <th style="width: 40%">Název</th>
+            <th style="width: 50%">Hodnota</th>
+            <th style="width: 10%">Akce</th>
+          </tr>
+        </ng-template>
       <ng-template pTemplate="body" let-parameter let-editing="editing" let-ri="id">
         <tr [pEditableRow]="parameter">
           <td>
@@ -63,9 +68,7 @@ interface Parameter {
         </tr>
       </ng-template>
     </p-table>
-    <hr>
-
-    <button pButton type="button" icon="pi pi-plus" class="p-button-rounded p-button-text" (click)="addParameter()"></button>
+    </div>
   `,
   styles: [`
 
@@ -85,7 +88,7 @@ interface Parameter {
   standalone: true,
   imports: [FormsModule, CommonModule, InputTextModule, ButtonModule, TableModule, ToastModule, ConfirmDialogModule, NiSelectParameterTypesComponent]
 })
-export class NiParametersListComponent implements ControlValueAccessor, OnInit {
+export class NiParametersListComponent implements ControlValueAccessor, OnInit, OnChanges {
   @Input() componentId: string = '';
   parameters: Parameter[] = [];
   loading: boolean = false;
@@ -101,7 +104,15 @@ export class NiParametersListComponent implements ControlValueAccessor, OnInit {
   ) {}
 
   ngOnInit(): void {
-    this.loadParameters();
+    if (this.componentId) {
+      this.loadParameters();
+    }
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['componentId'] && !changes['componentId'].firstChange && this.componentId) {
+      this.loadParameters();
+    }
   }
 
   loadParameters(): void {

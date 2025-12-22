@@ -4,6 +4,7 @@ from .models import warehouse
 from .models import component
 from .models import category
 from .models import purchase
+from .models import stocktaking
 
 
 class SuppliersRelationInline(admin.TabularInline):
@@ -53,3 +54,13 @@ admin.site.register(component.ComponentParameter)
 admin.site.register(purchase.Purchase)
 admin.site.register(purchase.PurchaseItem)
 admin.site.register(purchase.PurchaseDelivery)
+
+
+
+class StocktakingAdmin(admin.ModelAdmin):
+    list_display = ('name', 'description', 'created_at', 'open_from', 'open_until')
+    search_fields = ('name', 'description')
+    list_filter = ('created_at', 'open_from', 'open_until')
+    filter_horizontal = ('authors',)
+
+admin.site.register(stocktaking.Stocktaking, StocktakingAdmin)

@@ -1,89 +1,32 @@
 {% extends 'base_layout.html' %}
 {% load i18n %}
+{% load crispy_forms_tags %}
 
 {% block content %}
 
-
-<div class="flex flex-1">
-    <aside
-      class="bg-white md:w-1/4 p-4 border-b md:border-b-0 md:border-r border-gray-200 shadow-sm rounded-md"
-    >
-      <h2 class="text-lg font-bold mb-4">Filtry</h2>
+<div class="d-flex flex-grow-1">
+    <aside class="bg-white col-md-3 p-4 border-end border-secondary-subtle shadow-sm rounded">
+      <h2 class="h5 fw-bold mb-4">Filtry</h2>
       <div>
-
-        <hr>
         <div>
-            <WarehouseCategoryTree />
         </div>
-        <hr>
-        <div>
-            <WarehousePositionTree />
-        </div>
+        <form method="get">
+            {% csrf_token %}
+            {{form | crispy}}            
+            <div class="d-grid gap-2">
+                <button type="submit" class="btn btn-primary">
+                    {% trans "Apply Filters" %}
+                </button>
+            </div>
+        </form>
       </div>
     </aside>
     
-    <div class="md:w-3/4 p-6 bg-gray-100 min-h-screen">
-
-
-<div class="mb-4">
-    <form id="search-form" hx-get="." hx-target="#item-container" hx-swap="innerHTML">
-        <input
-            type="text"
-            name="q"
-            placeholder="{% trans 'Search items...' %}"
-            class="px-4 py-2 border rounded-md w-full"
-            value="{{ request.GET.q|default:'' }}"
-        >
-    </form>
-</div>
-
-    <div id="item-container">
-        {% include 'warehouse/stock/component_list/item_card.html' with page=page %}
-    </div>
-
-    <div id="loading-indicator" class="text-center py-4">
-        <div class="spinner-border text-primary" role="status">
-            <span class="sr-only">Loading...</span>
+    <div class="col-md-9 ps-4 min-vh-100">
+        <div id="item-container">
+            {% include 'warehouse/stock/component_list/item_card.html' with page=page %}
         </div>
     </div>
-
-
-    <!-- Standard Pagination -->
-    <div class="text-center py-4">
-        <nav aria-label="{% trans 'Pagination' %}">
-            <ul class="inline-flex -space-x-px">
-                {% if page.has_previous %}
-                <li>
-                    <a href="?page={{ page.previous_page_number }}" class="px-3 py-2 bg-white border border-gray-300 text-gray-500 hover:bg-gray-100">
-                        {% trans "Previous" %}
-                    </a>
-                <li>
-                    <a 
-                        id="next-button"
-                        hx-get="?page={{ page.next_page_number }}"
-                        hx-target="#item-container"
-                        hx-swap="innerHTML"
-                        hx-target-oob="#next-button"
-                        hx-select-oob="#next-button"
-                        class="px-3 py-2 bg-white border border-gray-300 text-gray-500 hover:bg-gray-100">
-                        {% trans "Next" %} {{ page.next_page_number }}
-                    </a>
-                </li>
-                </li>
-                {% endif %}
-
-
-                {% if page.has_next %}
-                <li>
-                    <a href="?page={{ page.next_page_number }}" class="px-3 py-2 bg-white border border-gray-300 text-gray-500 hover:bg-gray-100">
-                        {% trans "Next" %}
-                    </a>
-                </li>
-                {% endif %}
-            </ul>
-        </nav>
-    </div>
-
-    </div>
 </div>
+
 {% endblock %}

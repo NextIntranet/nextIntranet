@@ -3,6 +3,7 @@ from django.urls import reverse
 from django.conf import settings
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework.exceptions import AuthenticationFailed
+from django.http import JsonResponse
 
 
 def debug_middleware(get_response):
@@ -35,9 +36,14 @@ class LoginRequiredMiddleware:
         else:
             print("No JWT token found")
 
-        # Pokud není uživatel autentizován, přesměrujte na login (pokud není výjimka)
-        #if not request.user.is_authenticated and not self._is_exempt_path(request):
-        #    return redirect(f"{settings.LOGIN_URL}?next={request.path}")
+
+        if not request.user.is_authenticated and not self._is_exempt_path(request):
+            if request.path.startswith('/api/'):
+                response_data = {
+                    'detail': 'Not Authenticated'
+                }
+                return JsonResponse(response_data, status=401)
+            return redirect(f"{settings.LOGIN_URL}?next={request.path}")
 
         return self.get_response(request)
 
@@ -46,7 +52,7 @@ class LoginRequiredMiddleware:
             reverse('login'),
             reverse('token_obtain_pair'),
             reverse('token_refresh'),
-            reverse('graphql'),
+            # reverse('kicad'),
         ]
         return any(request.path.startswith(path) for path in exempt_paths)
 

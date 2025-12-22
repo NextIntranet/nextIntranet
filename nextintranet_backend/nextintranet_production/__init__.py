@@ -1,0 +1,1 @@
+default_app_config = 'nextintranet_production.apps.NextintranetProductionConfig'

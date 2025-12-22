@@ -11,6 +11,10 @@ from rest_framework.pagination import PageNumberPagination
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import serializers
 
+from ..models import User
+from ..help.crud import NIT_Table
+from ..views.crud import create_crud_urls
+import django_tables2 as tables
 # from ..models.component import Component, Category, Document, Batch, SupplierRelation, Supplier
 
 
@@ -36,3 +40,13 @@ class UserApiDetailedView(APIView):
         print(user)
         serializer = UserSerializer(user)
         return Response(serializer.data)
+
+
+
+class UserTableView(NIT_Table):
+    class Meta(NIT_Table.Meta):
+        model = User
+        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'is_active', 'is_staff', 'is_superuser', 'last_login', 'date_joined')
+    #id = tables.LinkColumn('user-detail', args=[tables.A('id')], verbose_name='ID')
+
+urlpatterns = create_crud_urls(User, base_url="user", table_class_object=UserTableView)

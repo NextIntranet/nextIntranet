@@ -4,7 +4,7 @@
       <tr>
         <td><label for="operationType">Operation Type</label></td>
         <td>
-          <p-dropdown
+          <p-select
             id="operationType"
             [(ngModel)]="operation.operation_type"
             [options]="operationTypes"
@@ -12,7 +12,7 @@
             optionValue="value"
             placeholder="Select Operation Type"
             class="bordered-input">
-          </p-dropdown>
+          </p-select>
         </td>
       </tr>
       <tr>

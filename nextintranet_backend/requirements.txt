@@ -45,12 +45,19 @@ txaio==23.1.1
 typing_extensions==4.12.2
 zope.interface==7.2
 psycopg2
-fpdf
+fpdf2
 # pylibdmtx
 # pyStrich
 treepoem
 django-crispy-forms
-crispy-tailwind
+crispy-bootstrap5
 django-select2
 django-htmx
 django-tables2
+django-vanilla-views
+django-gravatar
+django-money
+django-location-field
+django-formtools
+requests
+drf-spectacular[sidecar]

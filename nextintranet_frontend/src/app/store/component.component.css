@@ -15,3 +15,23 @@ th {
 .p-card-body {
   padding: 0;
 }
+
+/* Override global col-span styles - no internal scrolling */
+:host ::ng-deep .col-span-8,
+.col-span-8 {
+  padding-right: 1rem;
+  overflow: visible !important;
+  height: auto !important;
+}
+
+:host ::ng-deep .col-span-4,
+.col-span-4 {
+  padding-left: 1rem;
+  overflow: visible !important;
+  height: auto !important;
+}
+
+/* Ensure component data container doesn't restrict height */
+.component-data > div {
+  height: auto !important;
+}

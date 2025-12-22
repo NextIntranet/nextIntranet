@@ -1,0 +1,219 @@
+<div class="template-detail-container" *ngIf="template">
+  <p-toast></p-toast>
+  
+  <div class="header">
+    <div class="header-left">
+      <button pButton icon="pi pi-arrow-left" class="p-button-text" (click)="onBack()"></button>
+      <div>
+        <h2>{{ template.name }}</h2>
+        <p class="subtitle">{{ template.production_name }}</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button pButton label="Zahájit výrobu" icon="pi pi-play" class="p-button-success" (click)="onStartProduction()"></button>
+      <button pButton label="Importovat BOM" icon="pi pi-upload" class="p-button-secondary" (click)="onImportBom()"></button>
+      <button pButton label="Přidat součástku" icon="pi pi-plus" (click)="onAddComponent()"></button>
+    </div>
+  </div>
+
+  <p-card>
+    <div class="template-info">
+      <div class="info-row" *ngIf="template.version">
+        <strong>Verze:</strong>
+        <span>{{ template.version }}</span>
+      </div>
+      
+      <div class="info-row" *ngIf="template.description">
+        <strong>Popis:</strong>
+        <span>{{ template.description }}</span>
+      </div>
+      
+      <div class="info-row">
+        <strong>Počet součástek:</strong>
+        <span>{{ components.length }}</span>
+      </div>
+      
+      <div class="info-row">
+        <strong>Vytvořeno:</strong>
+        <span>{{ template.created_at | date:'dd.MM.yyyy HH:mm' }}</span>
+      </div>
+    </div>
+  </p-card>
+
+  <p-card class="components-card">
+    <h3>Součástky v šabloně</h3>
+    
+    <p-table 
+      [value]="components" 
+      [tableStyle]="{'min-width': '50rem'}"
+      *ngIf="components.length > 0">
+      <ng-template pTemplate="header">
+        <tr>
+          <th style="width: 5%">Pozice</th>
+          <th style="width: 40%">Součástka</th>
+          <th style="width: 35%">Poznámky</th>
+          <th style="width: 10%">Atributy</th>
+          <th style="width: 10%">Akce</th>
+        </tr>
+      </ng-template>
+      <ng-template pTemplate="body" let-component>
+        <tr>
+          <td>{{ component.position }}</td>
+          <td>
+            <a [routerLink]="['/store/component', component.component]" *ngIf="component.component">
+              {{ component.component_name || component.component }}
+            </a>
+            <span *ngIf="!component.component">{{ component.component }}</span>
+          </td>
+          <td>{{ component.notes }}</td>
+          <td>
+            <span *ngIf="component.attributes && Object.keys(component.attributes).length > 0">
+              {{ Object.keys(component.attributes).length }} atributů
+            </span>
+          </td>
+          <td>
+            <button 
+              pButton 
+              icon="pi pi-pencil" 
+              class="p-button-text p-button-sm" 
+              (click)="onEditComponent(component)">
+            </button>
+            <button 
+              pButton 
+              icon="pi pi-trash" 
+              class="p-button-text p-button-sm p-button-danger" 
+              (click)="onDeleteComponent(component)">
+            </button>
+          </td>
+        </tr>
+      </ng-template>
+    </p-table>
+
+    <div class="empty-state" *ngIf="components.length === 0">
+      <i class="pi pi-inbox"></i>
+      <p>Zatím nejsou přidány žádné součástky</p>
+      <button pButton label="Přidat první součástku" icon="pi pi-plus" (click)="onAddComponent()"></button>
+    </div>
+  </p-card>
+</div>
+
+<p-dialog 
+  [(visible)]="showAddDialog" 
+  [header]="editingComponent ? 'Upravit součástku' : 'Přidat součástku'"
+  [modal]="true"
+  [style]="{width: '500px'}">
+  
+  <form [formGroup]="componentForm" (ngSubmit)="onSaveComponent()">
+    <div class="dialog-content">
+      <div class="field">
+        <label for="component">Součástka</label>
+        <p-autoComplete
+          id="component"
+          [suggestions]="availableComponents"
+          formControlName="component"
+          placeholder="Vyhledejte součástku..."
+          field="label"
+          [forceSelection]="false"
+          [showClear]="true"
+          [style]="{'width':'100%'}"
+          (completeMethod)="onComponentSearch($event)"
+          [dropdown]="true"
+        >
+        </p-autoComplete>
+        <small class="help-text">
+          Začněte psát pro vyhledání součástky ze skladu
+        </small>
+      </div>
+
+      <div class="field">
+        <label for="position">Pozice</label>
+        <p-inputNumber 
+          id="position"
+          formControlName="position"
+          [showButtons]="true"
+          [min]="0"
+          class="w-full"
+        ></p-inputNumber>
+      </div>
+
+      <div class="field">
+        <label for="notes">Poznámky</label>
+        <textarea 
+          id="notes" 
+          pInputText
+          formControlName="notes"
+          rows="3"
+          class="w-full"
+        ></textarea>
+      </div>
+
+      <div class="field" *ngIf="editingComponent?.attributes && Object.keys(editingComponent?.attributes || {}).length > 0">
+        <label>Metadata (z BOM)</label>
+        <div class="metadata-viewer">
+          <pre>{{ editingComponent?.attributes | json }}</pre>
+        </div>
+      </div>
+    </div>
+
+    <div class="dialog-footer">
+      <button 
+        pButton 
+        type="button" 
+        label="Zrušit" 
+        icon="pi pi-times" 
+        class="p-button-secondary"
+        (click)="showAddDialog = false">
+      </button>
+      <button 
+        pButton 
+        type="submit" 
+        label="Uložit" 
+        icon="pi pi-check"
+        [disabled]="componentForm.invalid">
+      </button>
+    </div>
+  </form>
+</p-dialog>
+
+<p-dialog 
+  [(visible)]="showImportDialog" 
+  header="Importovat BOM"
+  [modal]="true"
+  [style]="{width: '500px'}">
+  
+  <div class="import-content">
+    <p>Nahrávka XML souboru s BOM (Bill of Materials)</p>
+    
+    <div class="field-checkbox">
+      <p-checkbox 
+        [(ngModel)]="clearExisting" 
+        [binary]="true" 
+        inputId="clearExisting">
+      </p-checkbox>
+      <label for="clearExisting">Vymazat stávající součástky</label>
+    </div>
+    
+    <p-fileUpload 
+      name="file"
+      accept=".xml,.bom"
+      [maxFileSize]="10000000"
+      [auto]="true"
+      [customUpload]="true"
+      (uploadHandler)="onUpload($event)"
+      [chooseLabel]="'Vybrat soubor'"
+      [disabled]="uploadingBom">
+    </p-fileUpload>
+    
+    <small class="help-text">
+      Očekávaný formát XML:
+      <pre>&lt;components&gt;
+  &lt;component id="uuid" position="0" notes="..." /&gt;
+&lt;/components&gt;</pre>
+    </small>
+  </div>
+</p-dialog>
+
+<div *ngIf="loading" class="loading-container">
+  <i class="pi pi-spin pi-spinner"></i>
+  <p>Načítání...</p>
+</div>

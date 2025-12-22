@@ -20,7 +20,7 @@ export class NiBarcodeSerialDriver implements DeviceDriver {
       await this.port.open({ baudRate: 9600 });
 
       const textDecoder = new TextDecoderStream();
-      const readableStreamClosed = this.port.readable?.pipeTo(textDecoder.writable);
+      const readableStreamClosed = this.port.readable?.pipeTo(textDecoder.writable as WritableStream<any>);
       this.reader = textDecoder.readable.getReader();
 
       this.isRunning = true;

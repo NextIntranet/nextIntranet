@@ -9,7 +9,7 @@ import { environment } from 'src/environment';
 
 // PrimeNG imports
 import { CardModule } from 'primeng/card';
-import { TabViewModule } from 'primeng/tabview';
+import { TabsModule } from 'primeng/tabs';
 import { TableModule } from 'primeng/table';
 import { ChipModule } from 'primeng/chip';
 import { ProgressSpinnerModule } from 'primeng/progressspinner';
@@ -21,7 +21,7 @@ import { ButtonModule } from 'primeng/button';
 import { InputTextModule } from 'primeng/inputtext';
 // Fix the import for InputTextarea
 //import { InputTextareaModule } from 'primeng/inputtextarea';
-import { DropdownModule } from 'primeng/dropdown';
+import { SelectModule } from 'primeng/select';
 import { ToastModule } from 'primeng/toast';
 import { MessageService } from 'primeng/api';
 import { InputNumberModule } from 'primeng/inputnumber';
@@ -34,8 +34,11 @@ import { NiParametersListComponent } from "../shared/components/ni-parametres-li
 import { NiSuppliersListComponent } from "../shared/components/ni-suppliers-list/ni-suppliers-list.component";
 // import { NiPacketEditDialogComponent } from '../shared/components/ni-packet-edit-dialog/ni-packet-edit-dialog.component';
 import { NiPacketCardComponent } from '../shared/components/ni-packet-card/ni-packet-card.component';
+import { CopyButtonComponent } from '../shared/components/copy-button/copy-button.component';
 import { PacketService } from './services/packet.service';
 import { ScreenService } from 'src/app/shared/services/screen.service';
+import { ClipboardService } from '../shared/services/clipboard.service';
+import { NiPrintButtonComponent } from '../shared/components/ni-print-button/ni-print-button.component';
 
 @Component({
   selector: 'app-component',
@@ -48,7 +51,7 @@ import { ScreenService } from 'src/app/shared/services/screen.service';
     HttpClientModule,
     FormsModule,
     CardModule,
-    TabViewModule,
+    TabsModule,
     TableModule,
     ChipModule,
     ProgressSpinnerModule,
@@ -59,7 +62,7 @@ import { ScreenService } from 'src/app/shared/services/screen.service';
     ButtonModule,
     InputTextModule,
     //InputTextareaModule,
-    DropdownModule,
+    SelectModule,
     ToastModule,
     InputNumberModule,
     NiSelectCategoryComponent,
@@ -68,7 +71,9 @@ import { ScreenService } from 'src/app/shared/services/screen.service';
     NiSuppliersListComponent,
     NiPacketCardComponent,
     NiIdPrintComponent,
-],
+    CopyButtonComponent,
+    NiPrintButtonComponent,
+  ],
   providers: [MessageService]
 })
 export class ComponentComponent implements OnInit, OnDestroy {
@@ -101,9 +106,10 @@ export class ComponentComponent implements OnInit, OnDestroy {
     private http: HttpClient,
     private route: ActivatedRoute,
     private router: Router,
-    private messageService: MessageService,
+    public messageService: MessageService,
     private packetService: PacketService,
-    private screenService: ScreenService
+    private screenService: ScreenService,
+    private clipboardService: ClipboardService
   ) { }
 
   ngOnInit(): void {
@@ -207,12 +213,12 @@ export class ComponentComponent implements OnInit, OnDestroy {
     if (!this.editMode) {
 
       this.editedComponent = {
-        name: this.componentData.name,
+        name: this.componentData.name || '',
         category: this.componentData.category? this.componentData.category.id : null,
-        description: this.componentData.description.length > 0 ? this.componentData.description : null,
-        internal_price: this.componentData.internal_price > 0 ? this.componentData.internal_price : null,
-        selling_price: this.componentData.selling_price > 0 ? this.componentData.selling_price : null,
-        primary_image: this.componentData.primary_image.length > 0 ? this.componentData.primary_image : null,
+        description: (this.componentData.description && this.componentData.description.length > 0) ? this.componentData.description : null,
+        internal_price: (this.componentData.internal_price && this.componentData.internal_price > 0) ? this.componentData.internal_price : null,
+        selling_price: (this.componentData.selling_price && this.componentData.selling_price > 0) ? this.componentData.selling_price : null,
+        primary_image: (this.componentData.primary_image && this.componentData.primary_image.length > 0) ? this.componentData.primary_image : null,
         tags: this.componentData.tags ? this.componentData.tags.map((tag: any) => tag.id) : []
         //tags: this.componentData.tags
       };
@@ -275,9 +281,21 @@ export class ComponentComponent implements OnInit, OnDestroy {
    this.creatingPacket = true;
   }
 
+  // Quick actions
+  requestBuy(): void {
+    this.messageService.add({ severity: 'info', summary: 'Požadavek', detail: 'Součástka přidána do nákupního seznamu (dummy)' });
+  }
+
+  quickNewPacket(): void {
+    this.createNewPacket();
+  }
+
   openLocationEdit(location: any): void {
     console.log('Editing location:', location);
+  }
 
+  copyToClipboard(text: string): void {
+    this.clipboardService.copyId(text);
   }
 
 }

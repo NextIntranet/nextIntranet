@@ -59,11 +59,11 @@ export class LocationService {
 
   updateLocation(id: string, location: LocationResponse): Observable<LocationResponse> {
     this.cache.clear();
-    return this.http.put<LocationResponse>(`${this.apiUrl}/${id}`, location);
+    return this.http.put<LocationResponse>(`${this.apiUrl}${id}/`, location);
   }
 
   deleteLocation(id: string): Observable<void> {
     this.cache.clear();
-    return this.http.delete<void>(`${this.apiUrl}/${id}`);
+    return this.http.delete<void>(`${this.apiUrl}${id}/`);
   }
 }

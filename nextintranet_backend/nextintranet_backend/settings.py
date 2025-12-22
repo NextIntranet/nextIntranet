@@ -51,27 +51,29 @@ INSTALLED_APPS = [
     'graphene_django',
     'graphql_jwt',
     "graphql_auth",
-    'constance', 
+    'constance',
     'crispy_forms',
-    "crispy_tailwind",
+    "crispy_bootstrap5",
     'django_select2',
     'django_htmx',
     'django_tables2',
     'django_filters',
+    "formtools",
+    'drf_spectacular',
+    'drf_spectacular_sidecar',
+
 
     'nextintranet_backend',
     'nextintranet_warehouse',
     'nextintranet_invoicing',
+    'nextintranet_production',
 
 ]
 
 
 
-
-CRISPY_ALLOWED_TEMPLATE_PACKS = "tailwind"
-CRISPY_TEMPLATE_PACK = "tailwind"
-
-
+CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
+CRISPY_TEMPLATE_PACK = "bootstrap5"
 
 CONSTANCE_BACKEND = 'constance.backends.redisd.CachingRedisBackend'
 # optionally set a value ttl
@@ -81,6 +83,17 @@ CONSTANCE_REDIS_CONNECTION = {
     'host': 'redis',
     'port': 6379,
     'db': 0,
+}
+
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'NextIntranet API',
+    'DESCRIPTION': 'NextIntranet',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'SWAGGER_UI_DIST': 'SIDECAR',
+    'SWAGGER_UI_FAVICON_HREF': 'SIDECAR',
+    'REDOC_DIST': 'SIDECAR',
 }
 
 CONSTANCE_CONFIG = {
@@ -97,7 +110,7 @@ GRAPHENE = {
     "MIDDLEWARE": [
         "graphql_jwt.middleware.JSONWebTokenMiddleware",
     ],
-    
+
 }
 
 GRAPHQL_JWT = {
@@ -176,16 +189,6 @@ TEMPLATES = [
 WSGI_APPLICATION = 'nextintranet_backend.wsgi.application'
 
 
-# Database
-# https://docs.djangoproject.com/en/5.1/ref/settings/#databases
-
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.sqlite3',
-#         'NAME': BASE_DIR / 'db.sqlite3',
-#     }
-# }
-
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
@@ -217,7 +220,7 @@ CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [("redis", 6379)], 
+            "hosts": [("redis", 6379)],
         },
     },
 }
@@ -237,6 +240,7 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
 
@@ -245,7 +249,7 @@ SIMPLE_JWT = {
     'REFRESH_TOKEN_LIFETIME': timedelta(days=10),  # Platnost refresh tokenu
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
-    'AUTH_HEADER_TYPES': ('Bearer',),    
+    'AUTH_HEADER_TYPES': ('Bearer',),
     "UPDATE_LAST_LOGIN": True,
     "ALGORITHM": "HS256",
     "SIGNING_KEY": SECRET_KEY,
