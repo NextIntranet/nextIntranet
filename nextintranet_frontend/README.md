@@ -1,59 +1,63 @@
-# NextintranetFrontend
+# NextIntranet React (v2)
 
-This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 19.2.1.
+Modern React rewrite of NextIntranet using Vite, TanStack Query, and pnpm workspaces.
 
-## Development server
+## Architecture
 
-To start a local development server, run:
-
-```bash
-ng serve
+```
+packages/
+├── core/         # API client, WebSocket, auth
+├── ui/           # Shared UI components (shadcn/ui)
+├── warehouse/    # Warehouse module
+├── production/   # Production module (TODO)
+├── users/        # Users module (TODO)
+└── app/          # Main Vite application
 ```
 
-Once the server is running, open your browser and navigate to `http://localhost:4200/`. The application will automatically reload whenever you modify any of the source files.
-
-## Code scaffolding
-
-Angular CLI includes powerful code scaffolding tools. To generate a new component, run:
+## Development
 
 ```bash
-ng generate component component-name
+# Install dependencies
+pnpm install
+
+# Start dev server
+pnpm dev
+
+# Build for production
+pnpm build
 ```
 
-For a complete list of available schematics (such as `components`, `directives`, or `pipes`), run:
+## Environment Variables
 
+Copy `packages/app/.env.example` to `packages/app/.env`:
+
+```env
+VITE_API_URL=http://localhost:9000
+VITE_WS_URL=ws://localhost:9000
+```
+
+## Tech Stack
+
+- **Vite** - Fast build tool
+- **React 18** - UI library
+- **TypeScript** - Type safety
+- **TanStack Query** - Data fetching & caching
+- **React Router** - Routing
+- **WebSocket** - Realtime communication
+- **pnpm workspaces** - Monorepo management
+
+## Migration from Angular
+
+This is a parallel implementation running alongside the existing Angular frontend. Both can coexist during the migration period.
+
+- Angular: `http://localhost:9000/`
+- React: `http://localhost:9000/react`
+
+## Docker
+
+Development:
 ```bash
-ng generate --help
+docker compose up frontend_react
 ```
 
-## Building
-
-To build the project run:
-
-```bash
-ng build
-```
-
-This will compile your project and store the build artifacts in the `dist/` directory. By default, the production build optimizes your application for performance and speed.
-
-## Running unit tests
-
-To execute unit tests with the [Karma](https://karma-runner.github.io) test runner, use the following command:
-
-```bash
-ng test
-```
-
-## Running end-to-end tests
-
-For end-to-end (e2e) testing, run:
-
-```bash
-ng e2e
-```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
-
-## Additional Resources
-
-For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+Production build is served via nginx from the Docker image.

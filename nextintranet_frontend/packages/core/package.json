@@ -1,0 +1,22 @@
+{
+  "name": "@nextintranet/core",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./api": "./src/api/index.ts",
+    "./realtime": "./src/realtime/index.ts",
+    "./auth": "./src/auth/index.ts"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.62.8",
+    "react": "^18.3.1",
+    "sonner": "^1.7.4",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.18",
+    "typescript": "^5.7.2"
+  }
+}

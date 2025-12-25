@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"],
+      "@nextintranet/core": ["../core/src"],
+      "@nextintranet/core/*": ["../core/src/*"]
+    }
+  },
+  "include": ["src", "vite-env.d.ts"]
+}
