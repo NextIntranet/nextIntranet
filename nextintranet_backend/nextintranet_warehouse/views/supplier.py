@@ -30,7 +30,7 @@ from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Layout, Div, Field, Row, Column, HTML, Submit
 from rest_framework.pagination import PageNumberPagination
 from rest_framework import viewsets
-from rest_framework.routers import DefaultRouter
+from nextintranet_backend.routers import NoFormatSuffixRouter as DefaultRouter
 from rest_framework.response import Response
 
 
@@ -263,8 +263,8 @@ class SupplierRelationViewSet(viewsets.ModelViewSet):
     pagination_class = CustomPagination
 
 
-SupplierRouter = DefaultRouter()
+SupplierRouter = DefaultRouter(trailing_slash=True)
 SupplierRouter.register(r'', SupplierViewSet)
 
-SupplierRelationRouter = DefaultRouter()
+SupplierRelationRouter = DefaultRouter(trailing_slash=True)
 SupplierRelationRouter.register(r'', SupplierRelationViewSet)

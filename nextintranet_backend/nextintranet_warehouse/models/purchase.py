@@ -160,12 +160,15 @@ class PurchaseRequest(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     quantity = models.PositiveIntegerField(default=1, verbose_name=("Quantity"))
     description = models.TextField(blank=True, verbose_name=("Description"))
+    item_name = models.CharField(max_length=255, blank=True, null=True, verbose_name=("Item name"))
 
     component = models.ForeignKey(
         Component,
         on_delete=models.PROTECT,
         related_name='purchase_requests',
         verbose_name=("Component"),
+        null=True,
+        blank=True,
     )
 
     purchase = models.ForeignKey(
@@ -191,4 +194,5 @@ class PurchaseRequest(models.Model):
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"Purchase request for {self.component} (qty {self.quantity})"
+        item = self.component.name if self.component else (self.item_name or "Unknown item")
+        return f"Purchase request for {item} (qty {self.quantity})"

@@ -20,7 +20,9 @@ class SupplierRelationSummarySerializer(serializers.ModelSerializer):
 class PurchaseRequestSerializer(serializers.ModelSerializer):
     component_id = serializers.PrimaryKeyRelatedField(
         source='component',
-        queryset=Component.objects.all()
+        queryset=Component.objects.all(),
+        required=False,
+        allow_null=True
     )
     component_name = serializers.CharField(source='component.name', read_only=True)
     requested_by_name = serializers.SerializerMethodField()
@@ -40,6 +42,7 @@ class PurchaseRequestSerializer(serializers.ModelSerializer):
             'id',
             'component_id',
             'component_name',
+            'item_name',
             'quantity',
             'description',
             'requested_by_name',
@@ -60,10 +63,14 @@ class PurchaseRequestSerializer(serializers.ModelSerializer):
         ]
 
     def get_suppliers(self, obj):
+        if not obj.component:
+            return []
         relations = obj.component.suppliers.all()
         return SupplierRelationSummarySerializer(relations, many=True).data
 
     def get_mfpn(self, obj):
+        if not obj.component:
+            return None
         name_candidates = {'mfpn', 'mpn', 'manufacturer part number', 'symbol/mfpn', 'symbol mfpn'}
         for param in obj.component.parameters.all():
             if not param.parameter_type or not param.value:
@@ -74,6 +81,8 @@ class PurchaseRequestSerializer(serializers.ModelSerializer):
         return None
 
     def get_matching_supplier_relation_id(self, obj):
+        if not obj.component:
+            return None
         supplier_id = self.context.get('supplier_id')
         if not supplier_id:
             return None
