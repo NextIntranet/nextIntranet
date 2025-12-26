@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch, useRealtimeMessages, type RealtimeEvent } from '@nextintranet/core';
-import { Activity, Factory, PackageSearch, Users, ShieldCheck, Sparkles } from 'lucide-react';
+import { Activity, PackageSearch, Users, ShieldCheck, Sparkles, AlertTriangle } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -13,41 +13,29 @@ interface User {
   is_superuser: boolean;
 }
 
+interface DashboardMetrics {
+  total_components: number;
+  components_with_stock: number;
+  total_quantity: number;
+  active_reservations: number;
+  pending_purchase_requests: number;
+  total_users: number;
+  low_stock_components: number;
+}
+
 interface ActivityEvent extends RealtimeEvent {
   received_at: number;
 }
 
-const metrics = [
-  {
-    label: 'Warehouse Items',
-    value: '1,247',
-    hint: 'Up 12% vs last month',
-    icon: PackageSearch,
-  },
-  {
-    label: 'Active Production',
-    value: '23',
-    hint: '5 pending review',
-    icon: Factory,
-  },
-  {
-    label: 'Team Members',
-    value: '18',
-    hint: '3 online now',
-    icon: Users,
-  },
-  {
-    label: 'Task Health',
-    value: '89%',
-    hint: 'This week',
-    icon: Activity,
-  },
-];
-
 export function HomePage() {
-  const { data: user, isLoading, error } = useQuery<User>({
+  const { data: user, isLoading: isLoadingUser, error: userError } = useQuery<User>({
     queryKey: ['me'],
     queryFn: () => apiFetch<User>('/api/v1/me/'),
+  });
+
+  const { data: metrics, isLoading: isLoadingMetrics, error: metricsError } = useQuery<DashboardMetrics>({
+    queryKey: ['dashboard-metrics'],
+    queryFn: () => apiFetch<DashboardMetrics>('/api/v1/dashboard/'),
   });
 
   const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([]);
@@ -85,6 +73,9 @@ export function HomePage() {
     }, [])
   );
 
+  const isLoading = isLoadingUser || isLoadingMetrics;
+  const error = userError || metricsError;
+
   if (isLoading) {
     return (
       <div className="flex flex-col gap-4">
@@ -112,6 +103,33 @@ export function HomePage() {
     );
   }
 
+  const metricCards = metrics ? [
+    {
+      label: 'Total Components',
+      value: metrics.total_components.toLocaleString(),
+      hint: `${metrics.components_with_stock} with stock`,
+      icon: PackageSearch,
+    },
+    {
+      label: 'Total Quantity',
+      value: Math.round(metrics.total_quantity).toLocaleString(),
+      hint: 'Items in warehouse',
+      icon: Activity,
+    },
+    {
+      label: 'Active Users',
+      value: metrics.total_users.toLocaleString(),
+      hint: 'Team members',
+      icon: Users,
+    },
+    {
+      label: 'Low Stock Alert',
+      value: metrics.low_stock_components.toLocaleString(),
+      hint: `${metrics.pending_purchase_requests} pending requests`,
+      icon: AlertTriangle,
+    },
+  ] : [];
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
@@ -124,7 +142,7 @@ export function HomePage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-4">
-        {metrics.map((metric) => (
+        {metricCards.map((metric) => (
           <Card key={metric.label} className="shadow-sm">
             <CardContent className="flex items-start gap-3 p-4">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">

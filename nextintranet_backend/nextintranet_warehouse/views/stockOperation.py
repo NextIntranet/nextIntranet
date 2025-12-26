@@ -12,7 +12,7 @@ from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.routers import DefaultRouter
+from nextintranet_backend.routers import NoFormatSuffixRouter as DefaultRouter
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.pagination import PageNumberPagination
 
@@ -110,5 +110,5 @@ class StockOperationViewSet(viewsets.ModelViewSet):
     # pagination_class = PageNumberPagination
 
 
-StockOperationRouter = DefaultRouter()
+StockOperationRouter = DefaultRouter(trailing_slash=True)
 StockOperationRouter.register(r'', StockOperationViewSet)

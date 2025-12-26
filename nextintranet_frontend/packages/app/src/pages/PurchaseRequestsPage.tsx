@@ -2,13 +2,16 @@ import { useEffect, useMemo, useState } from "react"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiFetch } from "@nextintranet/core"
-import { Pencil } from "lucide-react"
+import { Pencil, Plus } from "lucide-react"
 import { toast } from "sonner"
+import Select, { SingleValue } from "react-select"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Switch } from "@/components/ui/switch"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
@@ -21,8 +24,9 @@ interface SupplierSummary {
 
 interface PurchaseRequest {
   id: string
-  component_id: string
-  component_name: string
+  component_id?: string | null
+  component_name?: string | null
+  item_name?: string | null
   quantity: number
   description?: string | null
   requested_by_name?: string | null
@@ -45,6 +49,20 @@ interface User {
   }>
 }
 
+interface Component {
+  id: string
+  name: string
+}
+
+interface PaginatedComponents {
+  results: Component[]
+}
+
+type OptionType = {
+  value: string
+  label: string
+}
+
 type EditMode = "detail" | "edit"
 
 export function PurchaseRequestsPage() {
@@ -52,6 +70,7 @@ export function PurchaseRequestsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const [isCreateSheetOpen, setIsCreateSheetOpen] = useState(false)
 
   const mode: EditMode = searchParams.get("mode") === "edit" ? "edit" : "detail"
 
@@ -83,6 +102,14 @@ export function PurchaseRequestsPage() {
     description: "",
   })
 
+  const [createFormState, setCreateFormState] = useState({
+    component_id: "",
+    item_name: "",
+    quantity: "1",
+    description: "",
+    use_custom: false,
+  })
+
   useEffect(() => {
     if (!requestDetail) {
       return
@@ -92,6 +119,22 @@ export function PurchaseRequestsPage() {
       description: requestDetail.description || "",
     })
   }, [requestDetail?.id])
+
+  const { data: componentsData } = useQuery<Component[] | PaginatedComponents>({
+    queryKey: ["components"],
+    queryFn: () => apiFetch<Component[] | PaginatedComponents>("/api/v1/store/components/?page_size=1000"),
+  })
+
+  const components = Array.isArray(componentsData) ? componentsData : componentsData?.results || []
+
+  const componentOptions = useMemo(
+    () =>
+      components.map((component) => ({
+        value: component.id,
+        label: component.name,
+      })),
+    [components],
+  )
 
   const canEdit =
     user?.is_superuser ||
@@ -117,6 +160,23 @@ export function PurchaseRequestsPage() {
     },
     onError: () => {
       toast.error("Failed to update request.")
+    },
+  })
+
+  const createMutation = useMutation({
+    mutationFn: (payload: { component_id?: string; item_name?: string; quantity: number; description: string }) =>
+      apiFetch("/api/v1/store/purchase-requests/", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["purchase-requests"] })
+      setIsCreateSheetOpen(false)
+      setCreateFormState({ component_id: "", item_name: "", quantity: "1", description: "", use_custom: false })
+      toast.success("Purchase request created.")
+    },
+    onError: () => {
+      toast.error("Failed to create request.")
     },
   })
 
@@ -152,6 +212,33 @@ export function PurchaseRequestsPage() {
     })
   }
 
+  const handleCreate = () => {
+    if (createFormState.use_custom) {
+      const itemName = createFormState.item_name.trim()
+      if (!itemName) {
+        toast.error("Item name is required.")
+        return
+      }
+      const quantityValue = createFormState.quantity.trim()
+      createMutation.mutate({
+        item_name: itemName,
+        quantity: quantityValue ? Number(quantityValue) : 1,
+        description: createFormState.description.trim(),
+      })
+    } else {
+      if (!createFormState.component_id) {
+        toast.error("Please select a component.")
+        return
+      }
+      const quantityValue = createFormState.quantity.trim()
+      createMutation.mutate({
+        component_id: createFormState.component_id,
+        quantity: quantityValue ? Number(quantityValue) : 1,
+        description: createFormState.description.trim(),
+      })
+    }
+  }
+
   const renderSuppliers = (suppliers?: SupplierSummary[]) => {
     if (!suppliers || suppliers.length === 0) {
       return "-"
@@ -180,6 +267,12 @@ export function PurchaseRequestsPage() {
               Review open requests for purchasing components.
             </p>
           </div>
+          {canEdit && (
+            <Button className="gap-2" onClick={() => setIsCreateSheetOpen(true)}>
+              <Plus className="h-4 w-4" />
+              New Request
+            </Button>
+          )}
         </div>
 
         <div className="mt-4">
@@ -226,14 +319,18 @@ export function PurchaseRequestsPage() {
                             onClick={() => handleOpen(request.id)}
                             className="h-7 min-w-0 justify-start px-2 font-normal text-primary hover:underline"
                           >
-                            <span className="truncate">{request.component_name}</span>
+                            <span className="truncate">
+                              {request.component_name || request.item_name || "Unknown item"}
+                            </span>
                           </Button>
-                          <Link
-                            to={`/store/component/${request.component_id}`}
-                            className="px-2 text-xs text-muted-foreground hover:underline"
-                          >
-                            Open component
-                          </Link>
+                          {request.component_id && (
+                            <Link
+                              to={`/store/component/${request.component_id}`}
+                              className="px-2 text-xs text-muted-foreground hover:underline"
+                            >
+                              Open component
+                            </Link>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell className="h-9 px-3 text-sm text-foreground">
@@ -289,6 +386,121 @@ export function PurchaseRequestsPage() {
           </div>
         </div>
 
+        <Sheet open={isCreateSheetOpen} onOpenChange={setIsCreateSheetOpen}>
+          <SheetContent side="right" className="w-full max-w-lg">
+            <SheetHeader>
+              <SheetTitle>Create purchase request</SheetTitle>
+            </SheetHeader>
+            <div className="mt-6 space-y-4">
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="use_custom"
+                  checked={createFormState.use_custom}
+                  onCheckedChange={(checked) =>
+                    setCreateFormState({
+                      ...createFormState,
+                      use_custom: checked,
+                      component_id: "",
+                      item_name: "",
+                    })
+                  }
+                />
+                <Label htmlFor="use_custom" className="text-sm font-medium">
+                  Custom item (not in component list)
+                </Label>
+              </div>
+              {createFormState.use_custom ? (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Item name *</label>
+                  <Input
+                    value={createFormState.item_name}
+                    onChange={(e) =>
+                      setCreateFormState({ ...createFormState, item_name: e.target.value })
+                    }
+                    placeholder="Custom item or component name"
+                  />
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Component *</label>
+                  <Select
+                    options={componentOptions}
+                    value={componentOptions.find((opt) => opt.value === createFormState.component_id) || null}
+                    onChange={(option: SingleValue<OptionType>) =>
+                      setCreateFormState({ ...createFormState, component_id: option?.value || "" })
+                    }
+                    placeholder="Select component"
+                    isSearchable
+                    classNamePrefix="rs"
+                    styles={{
+                      control: (base) => ({
+                        ...base,
+                        backgroundColor: 'hsl(var(--background))',
+                        borderColor: 'hsl(var(--border))',
+                        '&:hover': { borderColor: 'hsl(var(--border))' },
+                      }),
+                      menu: (base) => ({
+                        ...base,
+                        backgroundColor: 'hsl(var(--background))',
+                        border: '1px solid hsl(var(--border))',
+                      }),
+                      option: (base, state) => ({
+                        ...base,
+                        backgroundColor: state.isFocused
+                          ? 'hsl(var(--muted))'
+                          : 'hsl(var(--background))',
+                        color: 'hsl(var(--foreground))',
+                        '&:active': { backgroundColor: 'hsl(var(--muted))' },
+                      }),
+                      singleValue: (base) => ({ ...base, color: 'hsl(var(--foreground))' }),
+                      input: (base) => ({ ...base, color: 'hsl(var(--foreground))' }),
+                    }}
+                  />
+                </div>
+              )}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Quantity</label>
+                <Input
+                  type="number"
+                  value={createFormState.quantity}
+                  onChange={(e) =>
+                    setCreateFormState({ ...createFormState, quantity: e.target.value })
+                  }
+                  placeholder="1"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Description</label>
+                <textarea
+                  value={createFormState.description}
+                  onChange={(e) =>
+                    setCreateFormState({ ...createFormState, description: e.target.value })
+                  }
+                  className="min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  placeholder="Additional details or specifications"
+                />
+              </div>
+              <div className="flex gap-2 pt-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setIsCreateSheetOpen(false)}
+                  disabled={createMutation.isPending}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={handleCreate}
+                  disabled={createMutation.isPending}
+                >
+                  {createMutation.isPending ? "Creating..." : "Create"}
+                </Button>
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
+
         <Sheet open={!!id} onOpenChange={(open) => (!open ? handleCloseSheet() : null)}>
           <SheetContent side="right" className="w-full max-w-lg">
             <SheetHeader>
@@ -306,13 +518,21 @@ export function PurchaseRequestsPage() {
                 {mode === "detail" ? (
                   <>
                     <div className="space-y-1">
-                      <p className="text-xs font-semibold uppercase text-muted-foreground">Component</p>
-                      <Link
-                        to={`/store/component/${requestDetail.component_id}`}
-                        className="text-sm text-primary hover:underline"
-                      >
-                        {requestDetail.component_name}
-                      </Link>
+                      <p className="text-xs font-semibold uppercase text-muted-foreground">
+                        {requestDetail.component_id ? "Component" : "Item"}
+                      </p>
+                      {requestDetail.component_id ? (
+                        <Link
+                          to={`/store/component/${requestDetail.component_id}`}
+                          className="text-sm text-primary hover:underline"
+                        >
+                          {requestDetail.component_name}
+                        </Link>
+                      ) : (
+                        <p className="text-sm text-foreground">
+                          {requestDetail.item_name || "Unknown item"}
+                        </p>
+                      )}
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <div className="space-y-1">

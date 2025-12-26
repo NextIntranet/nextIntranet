@@ -5,7 +5,7 @@ from django.urls import include
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, SpectacularSwaggerView
 
-from rest_framework.routers import DefaultRouter
+from nextintranet_backend.routers import NoFormatSuffixRouter as DefaultRouter
 
 
 from .views import home
@@ -13,6 +13,7 @@ from .views import user
 from .views import identifier
 from .views.search import SearchApiView
 from .views.printList import PrintListRouter, PrintItemRouter, PrintApi
+from .views.dashboard import DashboardMetricsAPIView
 
 
 from .schema import schema
@@ -49,6 +50,7 @@ urlpatterns = [
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('kicad/', include(kicad_urlpatterns)),
     path('v1/me/', user.UserApiDetailedView.as_view(), name='api-user-detail'),
+    path('v1/dashboard/', DashboardMetricsAPIView.as_view(), name='api-dashboard'),
     path('v1/search/', SearchApiView.as_view(), name='api-search'),
     path('v1/core/identifier/', identifier.IdentifierApiView.as_view(), name='identifier'),
     path('v1/core/', include(CoreRouter.urls)),

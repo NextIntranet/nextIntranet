@@ -23,7 +23,7 @@ from rest_framework.views import APIView
 from rest_framework import mixins
 from rest_framework import generics
 from rest_framework import viewsets
-from rest_framework.routers import DefaultRouter
+from nextintranet_backend.routers import NoFormatSuffixRouter as DefaultRouter
 from rest_framework.pagination import PageNumberPagination
 from rest_framework import status
 
@@ -120,7 +120,7 @@ class PacketListCreateAPIView(generics.ListCreateAPIView):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
-PacketRouter = DefaultRouter()
+PacketRouter = DefaultRouter(trailing_slash=True)
 PacketRouter.register(r'', PacketAPIView)
 
 

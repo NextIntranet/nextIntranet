@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import generics
 from rest_framework.pagination import PageNumberPagination
-from rest_framework.routers import DefaultRouter
+from nextintranet_backend.routers import NoFormatSuffixRouter as DefaultRouter
 
 from nextintranet_warehouse.models import Warehouse
 from nextintranet_warehouse.models import Warehouse
@@ -86,7 +86,7 @@ class CategoryAPIView(viewsets.ModelViewSet):
         tree = self.build_tree(objects)
         return Response(tree)
 
-CategoryRouter = DefaultRouter()
+CategoryRouter = DefaultRouter(trailing_slash=True)
 CategoryRouter.register(r'', CategoryAPIView)
 
 

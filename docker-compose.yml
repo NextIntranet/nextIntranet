@@ -71,9 +71,6 @@ services:
       target: dev
     volumes:
       - ./nextintranet_frontend:/app
-      - /app/node_modules
-      - /app/packages/core/node_modules
-      - /app/packages/app/node_modules
     environment:
       - NODE_ENV=${NODE_ENV:-development}
       - VITE_API_URL=

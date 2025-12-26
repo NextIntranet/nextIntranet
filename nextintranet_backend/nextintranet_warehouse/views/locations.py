@@ -25,7 +25,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.pagination import PageNumberPagination
-from rest_framework.routers import DefaultRouter
+from nextintranet_backend.routers import NoFormatSuffixRouter as DefaultRouter
 
 from rest_framework import serializers
 
@@ -109,5 +109,5 @@ class LocationAPIView(viewsets.ModelViewSet):
         tree = self.build_tree(objects)
         return Response(tree)
 
-LocationRouter = DefaultRouter()
+LocationRouter = DefaultRouter(trailing_slash=True)
 LocationRouter.register(r'', LocationAPIView)

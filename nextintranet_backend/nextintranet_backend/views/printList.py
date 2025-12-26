@@ -5,7 +5,7 @@ from rest_framework import status
 from nextintranet_backend.models.printList import PrintList, PrintItem
 from nextintranet_backend.serializers.printList import PrintListSerializer, PrintItemSerializer
 
-from rest_framework import routers
+from nextintranet_backend.routers import NoFormatSuffixRouter as DefaultRouter
 from rest_framework.views import APIView
 from rest_framework import permissions
 from django.http import HttpResponse
@@ -137,8 +137,8 @@ class PrintItemViewSet(ModelViewSet):
     
 
 
-PrintListRouter = routers.DefaultRouter()
+PrintListRouter = DefaultRouter()
 PrintListRouter.register(r'', PrintListViewSet, basename='printlist')
 
-PrintItemRouter = routers.DefaultRouter()
+PrintItemRouter = DefaultRouter()
 PrintItemRouter.register(r'', PrintItemViewSet, basename='printitem')
