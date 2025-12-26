@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { App } from './App';
-import { initApiClient, tokenStorage } from '@nextintranet/core';
+import { apiFetch, initApiClient, tokenStorage } from '@nextintranet/core';
 import { RealtimeClient, setRealtimeClient } from '@nextintranet/core';
 import './index.css';
 
@@ -36,6 +36,15 @@ const queryClient = new QueryClient({
     },
   },
 });
+
+if (tokenStorage.isAuthenticated()) {
+  queryClient
+    .prefetchQuery({
+      queryKey: ['me'],
+      queryFn: () => apiFetch('/api/v1/me/'),
+    })
+    .catch(() => {});
+}
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

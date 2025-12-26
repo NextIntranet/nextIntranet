@@ -50,6 +50,8 @@ class PacketSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
     def to_representation(self, instance):
+        if instance.count == 0 and instance.operations.exists():
+            instance.calculate()
         response = super().to_representation(instance)
         response['component'] = ComponentSerializer(instance.component).data
         response['location'] = WarehouseSerializer(instance.location).data

@@ -142,14 +142,53 @@ class PurchaseDelivery(models.Model):
         PurchaseItem,
         on_delete=models.CASCADE,
         related_name='deliveries',
-        verbose_name=_("Purchase Item")
+        verbose_name=("Purchase Item")
     )
-    delivery_date = models.DateField(verbose_name=_("Delivery date"))
-    delivered_quantity = models.PositiveIntegerField(verbose_name=_("Delivered quantity"))
+    delivery_date = models.DateField(verbose_name=("Delivery date"))
+    delivered_quantity = models.PositiveIntegerField(verbose_name=("Delivered quantity"))
 
     class Meta:
-        verbose_name = _("Delivery")
-        verbose_name_plural = _("Deliveries")
+        verbose_name = ("Delivery")
+        verbose_name_plural = ("Deliveries")
 
     def __str__(self):
         return f"Delivery for {self.purchase_item} on {self.delivery_date}"
+
+
+class PurchaseRequest(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    quantity = models.PositiveIntegerField(default=1, verbose_name=("Quantity"))
+    description = models.TextField(blank=True, verbose_name=("Description"))
+
+    component = models.ForeignKey(
+        Component,
+        on_delete=models.PROTECT,
+        related_name='purchase_requests',
+        verbose_name=("Component"),
+    )
+
+    purchase = models.ForeignKey(
+        Purchase,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='requests',
+        verbose_name=("Purchase"),
+    )
+
+    requested_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name='purchase_requests',
+        verbose_name=("Requested by"),
+    )
+
+    class Meta:
+        verbose_name = ("Purchase request")
+        verbose_name_plural = ("Purchase requests")
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Purchase request for {self.component} (qty {self.quantity})"

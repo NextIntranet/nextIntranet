@@ -1,4 +1,5 @@
 from django.db import models
+from django.core import validators
 from django.utils.translation import gettext_lazy as _
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
@@ -137,9 +138,20 @@ class Document(NIModel):
         ('other', _('Other')),
         ('undefined', _('Undefined')),
     )
+    ACCESS_LEVEL_CHOICES = (
+        ('public', _('Public')),
+        ('signed', _('Signed (temporary)')),
+    )
     component = models.ForeignKey(Component, on_delete=models.CASCADE, related_name='documents', verbose_name=_('Component'))
     name = models.CharField(max_length=255, verbose_name=_('Name'), blank=True, null=True)
     doc_type = models.CharField(max_length=50, choices=DOCUMENT_TYPE_CHOICES, verbose_name=_('Document type'), default='undefined')
+    access_level = models.CharField(
+        max_length=20,
+        choices=ACCESS_LEVEL_CHOICES,
+        default='public',
+        verbose_name=_('Access level'),
+    )
+    is_primary = models.BooleanField(default=False, verbose_name=_('Primary image'))
     file = models.FileField(upload_to='documents/', blank=True, null=True, verbose_name=_('File'))
     url = models.URLField(blank=True, null=True, help_text=_('URL of the document if hosted externally.'))
 
@@ -397,6 +409,15 @@ class Reservation(NIModel):
     component = models.ForeignKey(Component, on_delete=models.CASCADE, related_name='reservations', verbose_name=_('Component'))
     quantity = models.FloatField(verbose_name=_('Quantity'))  # Počet kusů nebo délka rezervace
     reserved_by = models.CharField(max_length=255, verbose_name=_('Reserved by'))  # Kdo rezervaci provedl
+    priority = models.PositiveSmallIntegerField(
+        default=3,
+        validators=[
+            validators.MinValueValidator(1),
+            validators.MaxValueValidator(5),
+        ],
+        verbose_name=_('Priority'),
+    )
+    description = models.TextField(blank=True, verbose_name=_('Description'))
     reservation_date = models.DateTimeField(auto_now_add=True, verbose_name=_('Reservation date'))
     expiration_date = models.DateTimeField(blank=True, null=True, verbose_name=_('Expiration date'))  # Datum vypršení rezervace
 

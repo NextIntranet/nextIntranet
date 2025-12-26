@@ -5,6 +5,7 @@ import {
   Box,
   Command,
   Send,
+  Search,
   Settings2,
   SquareTerminal,
   UserCog,
@@ -26,12 +27,16 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import { SearchModal } from "@/components/SearchModal"
+import { useRealtimeConnectionState } from "@nextintranet/core"
+import { cn } from "@/lib/utils"
 
 interface UserMe {
   username: string
   first_name?: string | null
   last_name?: string | null
   email?: string | null
+  is_superuser?: boolean
   access_permissions?: Array<{
     area: string
     level: string
@@ -47,6 +52,8 @@ const permissionRank: Record<string, number> = {
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const [userInfo, setUserInfo] = useState({ name: "Loading...", email: "" })
+  const [searchOpen, setSearchOpen] = useState(false)
+  const realtimeState = useRealtimeConnectionState()
 
   const { data: me } = useQuery<UserMe>({
     queryKey: ["me"],
@@ -66,6 +73,25 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       email: me.email || "",
     })
   }, [me])
+
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (event.key === "/" && !searchOpen) {
+        const target = event.target as HTMLElement | null
+        const isInput =
+          target &&
+          (target.tagName === "INPUT" ||
+            target.tagName === "TEXTAREA" ||
+            target.isContentEditable)
+        if (!isInput) {
+          event.preventDefault()
+          setSearchOpen(true)
+        }
+      }
+    }
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  }, [searchOpen])
 
   const hasPermission = (area: string, minLevel: keyof typeof permissionRank) => {
     if (me?.is_superuser) {
@@ -137,6 +163,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     },
   ]
 
+  const connectionLabel =
+    realtimeState.events === "connected" || realtimeState.station === "connected"
+      ? "Connected"
+      : realtimeState.events === "connecting" || realtimeState.station === "connecting"
+      ? "Connecting"
+      : "Disconnected"
+
   return (
     <Sidebar variant="inset" {...props}>
       <SidebarHeader>
@@ -159,12 +192,39 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
+        <div className="px-3 pb-2">
+          <button
+            type="button"
+            onClick={() => setSearchOpen(true)}
+            className="flex w-full items-center gap-2 rounded-md border border-border bg-background px-3 py-2 text-left text-sm text-muted-foreground hover:border-primary/40"
+          >
+            <Search className="h-4 w-4" />
+            <span>Search</span>
+            <span className="ml-auto text-xs text-muted-foreground/70">/</span>
+          </button>
+        </div>
         <NavMain items={navMain} />
         <NavSecondary items={navSecondary} className="mt-auto" />
       </SidebarContent>
       <SidebarFooter>
+        <div className="px-3 pb-2 text-xs text-muted-foreground">
+          <div className="flex items-center gap-2 rounded-md border border-border/70 px-3 py-2">
+            <span
+              className={cn(
+                "h-2 w-2 rounded-full",
+                connectionLabel === "Connected"
+                  ? "bg-emerald-500"
+                  : connectionLabel === "Connecting"
+                  ? "bg-amber-500"
+                  : "bg-rose-500"
+              )}
+            />
+            <span>Websocket: {connectionLabel}</span>
+          </div>
+        </div>
         <NavUser user={userInfo} />
       </SidebarFooter>
+      <SearchModal open={searchOpen} onOpenChange={setSearchOpen} />
     </Sidebar>
   )
 }

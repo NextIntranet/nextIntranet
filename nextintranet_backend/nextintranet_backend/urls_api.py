@@ -11,6 +11,7 @@ from rest_framework.routers import DefaultRouter
 from .views import home
 from .views import user
 from .views import identifier
+from .views.search import SearchApiView
 from .views.printList import PrintListRouter, PrintItemRouter, PrintApi
 
 
@@ -23,6 +24,10 @@ from graphene_django.views import GraphQLView
 from nextintranet_warehouse import urls_api as warehouse_api_urls
 from nextintranet_warehouse.views import kicad as kicadViews
 from nextintranet_production import urls_api as production_api_urls
+
+
+CoreRouter = DefaultRouter()
+CoreRouter.register(r'users', user.UserAdminViewSet, basename='core-users')
 
 
 kicad_urlpatterns = [
@@ -44,7 +49,9 @@ urlpatterns = [
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('kicad/', include(kicad_urlpatterns)),
     path('v1/me/', user.UserApiDetailedView.as_view(), name='api-user-detail'),
+    path('v1/search/', SearchApiView.as_view(), name='api-search'),
     path('v1/core/identifier/', identifier.IdentifierApiView.as_view(), name='identifier'),
+    path('v1/core/', include(CoreRouter.urls)),
     path('v1/store/', include(warehouse_api_urls)),
     path('v1/production/', include(production_api_urls)),
     path('v1/graphql/', GraphQLView.as_view(graphiql=True, schema=schema), name='graphql'),

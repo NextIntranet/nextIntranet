@@ -1,4 +1,6 @@
 from rest_framework import serializers
+from django.conf import settings
+from urllib.parse import urlparse
 
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import generics
@@ -29,14 +31,43 @@ from crispy_forms.layout import Layout, Row, Column, Field, Div
 
 
 class DocumentSerializer(serializers.ModelSerializer):
+    file_url = serializers.SerializerMethodField()
     get_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Document
         fields = '__all__'
 
+    def _with_public_endpoint(self, url):
+        if not url:
+            return None
+        public_endpoint = getattr(settings, 'S3_PUBLIC_ENDPOINT_URL', None)
+        internal_endpoint = getattr(settings, 'S3_ENDPOINT_URL', None)
+        bucket = getattr(settings, 'S3_STORAGE_BUCKET_NAME', None)
+        if not public_endpoint:
+            public_endpoint = getattr(settings, 'AWS_S3_PUBLIC_ENDPOINT_URL', None)
+        if not internal_endpoint:
+            internal_endpoint = getattr(settings, 'AWS_S3_ENDPOINT_URL', None)
+        if not bucket:
+            bucket = getattr(settings, 'AWS_STORAGE_BUCKET_NAME', None)
+
+        if public_endpoint and internal_endpoint and url.startswith(internal_endpoint):
+            return public_endpoint.rstrip('/') + url[len(internal_endpoint):]
+
+        parsed = urlparse(url)
+        path = parsed.path or ''
+        if public_endpoint and bucket and path.startswith('/documents/'):
+            return f"{public_endpoint.rstrip('/')}/{bucket}{path}"
+
+        return url
+
     def get_get_url(self, obj):
-        return obj
+        return self._with_public_endpoint(obj.get_url)
+
+    def get_file_url(self, obj):
+        if not obj.file:
+            return None
+        return self._with_public_endpoint(obj.file.url)
 
 
 

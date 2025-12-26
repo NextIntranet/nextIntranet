@@ -55,7 +55,9 @@ export function RequirePermission({
     return <>{children}</>
   }
 
-  const permission = me.access_permissions.find((entry) => entry.area === area)
+  const permission = (Array.isArray(me.access_permissions) ? me.access_permissions : []).find(
+    (entry) => entry.area === area
+  )
 
   if (!permission) {
     return <NotFoundPage />

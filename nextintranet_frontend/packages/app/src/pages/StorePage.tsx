@@ -703,15 +703,15 @@ export function StorePage() {
                             <div className="mt-auto flex items-center justify-between gap-2 border-t border-border/60 pt-3">
                               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                                 <span className="flex items-center gap-1">
-                                  📦 {component.inventory_summary.total_quantity}
+                                  📦 {component.inventory_summary?.total_quantity ?? 0}
                                 </span>
                                 <span className="text-muted-foreground/70">/</span>
                                 <span className="flex items-center gap-1">
-                                  🔒 {component.inventory_summary.reserved_quantity}
+                                  🔒 {component.inventory_summary?.reserved_quantity ?? 0}
                                 </span>
                                 <span className="text-muted-foreground/70">/</span>
                                 <span className="flex items-center gap-1">
-                                  🛒 {component.inventory_summary.purchase_quantity}
+                                  🛒 {component.inventory_summary?.purchase_quantity ?? 0}
                                 </span>
                               </div>
                               {component.selling_price && (
@@ -768,15 +768,15 @@ export function StorePage() {
                               </p>
                               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                                 <span className="flex items-center gap-1">
-                                  📦 {component.inventory_summary.total_quantity}
+                                  📦 {component.inventory_summary?.total_quantity ?? 0}
                                 </span>
                                 <span className="text-muted-foreground/70">/</span>
                                 <span className="flex items-center gap-1">
-                                  🔒 {component.inventory_summary.reserved_quantity}
+                                  🔒 {component.inventory_summary?.reserved_quantity ?? 0}
                                 </span>
                                 <span className="text-muted-foreground/70">/</span>
                                 <span className="flex items-center gap-1">
-                                  🛒 {component.inventory_summary.purchase_quantity}
+                                  🛒 {component.inventory_summary?.purchase_quantity ?? 0}
                                 </span>
                               </div>
                             </div>

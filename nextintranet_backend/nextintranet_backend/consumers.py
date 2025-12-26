@@ -22,11 +22,12 @@ class EventConsumer(AsyncJsonWebsocketConsumer):
             await self.close(code=4401)
             return
 
-        self._groups = ['broadcast']
         station_id = self.scope.get('url_route', {}).get('kwargs', {}).get('station_id')
         if station_id:
             self.station_id = station_id
-            self._groups.append(self._station_group(station_id))
+            self._groups = [self._station_group(station_id)]
+        else:
+            self._groups = ['broadcast']
 
         for group in self._groups:
             await self.channel_layer.group_add(group, self.channel_name)

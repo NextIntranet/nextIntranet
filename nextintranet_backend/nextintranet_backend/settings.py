@@ -1,9 +1,26 @@
 from pathlib import Path
 from datetime import timedelta
 import datetime
+import os
+
+
+def _load_env_file(path):
+    if not path.exists():
+        return
+    with path.open() as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip("'").strip('"')
+            if key and key not in os.environ:
+                os.environ[key] = value
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+_load_env_file(BASE_DIR.parent / '.env')
 
 
 SECRET_KEY = 'django-insecure-)6x5v2n-x$c@n98tdn$vwe*(1-#85osx2wr#r@hclrf48s%jbm'
@@ -33,6 +50,33 @@ STATIC_ROOT = BASE_DIR / 'static'
 
 STATICFILES_DIRS = [
 ]
+
+# S3/MinIO storage (optional)
+S3_ACCESS_KEY_ID = os.getenv('S3_ACCESS_KEY_ID') or os.getenv('AWS_ACCESS_KEY_ID') or os.getenv('MINIO_ROOT_USER')
+S3_SECRET_ACCESS_KEY = os.getenv('S3_SECRET_ACCESS_KEY') or os.getenv('AWS_SECRET_ACCESS_KEY') or os.getenv('MINIO_ROOT_PASSWORD')
+S3_STORAGE_BUCKET_NAME = os.getenv('S3_STORAGE_BUCKET_NAME') or os.getenv('AWS_STORAGE_BUCKET_NAME') or os.getenv('MINIO_BUCKET')
+S3_ENDPOINT_URL = os.getenv('S3_ENDPOINT_URL') or os.getenv('AWS_S3_ENDPOINT_URL')
+S3_PUBLIC_ENDPOINT_URL = os.getenv('S3_PUBLIC_ENDPOINT_URL') or os.getenv('AWS_S3_PUBLIC_ENDPOINT_URL')
+S3_REGION_NAME = os.getenv('S3_REGION_NAME') or os.getenv('AWS_S3_REGION_NAME', 'us-east-1')
+S3_ADDRESSING_STYLE = os.getenv('S3_ADDRESSING_STYLE') or os.getenv('AWS_S3_ADDRESSING_STYLE', 'path')
+AWS_ACCESS_KEY_ID = S3_ACCESS_KEY_ID
+AWS_SECRET_ACCESS_KEY = S3_SECRET_ACCESS_KEY
+AWS_STORAGE_BUCKET_NAME = S3_STORAGE_BUCKET_NAME
+AWS_S3_ENDPOINT_URL = S3_ENDPOINT_URL
+AWS_S3_PUBLIC_ENDPOINT_URL = S3_PUBLIC_ENDPOINT_URL
+AWS_S3_REGION_NAME = S3_REGION_NAME
+AWS_S3_ADDRESSING_STYLE = S3_ADDRESSING_STYLE
+AWS_DEFAULT_ACL = None
+
+if S3_ENDPOINT_URL and S3_STORAGE_BUCKET_NAME:
+    STORAGES = {
+        'default': {
+            'BACKEND': 'nextintranet_backend.storage_backends.PublicS3Boto3Storage',
+        },
+        'staticfiles': {
+            'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
+        },
+    }
 
 # Application definition
 INSTALLED_APPS = [
@@ -64,7 +108,7 @@ INSTALLED_APPS = [
 
 
     'nextintranet_backend',
-    'nextintranet_warehouse',
+    'nextintranet_warehouse.apps.NextintranetWarehouseConfig',
     'nextintranet_invoicing',
     'nextintranet_production',
 

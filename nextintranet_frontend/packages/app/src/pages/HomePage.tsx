@@ -1,5 +1,6 @@
+import { useCallback, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { apiFetch, useRealtimeMessages } from '@nextintranet/core';
+import { apiFetch, useRealtimeMessages, type RealtimeEvent } from '@nextintranet/core';
 import { Activity, Factory, PackageSearch, Users, ShieldCheck, Sparkles } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +11,10 @@ interface User {
   username: string;
   email: string;
   is_superuser: boolean;
+}
+
+interface ActivityEvent extends RealtimeEvent {
+  received_at: number;
 }
 
 const metrics = [
@@ -45,9 +50,40 @@ export function HomePage() {
     queryFn: () => apiFetch<User>('/api/v1/me/'),
   });
 
-  useRealtimeMessages((event: unknown) => {
-    console.log('Realtime event:', event);
-  });
+  const [activityEvents, setActivityEvents] = useState<ActivityEvent[]>([]);
+  const formatTimestamp = useMemo(
+    () =>
+      new Intl.DateTimeFormat('en-GB', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      }),
+    []
+  );
+
+  const formatPayload = useCallback((payload: unknown) => {
+    if (payload === null || payload === undefined) {
+      return null;
+    }
+    if (typeof payload === 'string') {
+      return payload;
+    }
+    try {
+      return JSON.stringify(payload);
+    } catch {
+      return 'Payload unavailable';
+    }
+  }, []);
+
+  useRealtimeMessages(
+    useCallback((event: RealtimeEvent) => {
+      const id = event.id || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const received_at = typeof event.ts === 'number' ? event.ts : Date.now();
+      setActivityEvents((prev) => {
+        const next = [{ ...event, id, received_at }, ...prev];
+        return next.slice(0, 24);
+      });
+    }, [])
+  );
 
   if (isLoading) {
     return (
@@ -139,13 +175,38 @@ export function HomePage() {
             <CardTitle>Live Activity</CardTitle>
             <Sparkles className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent className="grid auto-rows-min gap-3 md:grid-cols-2">
-            <div className="rounded-xl bg-muted/70 p-4 text-sm text-muted-foreground">
-              Realtime events will appear here.
-            </div>
-            <div className="rounded-xl bg-muted/40 p-4 text-sm text-muted-foreground">
-              Keep this tab open to stay in sync.
-            </div>
+          <CardContent className="grid gap-3">
+            {activityEvents.length === 0 ? (
+              <div className="rounded-xl bg-muted/70 p-4 text-sm text-muted-foreground">
+                Realtime events will appear here.
+              </div>
+            ) : (
+              activityEvents.map((event) => {
+                const payload = formatPayload(event.payload);
+                const scope = event.stationId ? `Station ${event.stationId}` : 'Broadcast';
+                return (
+                  <div key={event.id} className="rounded-xl border border-border/60 bg-muted/40 p-3 text-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-medium text-foreground">{event.type}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {formatTimestamp.format(new Date(event.received_at))}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      <span className="rounded-full bg-background px-2 py-0.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+                        {scope}
+                      </span>
+                      {event.deviceId && <span>Device {event.deviceId}</span>}
+                    </div>
+                    {payload && (
+                      <div className="mt-2 rounded-md bg-background/70 px-2 py-1 text-xs text-muted-foreground">
+                        {payload}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
           </CardContent>
         </Card>
       </div>

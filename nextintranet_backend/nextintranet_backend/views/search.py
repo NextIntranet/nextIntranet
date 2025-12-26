@@ -23,6 +23,7 @@ class SearchApiView(APIView):
     permission_classes = [IsAuthenticated]
 
     DEFAULT_LIMIT = 6
+    DEFAULT_PAGE = 1
     DEFAULT_SOURCES = ['components', 'locations', 'packets', 'purchases', 'productions']
     CONTEXT_DEFAULTS = {
         'store': ['components'],
@@ -73,6 +74,8 @@ class SearchApiView(APIView):
         source_param = self.get_first_param(request, ['source', 'sources'])
         sources, ignored_sources = self.resolve_sources(source_tokens, source_param, context)
         limit = self.parse_limit(self.get_first_param(request, ['limit']))
+        page = self.parse_page(self.get_first_param(request, ['page']))
+        max_results = limit * page
 
         warehouse_access = self.has_area_access(request.user, 'warehouse', 'guest')
 
@@ -87,26 +90,34 @@ class SearchApiView(APIView):
         self.add_results(results, identifier_match, seen)
 
         if 'components' in sources and warehouse_access:
-            self.add_results(results, self.search_components(query, limit), seen)
+            self.add_results(results, self.search_components(query, max_results), seen)
 
         if 'locations' in sources and warehouse_access:
-            self.add_results(results, self.search_locations(query, limit), seen)
+            self.add_results(results, self.search_locations(query, max_results), seen)
 
         if 'packets' in sources and warehouse_access:
-            self.add_results(results, self.search_packets(query, limit), seen)
+            self.add_results(results, self.search_packets(query, max_results), seen)
 
         if 'purchases' in sources and warehouse_access:
-            self.add_results(results, self.search_purchases(query, limit), seen)
+            self.add_results(results, self.search_purchases(query, max_results), seen)
 
         if 'productions' in sources:
-            self.add_results(results, self.search_productions(query, limit), seen)
+            self.add_results(results, self.search_productions(query, max_results), seen)
 
+        total_count = len(results)
+        total_pages = max(1, (total_count + limit - 1) // limit)
+        start = (page - 1) * limit
+        end = start + limit
         response = {
             'query': query,
             'context': (context or '').lower() if context else None,
             'sources': sources,
             'ignored_sources': ignored_sources,
-            'results': results,
+            'page': page,
+            'page_size': limit,
+            'total_count': total_count,
+            'total_pages': total_pages,
+            'results': results[start:end],
         }
 
         duration_ms = int((time.perf_counter() - start_time) * 1000)
@@ -178,6 +189,13 @@ class SearchApiView(APIView):
         except (TypeError, ValueError):
             return self.DEFAULT_LIMIT
         return max(1, min(limit, 25))
+
+    def parse_page(self, value):
+        try:
+            page = int(value)
+        except (TypeError, ValueError):
+            return self.DEFAULT_PAGE
+        return max(1, page)
 
     def parse_uuid(self, value):
         try:

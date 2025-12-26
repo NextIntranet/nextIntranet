@@ -34,6 +34,9 @@ services:
       - "8080:8000"
     env_file:
       - .env
+    environment:
+      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL:-http://minio:9000}
+      - S3_PUBLIC_ENDPOINT_URL=${S3_PUBLIC_ENDPOINT_URL:-http://localhost:9003}
     depends_on:
       - db_nextintranet
       - redis
@@ -45,6 +48,7 @@ services:
     build:
       context: nextintranet_backend
       dockerfile: Dockerfile
+    container_name: webasgi
     volumes:
       - ./nextintranet_backend:/app
       - ./.data/:/data
@@ -53,33 +57,14 @@ services:
     environment:
       - DJANGO_SETTINGS_MODULE=nextintranet_backend.settings
     entrypoint: ["/bin/sh", "-c"]
-    command: ["poetry install --no-root --only main --sync && poetry run daphne -b 0.0.0.0 -p 8001 nextintranet_backend.asgi:application"]
+    command: ["daphne -b 0.0.0.0 -p 8001 nextintranet_backend.asgi:application"]
     depends_on:
       - db_nextintranet
       - redis
     networks:
       - nextintranet_net
 
-  # Angular frontend (commented out - using React v2 instead)
-  # frontend:
-  #   build:
-  #     context: nextintranet_frontend
-  #     dockerfile: Dockerfile
-  #   volumes:
-  #     - ./nextintranet_frontend:/app
-  #   environment:
-  #     - NODE_ENV=${NODE_ENV:-development}
-  #     - API_URL=${API_URL:-http://web:8000/api}
-  #     - HOST=0.0.0.0
-  #   command: npm run start -- --host 0.0.0.0 --disable-host-check
-  #   ports:
-  #     - "4200:4200"
-  #   networks:
-  #     - nextintranet_net
-  #   depends_on:
-  #     - web
-
-  frontend_react_v2:
+  frontend:
     build:
       context: nextintranet_frontend
       dockerfile: Dockerfile
@@ -107,9 +92,9 @@ services:
       - ./nginx_config/nginx.conf:/etc/nginx/conf.d/default.conf
     ports:
       - "9000:80"
-      - "9003:9003"
+      - "9010:9003"
     depends_on:
-      - frontend_react_v2
+      - frontend
       - web
       - web_asgi
     networks:

@@ -24,13 +24,17 @@ from django.urls import reverse
 from django.contrib import messages
 from django import forms
 
+from django.db import models
 from django.db.models import Q
 
 from ..models.component import Component
+from ..models.purchase import PurchaseRequest
 from ..models.component import Tag
 from ..models.category import Category
 from .category import CategorySerializer
 from .document import DocumentSerializer
+from django.conf import settings
+from urllib.parse import urlparse
 from .warehouse import WarehouseSerializer
 from .tags import TagSerializer
 from .parameters import ComponentParameterSerializer
@@ -93,6 +97,11 @@ class PacketSerializer(serializers.ModelSerializer):
         model = Packet
         fields = '__all__'
 
+    def to_representation(self, instance):
+        if instance.count == 0 and instance.operations.exists():
+            instance.calculate()
+        return super().to_representation(instance)
+
 class SupplierSerializer(serializers.ModelSerializer):
     class Meta:
         model = Supplier
@@ -127,7 +136,10 @@ def get_url(self, obj):
     return obj.url
 
 class ComponentSerializer(serializers.ModelSerializer):
-    
+    documents = DocumentSerializer(many=True, read_only=True)
+    primary_image_url = serializers.SerializerMethodField()
+    inventory_summary = serializers.SerializerMethodField()
+
     category = serializers.PrimaryKeyRelatedField(
         queryset=Category.objects.all()
     )
@@ -140,6 +152,54 @@ class ComponentSerializer(serializers.ModelSerializer):
     packets = PacketSerializer(many=True, read_only=True)
     suppliers = SupplierRelationSerializer(many=True, read_only=True)
     
+    def get_primary_image_url(self, instance):
+        primary_document = instance.documents.filter(is_primary=True).order_by('id').first()
+        if primary_document:
+            url = primary_document.get_url
+        else:
+            url = instance.primary_image
+        if not url:
+            return None
+
+        public_endpoint = getattr(settings, 'S3_PUBLIC_ENDPOINT_URL', None)
+        internal_endpoint = getattr(settings, 'S3_ENDPOINT_URL', None)
+        bucket = getattr(settings, 'S3_STORAGE_BUCKET_NAME', None)
+        if not public_endpoint:
+            public_endpoint = getattr(settings, 'AWS_S3_PUBLIC_ENDPOINT_URL', None)
+        if not internal_endpoint:
+            internal_endpoint = getattr(settings, 'AWS_S3_ENDPOINT_URL', None)
+        if not bucket:
+            bucket = getattr(settings, 'AWS_STORAGE_BUCKET_NAME', None)
+
+        if public_endpoint and internal_endpoint and url.startswith(internal_endpoint):
+            return public_endpoint.rstrip('/') + url[len(internal_endpoint):]
+
+        parsed = urlparse(url)
+        path = parsed.path or ''
+        if public_endpoint and bucket and path.startswith('/documents/'):
+            return f"{public_endpoint.rstrip('/')}/{bucket}{path}"
+
+        return url
+
+    def get_inventory_summary(self, instance):
+        total_quantity = 0
+        reserved_quantity = instance.reservations.aggregate(
+            total_reserved=models.Sum('quantity')
+        )['total_reserved'] or 0
+        for packet in instance.packets.all():
+            if packet.count == 0 and packet.operations.exists():
+                packet.calculate()
+            total_quantity += packet.count or 0
+        purchase_quantity = PurchaseRequest.objects.filter(
+            component=instance,
+            purchase__isnull=True,
+        ).aggregate(total_requested=models.Sum('quantity'))['total_requested'] or 0
+        return {
+            'total_quantity': float(total_quantity),
+            'reserved_quantity': float(reserved_quantity),
+            'purchase_quantity': float(purchase_quantity),
+        }
+
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -460,5 +520,3 @@ class ComponentCreateView(CreateView):
             return redirect(self.object.get_absolute_url())
         else:
             return self.render_to_response(self.get_context_data(form=form))
-
-

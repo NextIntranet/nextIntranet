@@ -34,6 +34,7 @@ pycparser==2.22
 PyJWT==2.9.0
 pyOpenSSL==24.3.0
 redis==5.2.1
+channels-redis==4.2.0
 rest-framework-simplejwt==0.0.2
 service-identity==24.2.0
 setuptools==75.6.0
@@ -61,3 +62,5 @@ django-location-field
 django-formtools
 requests
 drf-spectacular[sidecar]
+django-storages
+boto3

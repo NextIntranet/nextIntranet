@@ -447,11 +447,15 @@ export function ComponentDetailPage() {
   })
 
   const updateDocumentMutation = useMutation({
-    mutationFn: (payload: { id: string; data: FormData }) =>
-      apiFetch(`/api/v1/store/documents/${payload.id}/`, {
+    mutationFn: (payload: { id: string; data: FormData }) => {
+      const endpoint = component?.id
+        ? `/api/v1/store/component/${component.id}/documents/${payload.id}/`
+        : `/api/v1/store/documents/${payload.id}/`
+      return apiFetch(endpoint, {
         method: "PATCH",
         body: payload.data,
-      }),
+      })
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["component", id] })
       setDocumentSheetOpen(false)
@@ -618,6 +622,9 @@ export function ComponentDetailPage() {
     payload.append("access_level", documentForm.accessLevel)
     if (documentForm.isPrimary) {
       payload.append("is_primary", "true")
+    }
+    if (component?.id) {
+      payload.append("component", component.id)
     }
     if (documentForm.sourceType === "file" && documentForm.file) {
       payload.append("file", documentForm.file)
@@ -869,19 +876,22 @@ export function ComponentDetailPage() {
       {
         id: "location",
         header: "Location",
-        cell: ({ row }) => (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Link
-                to={`/store/location/${row.original.location.id}`}
-                className="block truncate text-primary hover:underline"
-              >
-                {row.original.location.full_path}
-              </Link>
-            </TooltipTrigger>
-            <TooltipContent>{row.original.location.full_path}</TooltipContent>
-          </Tooltip>
-        ),
+        cell: ({ row }) =>
+          row.original.location ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Link
+                  to={`/store/location/${row.original.location.id}`}
+                  className="block truncate text-primary hover:underline"
+                >
+                  {row.original.location.full_path}
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent>{row.original.location.full_path}</TooltipContent>
+            </Tooltip>
+          ) : (
+            <span className="text-muted-foreground">-</span>
+          ),
       },
       {
         accessorKey: "count",
@@ -1457,9 +1467,18 @@ export function ComponentDetailPage() {
               <div className="space-y-4">
                 <div className="grid gap-3 sm:grid-cols-3">
                   {[
-                    { label: "Total", value: component.inventory_summary.total_quantity },
-                    { label: "Reserved", value: component.inventory_summary.reserved_quantity },
-                    { label: "Purchase", value: component.inventory_summary.purchase_quantity },
+                    {
+                      label: "Total",
+                      value: component.inventory_summary?.total_quantity ?? 0,
+                    },
+                    {
+                      label: "Reserved",
+                      value: component.inventory_summary?.reserved_quantity ?? 0,
+                    },
+                    {
+                      label: "Purchase",
+                      value: component.inventory_summary?.purchase_quantity ?? 0,
+                    },
                   ].map((stat) => (
                     <div
                       key={stat.label}

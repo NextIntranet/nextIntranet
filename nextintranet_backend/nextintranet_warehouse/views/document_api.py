@@ -13,6 +13,7 @@ class ComponentDocumentListCreateAPIView(generics.ListCreateAPIView):
     serializer_class = DocumentSerializer
     permission_classes = [IsAuthenticated, AreaAccessPermission]
     required_permission_area = 'warehouse'
+    required_level = 'guest'
     parser_classes = [MultiPartParser, FormParser]
 
     def get_queryset(self):
@@ -30,6 +31,7 @@ class DocumentDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = DocumentSerializer
     permission_classes = [IsAuthenticated, AreaAccessPermission]
     required_permission_area = 'warehouse'
+    required_level = 'guest'
     queryset = Document.objects.all()
 
     def perform_update(self, serializer):
@@ -37,3 +39,9 @@ class DocumentDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
             Document.objects.filter(component=serializer.instance.component, is_primary=True).exclude(id=serializer.instance.id).update(is_primary=False)
             serializer.validated_data['access_level'] = 'public'
         serializer.save()
+
+
+class ComponentDocumentDetailAPIView(DocumentDetailAPIView):
+    def get_queryset(self):
+        component_id = self.kwargs.get('component_id')
+        return Document.objects.filter(component_id=component_id)
