@@ -1,0 +1,47 @@
+[tool.poetry]
+name = "nextintranet-backend"
+version = "0.1.0"
+description = ""
+authors = ["Roman Dvorak <romandvorak@mlab.cz>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+django = "^6.0"
+djangorestframework = "^3.16"
+djangorestframework-simplejwt = "^5.5"
+django-cors-headers = "^4.9"
+django-filter = "^25.2"
+channels = "^4.3"
+channels-redis = "^4.3"
+daphne = "^4.2"
+redis = "^7.1"
+psycopg2 = "^2.9"
+pillow = "^12.0"
+graphene-django = "*"
+django-graphql-jwt = "*"
+django-graphql-auth = "*"
+django-constance = "^4.3.4"
+django-colorfield = "^0.14.0"
+django-mptt = "^0.18.0"
+fpdf2 = "^2.8.5"
+treepoem = "^3.28.0"
+django-crispy-forms = "^2.5"
+crispy-bootstrap5 = "^2025.6"
+django-select2 = "^8.4.7"
+django-htmx = "^1.27.0"
+django-tables2 = "^2.8.0"
+django-vanilla-views = "^3.0.0"
+django-gravatar = "^0.1.0"
+django-money = "^3.5.4"
+django-location-field = "^2.7.3"
+django-formtools = "^2.5.1"
+requests = "^2.32.5"
+drf-spectacular = {extras = ["sidecar"], version = "^0.29.0"}
+django-storages = "^1.14.6"
+boto3 = "^1.42.16"
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
