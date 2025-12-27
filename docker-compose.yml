@@ -11,9 +11,9 @@ networks:
 
 services:
   db_nextintranet:
-    image: postgres:17
+    image: postgres:18.1-alpine
     volumes:
-      - ./.data/postgres:/var/lib/postgresql/data
+      - ./.data/postgres_18:/var/lib/postgresql
     env_file:
       - .env
     environment:
@@ -98,7 +98,7 @@ services:
       - nextintranet_net
 
   redis:
-    image: redis
+    image: redis:8.4-alpine
     volumes:
       - ./.data/redis:/data
     depends_on:
