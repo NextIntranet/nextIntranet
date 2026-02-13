@@ -20,6 +20,7 @@ import { UnauthorizedPage } from './pages/UnauthorizedPage';
 import { PacketDetailPage } from './pages/PacketDetailPage';
 import { PrintQueuePage } from './pages/PrintQueuePage';
 import { HardwarePage } from './pages/HardwarePage';
+import { SettingsPage } from './pages/SettingsPage';
 import { SupplierRelationPage } from './pages/SupplierRelationPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Layout } from './components/Layout';
@@ -180,6 +181,10 @@ export function App() {
               </RequirePermission>
             }
           />
+          <Route path="settings" element={<SettingsPage />} />
+          <Route path="setting/hardware" element={<HardwarePage />} />
+          <Route path="settings/hardware" element={<Navigate to="/setting/hardware" replace />} />
+          <Route path="hardware" element={<Navigate to="/setting/hardware" replace />} />
           <Route
             path="user"
             element={
@@ -190,7 +195,6 @@ export function App() {
           />
           <Route path="user/:id" element={<UserDetailPage />} />
           <Route path="profile" element={<ProfileRedirectPage />} />
-          <Route path="hardware" element={<HardwarePage />} />
           <Route path="401" element={<UnauthorizedPage />} />
           <Route path="403" element={<ForbiddenPage />} />
           <Route path="404" element={<NotFoundPage />} />

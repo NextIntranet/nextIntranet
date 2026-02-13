@@ -135,7 +135,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       title: "Settings",
       url: "/settings",
       icon: Settings2,
-      items: [{ title: "Hardware", url: "/hardware" }],
+      items: [{ title: "Hardware", url: "/setting/hardware" }],
     },
   ]
 

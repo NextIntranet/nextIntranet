@@ -29,6 +29,8 @@ const segmentTitleMap: Record<string, string> = {
   guides: "Guides",
   changelog: "Changelog",
   settings: "Settings",
+  setting: "Settings",
+  hardware: "Hardware",
   teams: "Teams",
   billing: "Billing",
   print: "Print",

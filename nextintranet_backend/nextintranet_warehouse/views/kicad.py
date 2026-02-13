@@ -8,7 +8,17 @@ from nextintranet_warehouse.models.component import Component
 from django.http import HttpResponse
 from django.conf import settings
 import json
-import uuid
+
+
+def _replace_none_with_empty_string(value):
+    if value is None:
+        return ""
+    if isinstance(value, dict):
+        return {key: _replace_none_with_empty_string(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_replace_none_with_empty_string(item) for item in value]
+    return value
+
 
 class KicadAPITemplateView(APIView):
     permission_classes = []
@@ -32,7 +42,8 @@ class KicadAPITemplateView(APIView):
             }
         }
 
-        return HttpResponse(json.dumps(data), content_type='application/json')
+        sanitized_data = _replace_none_with_empty_string(data)
+        return HttpResponse(json.dumps(sanitized_data), content_type='application/json')
 
 
 class KicadApiView(APIView):
@@ -55,14 +66,21 @@ class KicadAPICategoriesView(APIView):
         
         data = []
         for category in categories:
+            category_path = category.full_path or ""
+            category_description = category.description or ""
+            combined_description = " ; ".join(
+                [part for part in [category_path, category_description] if part]
+            )
+
             data.append({
                 "id": str(category.id),
                 "name": category.name,
-                "path": category.full_path,
-                "description": f'{category.full_path}; {category.description}'
+                "path": category_path,
+                "description": combined_description
             })
 
-        return HttpResponse(json.dumps(data), content_type='application/json')
+        sanitized_data = _replace_none_with_empty_string(data)
+        return HttpResponse(json.dumps(sanitized_data), content_type='application/json')
 
 
 class KicadPartsCategoryView(APIView):
@@ -83,7 +101,8 @@ class KicadPartsCategoryView(APIView):
             })
             
 
-        return HttpResponse(json.dumps(data), content_type='application/json')
+        sanitized_data = _replace_none_with_empty_string(data)
+        return HttpResponse(json.dumps(sanitized_data), content_type='application/json')
 
 
 class KicadPartsView(APIView):
@@ -93,6 +112,7 @@ class KicadPartsView(APIView):
         
         part = Component.objects.get(pk=id)
         category = part.category
+        category_name = category.name if category and category.name else ""
 
         data = {
             "id": str(part.id),
@@ -102,7 +122,7 @@ class KicadPartsView(APIView):
             "exclude_from_board": "False",
             "exclude_from_sim": "False",
             "fields": {
-                "ustid": {
+                "NIID": {
                     "value": str(part.id),
                     "visible": "False"
                 },
@@ -119,15 +139,15 @@ class KicadPartsView(APIView):
                     "visible": "True"
                 },
                 "reference": {
-                    "value": category.name[0],
+                    "value": category_name[:1],
                     "visible": "True"
                 },
                 "category": {
-                    "value": category.name,
+                    "value": category_name,
                     "visible": "False"
                 },
                 "keywords": {
-                    "value": category.name,
+                    "value": category_name,
                     "visible": "False"
                 },
                 
@@ -153,18 +173,17 @@ class KicadPartsView(APIView):
                 "visible": visible
             }
         
-        for i, documents in enumerate(part.documents.all()):
+        for documents in part.documents.all():
             if documents.doc_type == 'datasheet':
                 data["fields"]["datasheet"] = {
                     "value": documents.url,
                     "visible": "False"
                 }
 
-            data["fields"][f"DOC_{i}_{documents.doc_type}"] = {
-                "value": documents.url,
-                "visible": "False"
-            }
+        sanitized_data = _replace_none_with_empty_string(data)
+        print(
+            f"KiCad payload for parts/{id}.json:\n"
+            f"{json.dumps(sanitized_data, ensure_ascii=False, indent=2)}"
+        )
 
-        return HttpResponse(json.dumps(data), content_type='application/json')
-
-
+        return HttpResponse(json.dumps(sanitized_data), content_type='application/json')

@@ -435,7 +435,7 @@ export function PrintQueuePage() {
           ) : (
             <div className="text-sm text-muted-foreground">
               No agents configured. Add one in{" "}
-              <Link className="text-primary" to="/hardware">
+              <Link className="text-primary" to="/setting/hardware">
                 Hardware
               </Link>
               .
