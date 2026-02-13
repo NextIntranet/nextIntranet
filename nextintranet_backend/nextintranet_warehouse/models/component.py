@@ -10,6 +10,7 @@ from colorfield.fields import ColorField
 import uuid
 
 from nextintranet_backend.models import NIModel
+from nextintranet_backend.models.plugin import PluginInstance
 from nextintranet_backend.models.user import User
 from django.urls import reverse
 
@@ -111,6 +112,17 @@ class ParameterType(NIModel):
     name = models.CharField(max_length=100, unique=True, verbose_name=_('Parameter name'))
     special_meaning = models.BooleanField(default=False, verbose_name=_('Special meaning'))
     description = models.TextField(blank=True, null=True, verbose_name=_('Description'))
+    unit = models.CharField(max_length=50, blank=True, null=True, verbose_name=_('Unit'))
+    value_type = models.CharField(
+        max_length=10,
+        choices=(('text', _('Text')), ('number', _('Number'))),
+        default='text',
+        verbose_name=_('Value type'),
+    )
+    validation_min = models.FloatField(blank=True, null=True, verbose_name=_('Validation min'))
+    validation_max = models.FloatField(blank=True, null=True, verbose_name=_('Validation max'))
+    validation_regex = models.CharField(max_length=255, blank=True, null=True, verbose_name=_('Validation regex'))
+    validation_values = models.TextField(blank=True, null=True, verbose_name=_('Validation values'))
 
     def __str__(self):
         return self.name
@@ -176,6 +188,18 @@ class Supplier(NIModel):
         verbose_name=_('Link template')
     )  # Šablona pro generování odkazu na e-shop
     min_order_quantity = models.PositiveIntegerField(default=1, help_text=_('Minimum order quantity for the supplier, e.g., items sold in packs of 10.'), verbose_name=_('Minimum order quantity'))
+    api_plugin_instance = models.OneToOneField(
+        PluginInstance,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="supplier_api",
+        verbose_name=_('API plugin instance'),
+        help_text=_('Plugin instance used for supplier component API calls.'),
+    )
+    api_config = models.JSONField(blank=True, null=True, default=dict, verbose_name=_('API config'))
+    api_mapping = models.JSONField(blank=True, null=True, default=dict, verbose_name=_('API mapping'))
+    api_last_sync_at = models.DateTimeField(blank=True, null=True, verbose_name=_('API last sync at'))
 
     def __str__(self):
         return self.name
@@ -192,6 +216,9 @@ class SupplierRelation(NIModel):
     custom_url = models.URLField(blank=True, null=True, verbose_name=_('Custom URL'), help_text=_('Custom URL for the component in the supplier\'s e-shop. Use this field to override the link template in suppliers profile.'))
 
     api_data = models.JSONField(blank=True, null=True, verbose_name=_('api_data'))
+    api_data_hash = models.CharField(max_length=64, blank=True, null=True, verbose_name=_('API data hash'))
+    api_fetched_at = models.DateTimeField(blank=True, null=True, verbose_name=_('API fetched at'))
+    api_applied_at = models.DateTimeField(blank=True, null=True, verbose_name=_('API applied at'))
 
     @property
     def url(self):
@@ -234,6 +261,7 @@ class Packet(NIModel):
     )
     description = models.TextField(blank=True, null=True, verbose_name=_('Description'))
     is_trackable = models.BooleanField(default=False, help_text=_('Indicates if the component is trackable by individual pieces.'), verbose_name=_('Is trackable'))
+    is_active = models.BooleanField(default=True, verbose_name=_('Is active'))
     date_added = models.DateTimeField(auto_now_add=True, verbose_name=_('Date added'))
 
     last_operation = models.OneToOneField('StockOperation', on_delete=models.SET_NULL, blank=True, null=True, related_name='last_operation', verbose_name=_('Last operation'))
@@ -246,7 +274,8 @@ class Packet(NIModel):
         return self.operations.filter(reference=stocktaking).exists()
 
     def __str__(self):
-        return f"{self.component.name} - {self.location.name}"
+        location_name = self.location.name if self.location else "-"
+        return f"{self.component.name} - {location_name}"
 
     def save(self, *args, **kwargs):
         if self.location and not self.location.can_store_items:

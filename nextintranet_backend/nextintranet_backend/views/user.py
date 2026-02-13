@@ -20,13 +20,15 @@ import django_tables2 as tables
 
 
 from nextintranet_backend.permissions import AreaAccessPermission
-from nextintranet_backend.serializers.user import UserSerializer, UserAdminSerializer
+from nextintranet_backend.serializers.user import UserSerializer, UserAdminSerializer, UserSettingSerializer
+from nextintranet_backend.models.userSettings import UserSetting
 
 class UserDetailView(APIView):
     permission_classes = [IsAuthenticated]  # Pouze pro přihlášené uživatele
 
     def get(self, request):
         user = request.user  # Přihlášený uživatel
+        UserSetting.objects.get_or_create(user=user)
         print("Get user info")
         print(user)
         serializer = UserSerializer(user)
@@ -37,10 +39,21 @@ class UserApiDetailedView(APIView):
 
     def get(self, request):
         user = request.user  # Přihlášený uživatel
+        UserSetting.objects.get_or_create(user=user)
         print("Get user info")
         print(user)
         serializer = UserSerializer(user)
         return Response(serializer.data)
+
+    def patch(self, request):
+        user = request.user
+        settings_instance, _ = UserSetting.objects.get_or_create(user=user)
+        payload = request.data.get('settings', request.data)
+        serializer = UserSettingSerializer(settings_instance, data=payload, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(user=user)
+        user_serializer = UserSerializer(user)
+        return Response(user_serializer.data)
 
 
 class UserAdminPermission(AreaAccessPermission):

@@ -123,8 +123,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         { title: "Catalog", url: "/store" },
         ...(canReadWarehouse ? [{ title: "Locations", url: "/store/location" }] : []),
         ...(canReadWarehouse ? [{ title: "Suppliers", url: "/store/supplier" }] : []),
+        ...(canReadWarehouse ? [{ title: "Parameter types", url: "/store/parameter-type" }] : []),
+        ...(canReadWarehouse ? [{ title: "Inventory", url: "/store/inventory-campaign" }] : []),
         ...(canAccessOperations ? [{ title: "Reservations", url: "/store/reservations" }] : []),
         ...(canAccessOperations ? [{ title: "Requests", url: "/store/purchase-requests" }] : []),
+        ...(canAccessOperations ? [{ title: "Print queue", url: "/print/queue" }] : []),
         { title: "Categories", url: "/store/category" },
       ],
     },
@@ -132,7 +135,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       title: "Settings",
       url: "/settings",
       icon: Settings2,
-      items: [],
+      items: [{ title: "Hardware", url: "/hardware" }],
     },
   ]
 

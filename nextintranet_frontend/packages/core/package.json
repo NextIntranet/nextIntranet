@@ -7,7 +7,8 @@
     ".": "./src/index.ts",
     "./api": "./src/api/index.ts",
     "./realtime": "./src/realtime/index.ts",
-    "./auth": "./src/auth/index.ts"
+    "./auth": "./src/auth/index.ts",
+    "./hw": "./src/hw/index.ts"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.62.8",

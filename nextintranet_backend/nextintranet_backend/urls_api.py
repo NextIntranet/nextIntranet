@@ -12,8 +12,16 @@ from .views import home
 from .views import user
 from .views import identifier
 from .views.search import SearchApiView
-from .views.printList import PrintListRouter, PrintItemRouter, PrintApi
+from .views.printList import (
+    PrintListRouter,
+    PrintItemRouter,
+    PrintRenderJobRouter,
+    PrintApi,
+    PrintItemUploadView,
+    PrintItemAddView,
+)
 from .views.dashboard import DashboardMetricsAPIView
+from .views.plugins import PluginInstanceRouter, PluginExecuteView
 
 
 from .schema import schema
@@ -59,6 +67,12 @@ urlpatterns = [
     path('v1/graphql/', GraphQLView.as_view(graphiql=True, schema=schema), name='graphql'),
 
     path('v1/print/list/', include(PrintListRouter.urls), name='api_print_list'),
+    path('v1/print/render/', include(PrintRenderJobRouter.urls), name='api_print_render'),
+    path('v1/print/item/upload/', PrintItemUploadView.as_view(), name='api_print_item_upload'),
+    path('v1/print/item/add/', PrintItemAddView.as_view(), name='api_print_item_add'),
     path('v1/print/item/', include(PrintItemRouter.urls), name='api_print_item'),
     path('v1/print/', PrintApi.as_view(), name='api_print'),
+
+    path('v1/plugins/', include(PluginInstanceRouter.urls), name='api_plugins'),
+    path('v1/plugins/instances/<uuid:pk>/execute/', PluginExecuteView.as_view(), name='api_plugin_execute'),
 ]

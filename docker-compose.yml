@@ -64,6 +64,24 @@ services:
     networks:
       - nextintranet_net
 
+  worker:
+    build:
+      context: nextintranet_backend
+      dockerfile: Dockerfile
+    volumes:
+      - ./nextintranet_backend:/app
+      - ./.data/:/data
+    env_file:
+      - .env
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["python manage.py qcluster"]
+    depends_on:
+      - db_nextintranet
+      - redis
+      - minio
+    networks:
+      - nextintranet_net
+
   frontend:
     build:
       context: nextintranet_frontend

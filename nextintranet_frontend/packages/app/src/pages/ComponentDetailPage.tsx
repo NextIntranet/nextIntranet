@@ -1,32 +1,37 @@
 import { useMemo, useState } from "react"
-import { Link, useParams } from "react-router-dom"
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   type ColumnDef,
+  type Row as TanstackRow,
   type Table as TanstackTable,
   flexRender,
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table"
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  Legend,
+  XAxis,
+  YAxis,
+} from "recharts"
 import { apiFetch } from "@nextintranet/core"
 import { toast } from "sonner"
 import {
-  ClipboardList,
-  FileText,
   Layers,
   Link2,
   Copy,
-  MapPin,
-  Package,
+  Check,
   Pencil,
   Plus,
-  Printer,
+  RefreshCcw,
   Save,
-  ShoppingCart,
+  Settings,
   Tag,
   Trash2,
   X,
-  type LucideIcon,
 } from "lucide-react"
 import Select, {
   type StylesConfig,
@@ -37,8 +42,15 @@ import CreatableSelect from "react-select/creatable"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
+import { Switch } from "@/components/ui/switch"
 import {
   Sheet,
   SheetContent,
@@ -48,6 +60,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { ExtensionPoint } from "@/plugins/ExtensionPoint"
+import { PrintActions } from "@/components/PrintActions"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
@@ -59,6 +73,7 @@ import {
 } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 import { PriceLabel } from "@/components/PriceLabel"
+import { PacketOperationSheet } from "@/components/PacketOperationSheet"
 
 interface Category {
   id: string
@@ -75,10 +90,11 @@ interface ComponentPacket {
   count: number
   description: string
   created_at: string
-  location: {
+  is_active?: boolean
+  location?: {
     id: string
     full_path: string
-  }
+  } | null
 }
 
 interface Location {
@@ -92,6 +108,7 @@ interface Supplier {
   id: string
   name: string
   website?: string | null
+  api_plugin_instance?: string | null
 }
 
 interface SupplierRelation {
@@ -101,6 +118,8 @@ interface SupplierRelation {
   description?: string | null
   custom_url?: string | null
   url?: string | null
+  api_fetched_at?: string | null
+  api_applied_at?: string | null
 }
 
 interface Document {
@@ -135,8 +154,11 @@ interface Component {
   tags?: TagType[]
   inventory_summary: {
     total_quantity: number
+    home_quantity?: number | null
     reserved_quantity: number
     purchase_quantity: number
+    purchase_requested_quantity?: number
+    purchase_ordered_quantity?: number
   }
   internal_price?: number
   selling_price?: number
@@ -147,6 +169,17 @@ interface Component {
   suppliers?: SupplierRelation[]
 }
 
+interface ComponentHistoryEntry {
+  timestamp: string
+  levels: Record<string, number>
+  total: number
+}
+
+interface ComponentHistoryResponse {
+  packets: Array<{ id: string; label: string }>
+  history: ComponentHistoryEntry[]
+}
+
 interface User {
   is_superuser: boolean
   access_permissions: Array<{
@@ -154,8 +187,6 @@ interface User {
     level: string
   }>
 }
-
-type TabKey = "packets" | "suppliers" | "documents" | "parameters"
 
 type OptionType = { value: string; label: string }
 
@@ -221,10 +252,14 @@ const selectStyles: StylesConfig<OptionType, boolean> = {
 
 export function ComponentDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
   const [editMode, setEditMode] = useState(false)
   const [editedData, setEditedData] = useState<Partial<Component>>({})
-  const [activeTab, setActiveTab] = useState<TabKey>("packets")
+  const [isStackedHistory, setIsStackedHistory] = useState(true)
   const [packetSheetOpen, setPacketSheetOpen] = useState(false)
+  const [operationSheetOpen, setOperationSheetOpen] = useState(false)
+  const [operationPacketId, setOperationPacketId] = useState<string | null>(null)
   const [supplierSheetOpen, setSupplierSheetOpen] = useState(false)
   const [documentSheetOpen, setDocumentSheetOpen] = useState(false)
   const [parameterSheetOpen, setParameterSheetOpen] = useState(false)
@@ -235,6 +270,7 @@ export function ComponentDetailPage() {
     locationId: "",
     count: "",
     description: "",
+    isActive: true,
   })
   const [supplierForm, setSupplierForm] = useState({
     supplierId: "",
@@ -256,6 +292,7 @@ export function ComponentDetailPage() {
     value: "",
   })
   const queryClient = useQueryClient()
+  const highlightPacketId = searchParams.get("packet")
 
   const { data: availableCategories } = useQuery<Category[] | { results: Category[] }>({
     queryKey: ["categories"],
@@ -314,6 +351,12 @@ export function ComponentDetailPage() {
     enabled: !!id,
   })
 
+  const { data: historyData, isLoading: isHistoryLoading } = useQuery<ComponentHistoryResponse>({
+    queryKey: ["component-history", id],
+    queryFn: () => apiFetch<ComponentHistoryResponse>(`/api/v1/store/component/${id}/history/`),
+    enabled: !!id,
+  })
+
   const updateMutation = useMutation({
     mutationFn: (data: ComponentUpdatePayload) =>
       apiFetch(`/api/v1/store/component/${id}/`, {
@@ -353,6 +396,7 @@ export function ComponentDetailPage() {
       location: string
       count: number
       description?: string
+      is_active?: boolean
     }) =>
       apiFetch(`/api/v1/store/component/${id}/packet/`, {
         method: "POST",
@@ -361,7 +405,7 @@ export function ComponentDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["component", id] })
       setPacketSheetOpen(false)
-      setPacketForm({ locationId: "", count: "", description: "" })
+      setPacketForm({ locationId: "", count: "", description: "", isActive: true })
       toast.success("Packet created.")
     },
     onError: () => {
@@ -418,6 +462,37 @@ export function ComponentDetailPage() {
     },
     onError: () => {
       toast.error("Failed to update supplier relation.")
+    },
+  })
+
+  const syncSupplierRelationMutation = useMutation({
+    mutationFn: (payload: { id: string }) =>
+      apiFetch(`/api/v1/store/supplier/relation/${payload.id}/sync/`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["component", id] })
+      toast.success("Supplier data synced.")
+    },
+    onError: () => {
+      toast.error("Failed to sync supplier data.")
+    },
+  })
+
+  const applySupplierRelationMutation = useMutation({
+    mutationFn: (payload: { id: string }) =>
+      apiFetch(`/api/v1/store/supplier/relation/${payload.id}/apply/`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["component", id] })
+      queryClient.invalidateQueries({ queryKey: ["component-parameters", id] })
+      toast.success("Supplier data applied.")
+    },
+    onError: () => {
+      toast.error("Failed to apply supplier data.")
     },
   })
 
@@ -492,6 +567,7 @@ export function ComponentDetailPage() {
       toast.error("Failed to add parameter.")
     },
   })
+
 
   const updateParameterMutation = useMutation({
     mutationFn: (payload: { id: string; data: { parameter_type: string; value: string } }) =>
@@ -568,6 +644,7 @@ export function ComponentDetailPage() {
       location: packetForm.locationId,
       count: countValue,
       description: packetForm.description || undefined,
+      is_active: packetForm.isActive,
     })
   }
 
@@ -758,45 +835,16 @@ export function ComponentDetailPage() {
   const selectedParameterTypeOption = parameterTypeOptions.find(
     (option) => option.value === parameterForm.parameterTypeId,
   )
-
-  const tabItems: Array<{ key: TabKey; label: string; icon: LucideIcon }> = [
-    {
-      key: "packets",
-      label: `Locations (${component?.packets?.length || 0})`,
-      icon: MapPin,
-    },
-    {
-      key: "parameters",
-      label: `Parameters (${parametersList.length || 0})`,
-      icon: ClipboardList,
-    },
-    {
-      key: "suppliers",
-      label: `Suppliers (${component?.suppliers?.length || 0})`,
-      icon: Package,
-    },
-    {
-      key: "documents",
-      label: `Documents (${component?.documents?.length || 0})`,
-      icon: FileText,
-    },
-  ]
-
-  const activeAction = (() => {
-    if (!canEdit) {
-      return null
-    }
-    if (activeTab === "packets") {
-      return { label: "New packet", onClick: () => setPacketSheetOpen(true) }
-    }
-    if (activeTab === "suppliers") {
-      return { label: "Assign supplier", onClick: () => setSupplierSheetOpen(true) }
-    }
-    if (activeTab === "parameters") {
-      return { label: "Add parameter", onClick: () => setParameterSheetOpen(true) }
-    }
-    return { label: "Add document", onClick: () => setDocumentSheetOpen(true) }
-  })()
+  const packetOptions = useMemo(
+    () =>
+      (component?.packets ?? []).map((packet) => ({
+        id: packet.id,
+        label: packet.location?.full_path || packet.id,
+        locationId: packet.location?.id || null,
+        count: packet.count ?? null,
+      })),
+    [component?.packets],
+  )
 
   const documentTypeOptions = [
     { value: "datasheet", label: "Datasheet" },
@@ -898,12 +946,51 @@ export function ComponentDetailPage() {
         header: "Count",
       },
       {
+        id: "status",
+        header: "Status",
+        cell: ({ row }) => (
+          <span
+            className={
+              row.original.is_active === false ? "text-muted-foreground" : "text-foreground"
+            }
+          >
+            {row.original.is_active === false ? "Inactive" : "Active"}
+          </span>
+        ),
+      },
+      {
         accessorKey: "created_at",
         header: "Created",
         cell: ({ row }) => new Date(row.original.created_at).toLocaleDateString(),
       },
+      {
+        id: "actions",
+        header: "Actions",
+        cell: ({ row }) => (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-muted-foreground hover:text-foreground"
+              onClick={() => {
+                setOperationPacketId(row.original.id)
+                setOperationSheetOpen(true)
+              }}
+              aria-label="Packet actions"
+            >
+              <Settings className="h-4 w-4" />
+            </Button>
+            <PrintActions
+              targetType="packet"
+              targetId={row.original.id}
+              label={row.original.location?.full_path || row.original.id}
+              compact
+            />
+          </div>
+        ),
+      },
     ]
-  }, [handleCopyLink])
+  }, [component?.id, handleCopyLink, id, packetOptions, queryClient])
 
   const supplierColumns = useMemo<ColumnDef<SupplierRelation>[]>(() => {
     const columns: ColumnDef<SupplierRelation>[] = [
@@ -1004,6 +1091,49 @@ export function ComponentDetailPage() {
 
     if (canEdit) {
       columns.push({
+        id: "api",
+        header: "API",
+        cell: ({ row }) => {
+          const hasPlugin = Boolean(row.original.supplier?.api_plugin_instance)
+          const hasSymbol = Boolean(row.original.symbol)
+          const canSync = hasPlugin && hasSymbol
+          const syncTitle = !canSync
+            ? "Supplier symbol and API plugin are required."
+            : row.original.api_fetched_at
+              ? `Last sync: ${new Date(row.original.api_fetched_at).toLocaleString()}`
+              : "Sync supplier data"
+          const applyTitle = !canSync
+            ? "Supplier symbol and API plugin are required."
+            : row.original.api_applied_at
+              ? `Last apply: ${new Date(row.original.api_applied_at).toLocaleString()}`
+              : "Apply supplier data"
+          return (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => syncSupplierRelationMutation.mutate({ id: row.original.id })}
+                disabled={!canSync || syncSupplierRelationMutation.isPending}
+                aria-label="Sync supplier data"
+                title={syncTitle}
+              >
+                <RefreshCcw className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => applySupplierRelationMutation.mutate({ id: row.original.id })}
+                disabled={!canSync || applySupplierRelationMutation.isPending}
+                aria-label="Apply supplier data"
+                title={applyTitle}
+              >
+                <Check className="h-4 w-4" />
+              </Button>
+            </div>
+          )
+        },
+      })
+      columns.push({
         id: "edit",
         header: "",
         cell: ({ row }) => (
@@ -1020,7 +1150,14 @@ export function ComponentDetailPage() {
     }
 
     return columns
-  }, [canEdit, handleCopyLink, handleSupplierEdit, shortenUrl])
+  }, [
+    applySupplierRelationMutation,
+    canEdit,
+    handleCopyLink,
+    handleSupplierEdit,
+    shortenUrl,
+    syncSupplierRelationMutation,
+  ])
 
   const documentColumns = useMemo<ColumnDef<Document>[]>(() => {
     const columns: ColumnDef<Document>[] = [
@@ -1087,6 +1224,20 @@ export function ComponentDetailPage() {
             <span className="text-muted-foreground">-</span>
           ),
       },
+      {
+        id: "actions",
+        header: "Actions",
+        cell: ({ row }) => (
+          <PrintActions
+            targetType="component"
+            targetId={component?.id ?? row.original.id}
+            kind="document"
+            fileUrl={row.original.file_url || row.original.url || null}
+            label={row.original.name || row.original.doc_type || "Document"}
+            compact
+          />
+        ),
+      },
     ]
 
     if (canEdit) {
@@ -1107,7 +1258,7 @@ export function ComponentDetailPage() {
     }
 
     return columns
-  }, [canEdit, handleCopyLink, handleDocumentEdit])
+  }, [canEdit, component?.id, handleCopyLink, handleDocumentEdit])
 
   const packetsTable = useReactTable({
     data: component?.packets ?? [],
@@ -1195,12 +1346,73 @@ export function ComponentDetailPage() {
     getCoreRowModel: getCoreRowModel(),
   })
 
+  const historyPackets = historyData?.packets ?? []
+  const historyConfig = useMemo(() => {
+    const config: ChartConfig = {}
+    historyPackets.forEach((packet, index) => {
+      const key = `packet_${index}`
+      const prefix = packet.id?.split("-")[0] || `packet-${index + 1}`
+      const position = index + 1
+      const baseLabel = packet.label || `Packet ${index + 1}`
+      config[key] = {
+        label: `${baseLabel} (${prefix} #${position})`,
+        color: `var(--chart-${(index % 5) + 1})`,
+      }
+    })
+    return config
+  }, [historyPackets])
+
+  const historyDataPoints = useMemo(() => {
+    if (!historyData?.history) {
+      return []
+    }
+    const rows = historyData.history.map((entry) => {
+      const parsedTimestamp = new Date(entry.timestamp).getTime()
+      const timestampValue = Number.isNaN(parsedTimestamp) ? entry.timestamp : parsedTimestamp
+      const row: Record<string, number | string> = {
+        timestamp: timestampValue,
+      }
+      historyPackets.forEach((packet, index) => {
+        const key = `packet_${index}`
+        row[key] = entry.levels?.[packet.id] ?? 0
+      })
+      return row
+    })
+    if (rows.length > 0) {
+      const lastRow = rows[rows.length - 1]
+      const nowTimestamp = Date.now()
+      rows.push({
+        ...lastRow,
+        timestamp: nowTimestamp,
+      })
+    }
+    return rows
+  }, [historyData?.history, historyPackets])
+
+  const formatHistoryDate = (value: string | number) => {
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) {
+      return String(value)
+    }
+    return parsed.toLocaleDateString()
+  }
+
+  const formatHistoryDateTime = (value: string | number) => {
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) {
+      return String(value)
+    }
+    return parsed.toLocaleString()
+  }
+
   const renderTable = <T,>({
     table,
     emptyMessage,
+    getRowClassName,
   }: {
     table: TanstackTable<T>
     emptyMessage: string
+    getRowClassName?: (row: TanstackRow<T>) => string | undefined
   }) => (
     <div className="overflow-hidden rounded-lg border border-border/70">
       <Table className="w-full table-fixed">
@@ -1223,7 +1435,10 @@ export function ComponentDetailPage() {
         <TableBody>
           {table.getRowModel().rows.length ? (
             table.getRowModel().rows.map((row) => (
-              <TableRow key={row.id} className="border-border/40">
+              <TableRow
+                key={row.id}
+                className={cn("border-border/40", getRowClassName?.(row))}
+              >
                 {row.getVisibleCells().map((cell) => (
                   <TableCell key={cell.id} className="h-9 px-3 text-sm">
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -1260,7 +1475,7 @@ export function ComponentDetailPage() {
       <div className="mx-auto max-w-6xl px-4 py-6 lg:px-6">
         <div className="space-y-4">
           <Skeleton className="h-10 w-48" />
-          <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
+          <div className="grid gap-4">
             <Card>
               <CardContent className="space-y-4 p-4">
                 <Skeleton className="aspect-video w-full rounded-lg" />
@@ -1271,24 +1486,10 @@ export function ComponentDetailPage() {
                 </div>
               </CardContent>
             </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle>Quick Actions</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Skeleton className="h-10 rounded-md" />
-                <Skeleton className="h-10 rounded-md" />
-              </CardContent>
-            </Card>
           </div>
-          <Card>
-            <CardHeader>
-              <CardTitle>Description</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Skeleton className="h-24 w-full rounded-md" />
-            </CardContent>
-          </Card>
+          <div className="rounded-lg border border-border/70 bg-card p-4">
+            <Skeleton className="h-24 w-full rounded-md" />
+          </div>
         </div>
       </div>
     )
@@ -1334,41 +1535,44 @@ export function ComponentDetailPage() {
             )}
           </div>
         </div>
-        {canEdit && (
-          <div className="flex items-center gap-2">
-            {editMode ? (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleCancel}
-                  disabled={updateMutation.isPending}
-                  className="gap-2"
-                >
-                  <X className="h-4 w-4" />
-                  Cancel
+        <div className="flex items-center gap-2">
+          <ExtensionPoint name="component.actions" context={{ componentId: component.id }} />
+          {canEdit && (
+            <>
+              {editMode ? (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCancel}
+                    disabled={updateMutation.isPending}
+                    className="gap-2"
+                  >
+                    <X className="h-4 w-4" />
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleSave}
+                    disabled={updateMutation.isPending}
+                    className="gap-2"
+                  >
+                    <Save className="h-4 w-4" />
+                    {updateMutation.isPending ? "Saving..." : "Save"}
+                  </Button>
+                </>
+              ) : (
+                <Button size="sm" onClick={handleEdit} className="gap-2">
+                  <Pencil className="h-4 w-4" />
+                  Edit
                 </Button>
-                <Button
-                  size="sm"
-                  onClick={handleSave}
-                  disabled={updateMutation.isPending}
-                  className="gap-2"
-                >
-                  <Save className="h-4 w-4" />
-                  {updateMutation.isPending ? "Saving..." : "Save"}
-                </Button>
-              </>
-            ) : (
-              <Button size="sm" onClick={handleEdit} className="gap-2">
-                <Pencil className="h-4 w-4" />
-                Edit
-              </Button>
-            )}
-          </div>
-        )}
+              )}
+            </>
+          )}
+        </div>
       </div>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:items-start">
+      <div className="mt-4 grid gap-4">
         <div className="min-w-0 space-y-4">
           <Card>
             <CardContent className="grid gap-6 p-4 sm:p-6 lg:grid-cols-[260px_1fr]">
@@ -1466,30 +1670,38 @@ export function ComponentDetailPage() {
 
               <div className="space-y-4">
                 <div className="grid gap-3 sm:grid-cols-3">
-                  {[
-                    {
-                      label: "Total",
-                      value: component.inventory_summary?.total_quantity ?? 0,
-                    },
-                    {
-                      label: "Reserved",
-                      value: component.inventory_summary?.reserved_quantity ?? 0,
-                    },
-                    {
-                      label: "Purchase",
-                      value: component.inventory_summary?.purchase_quantity ?? 0,
-                    },
-                  ].map((stat) => (
-                    <div
-                      key={stat.label}
-                      className="rounded-lg border border-border/70 bg-muted/40 p-3 shadow-sm"
-                    >
-                      <p className="text-xs font-semibold uppercase text-muted-foreground">
-                        {stat.label}
-                      </p>
-                      <p className="text-xl font-semibold text-foreground">{stat.value}</p>
-                    </div>
-                  ))}
+                  <div className="rounded-lg border border-border/70 bg-muted/40 p-3 shadow-sm">
+                    <p className="text-xs font-semibold uppercase text-muted-foreground">
+                      Total
+                    </p>
+                    <p className="text-xl font-semibold text-foreground">
+                      {component.inventory_summary?.home_quantity ?? "—"} /{" "}
+                      {component.inventory_summary?.total_quantity ?? 0}
+                    </p>
+                    <p className="text-xs text-muted-foreground">Home / All</p>
+                  </div>
+                  <div className="rounded-lg border border-border/70 bg-muted/40 p-3 shadow-sm">
+                    <p className="text-xs font-semibold uppercase text-muted-foreground">
+                      Reserved
+                    </p>
+                    <p className="text-xl font-semibold text-foreground">
+                      {component.inventory_summary?.reserved_quantity ?? 0}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border/70 bg-muted/40 p-3 shadow-sm">
+                    <p className="text-xs font-semibold uppercase text-muted-foreground">
+                      Purchase
+                    </p>
+                    <p className="text-xl font-semibold text-foreground">
+                      {component.inventory_summary?.purchase_ordered_quantity ?? 0} /{" "}
+                      {component.inventory_summary?.purchase_requested_quantity ??
+                        component.inventory_summary?.purchase_quantity ??
+                        0}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Ordered / Requested
+                    </p>
+                  </div>
                 </div>
 
                 <Separator />
@@ -1556,7 +1768,7 @@ export function ComponentDetailPage() {
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-muted-foreground">
-                      <span>Locations</span>
+                      <span>Packets</span>
                       <span className="font-medium text-foreground">
                         {component.packets?.length || 0}
                       </span>
@@ -1572,111 +1784,238 @@ export function ComponentDetailPage() {
               </div>
             </CardContent>
           </Card>
+          <div className="flex justify-end">
+            <PrintActions
+              targetType="component"
+              targetId={component.id}
+              label={component.name}
+              compact
+            />
+          </div>
+      
+                <div className="space-y-10">
+    
+              <section className="space-y-4">
+                  <div className="space-y-1">
+          <h2 className="text-lg font-semibold text-foreground">Description</h2>
+          <div className="rounded-lg border border-border/70 bg-card p-4">
+            {editMode ? (
+              <textarea
+                value={editedData.description || ""}
+                onChange={(e) => setEditedData({ ...editedData, description: e.target.value })}
+                className="min-h-[140px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            ) : (
+              <p className="text-sm text-foreground">
+                {component.description || "No description provided."}
+              </p>
+            )}
+          </div>
+  </div>
+  </section>
 
-          <Card>
-            <CardHeader className="flex items-start justify-between">
+
+          <section className="space-y-4">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="space-y-1">
-                <CardTitle>Description</CardTitle>
+                <h2 className="text-lg font-semibold text-foreground">Packets</h2>
+                <p className="text-sm text-muted-foreground">
+                  {component?.packets?.length || 0} packets
+                </p>
               </div>
-            </CardHeader>
-            <CardContent>
-              {editMode ? (
-                <textarea
-                  value={editedData.description || ""}
-                  onChange={(e) => setEditedData({ ...editedData, description: e.target.value })}
-                  className="min-h-[140px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              {canEdit && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setPacketSheetOpen(true)}
+                    className="gap-2"
+                  >
+                    <Plus className="h-4 w-4" />
+                    New packet
+                  </Button>
+                </div>
+              )}
+            </div>
+            {renderTable({
+              table: packetsTable,
+              emptyMessage: "No packets available.",
+              getRowClassName: (row) =>
+                highlightPacketId && row.original.id === highlightPacketId
+                  ? "bg-amber-100/90 shadow-[inset_0_0_0_2px_rgba(251,191,36,0.85)]"
+                  : undefined,
+            })}
+          </section>
+
+          <section className="space-y-4">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <h2 className="text-lg font-semibold text-foreground">Parameters</h2>
+                <p className="text-sm text-muted-foreground">
+                  {parametersList.length || 0} parameters
+                </p>
+              </div>
+              {canEdit && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setParameterSheetOpen(true)}
+                  className="gap-2"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add parameter
+                </Button>
+              )}
+            </div>
+            {renderTable({
+              table: parametersTable,
+              emptyMessage: "No parameters available.",
+            })}
+          </section>
+
+          <section className="space-y-4">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <h2 className="text-lg font-semibold text-foreground">Suppliers</h2>
+                <p className="text-sm text-muted-foreground">
+                  {component?.suppliers?.length || 0} suppliers
+                </p>
+              </div>
+              {canEdit && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setSupplierSheetOpen(true)}
+                  className="gap-2"
+                >
+                  <Plus className="h-4 w-4" />
+                  Assign supplier
+                </Button>
+              )}
+            </div>
+            {renderTable({
+              table: suppliersTable,
+              emptyMessage: "No suppliers available.",
+            })}
+          </section>
+
+          <section className="space-y-4">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <h2 className="text-lg font-semibold text-foreground">Documents</h2>
+                <p className="text-sm text-muted-foreground">
+                  {component?.documents?.length || 0} documents
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                {canEdit && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setDocumentSheetOpen(true)}
+                    className="gap-2"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add document
+                  </Button>
+                )}
+                <ExtensionPoint
+                  name="documents.actions"
+                  context={{ componentId: component.id, activeTab: "documents" }}
                 />
+              </div>
+            </div>
+            {renderTable({
+              table: documentsTable,
+              emptyMessage: "No documents attached.",
+            })}
+          </section>
+
+          <section className="space-y-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <h2 className="text-lg font-semibold text-foreground">History levels</h2>
+                <p className="text-sm text-muted-foreground">
+                  Inventory timeline across all packets.
+                </p>
+              </div>
+              <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                <span>Stacked view</span>
+                <Switch
+                  checked={isStackedHistory}
+                  onCheckedChange={(checked) => setIsStackedHistory(checked)}
+                />
+              </div>
+            </div>
+            <Card className="shadow-none">
+            <CardContent className="p-2">
+              {isHistoryLoading ? (
+                <div className="space-y-3">
+                  <Skeleton className="h-5 w-1/2" />
+                  <Skeleton className="h-64 w-full" />
+                </div>
+              ) : historyDataPoints.length ? (
+                <ChartContainer config={historyConfig} className="h-[320px] w-full">
+                  <AreaChart data={historyDataPoints} margin={{ left: 12, right: 12 }}>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="timestamp"
+                      type="number"
+                      scale="time"
+                      domain={["dataMin", "dataMax"]}
+                      tickFormatter={formatHistoryDate}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      tickFormatter={(value) => Number(value).toLocaleString()}
+                    />
+                    <ChartTooltip
+                      content={
+                        <ChartTooltipContent
+                          labelKey="timestamp"
+                          labelFormatter={(_, payload) =>
+                            formatHistoryDateTime(payload?.[0]?.payload?.timestamp ?? "")
+                          }
+                        />
+                      }
+                    />
+                    <Legend
+                      formatter={(value) =>
+                        historyConfig[value as keyof ChartConfig]?.label || value
+                      }
+                    />
+                    {historyPackets.map((packet, index) => {
+                      const key = `packet_${index}`
+                      return (
+                        <Area
+                          key={key}
+                          type="monotone"
+                          dataKey={key}
+                          stroke={`var(--color-${key})`}
+                          fill={`var(--color-${key})`}
+                          fillOpacity={0.3}
+                          dot={{ r: 3, strokeWidth: 2, fill: "var(--background)" }}
+                          activeDot={{ r: 5 }}
+                          stackId={isStackedHistory ? "levels" : undefined}
+                        />
+                      )
+                    })}
+                  </AreaChart>
+                </ChartContainer>
               ) : (
-                <p className="text-sm text-foreground">
-                  {component.description || "No description provided."}
+                <p className="text-sm text-muted-foreground">
+                  No history data is available yet.
                 </p>
               )}
             </CardContent>
           </Card>
-
-          <Card>
-            <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <CardTitle>Details</CardTitle>
-              <div className="flex flex-wrap items-center gap-2">
-                {tabItems.map((tab) => (
-                  <Button
-                    key={tab.key}
-                    variant={activeTab === tab.key ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setActiveTab(tab.key)}
-                    className="gap-2"
-                  >
-                    <tab.icon className="h-4 w-4" />
-                    {tab.label}
-                  </Button>
-                ))}
-                {activeAction && (
-                  <Button size="sm" variant="secondary" onClick={activeAction.onClick} className="gap-2">
-                    <Plus className="h-4 w-4" />
-                    {activeAction.label}
-                  </Button>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4 px-4 pb-5">
-              {activeTab === "packets" && (
-                renderTable({
-                  table: packetsTable,
-                  emptyMessage: "No locations available.",
-                })
-              )}
-
-              {activeTab === "parameters" && (
-                renderTable({
-                  table: parametersTable,
-                  emptyMessage: "No parameters available.",
-                })
-              )}
-
-              {activeTab === "suppliers" && (
-                renderTable({
-                  table: suppliersTable,
-                  emptyMessage: "No suppliers available.",
-                })
-              )}
-
-              {activeTab === "documents" && (
-                renderTable({
-                  table: documentsTable,
-                  emptyMessage: "No documents attached.",
-                })
-              )}
-            </CardContent>
-          </Card>
+          </section>
+          </div>
         </div>
 
-        <div className="space-y-4">
-          {canEdit && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Quick Actions</CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-2">
-                <Button variant="secondary" className="justify-start gap-2">
-                  <ShoppingCart className="h-4 w-4" />
-                  Reorder
-                </Button>
-                <Button variant="secondary" className="justify-start gap-2">
-                  <Package className="h-4 w-4" />
-                  New packet
-                </Button>
-                <Button variant="secondary" className="justify-start gap-2">
-                  <Printer className="h-4 w-4" />
-                  Print
-                </Button>
-                <Button variant="secondary" className="justify-start gap-2">
-                  <ClipboardList className="h-4 w-4" />
-                  Inventory
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-        </div>
       </div>
 
       <Sheet open={packetSheetOpen} onOpenChange={setPacketSheetOpen}>
@@ -1709,6 +2048,20 @@ export function ComponentDetailPage() {
                 placeholder="0"
               />
             </div>
+            <div className="flex items-center justify-between rounded-lg border border-border/70 px-4 py-3">
+              <div>
+                <p className="text-sm font-medium text-foreground">Active</p>
+                <p className="text-xs text-muted-foreground">
+                  Inactive packets are hidden from default workflows.
+                </p>
+              </div>
+              <Switch
+                checked={packetForm.isActive}
+                onCheckedChange={(checked) =>
+                  setPacketForm({ ...packetForm, isActive: checked })
+                }
+              />
+            </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Description</label>
               <textarea
@@ -1735,6 +2088,24 @@ export function ComponentDetailPage() {
           </SheetFooter>
         </SheetContent>
       </Sheet>
+
+      <PacketOperationSheet
+        open={operationSheetOpen}
+        onOpenChange={(open) => {
+          setOperationSheetOpen(open)
+          if (!open) {
+            setOperationPacketId(null)
+          }
+        }}
+        packetOptions={packetOptions}
+        initialPacketId={operationPacketId ?? undefined}
+        showPacketSelect={!operationPacketId}
+        componentId={component?.id}
+        onOperationCreated={() => {
+          queryClient.invalidateQueries({ queryKey: ["component", id] })
+          queryClient.invalidateQueries({ queryKey: ["component-history", id] })
+        }}
+      />
 
       <Sheet
         open={supplierSheetOpen}

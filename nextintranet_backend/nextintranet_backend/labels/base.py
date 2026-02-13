@@ -1,6 +1,23 @@
 from abc import ABC, abstractmethod
 from io import BytesIO
+from pathlib import Path
 from fpdf import FPDF
+
+FONT_DIR = Path(__file__).resolve().parent / "fonts"
+DEFAULT_FONT_FAMILY = "DejaVuSans"
+DEFAULT_FONT_REGULAR = FONT_DIR / "DejaVuSans.ttf"
+DEFAULT_FONT_BOLD = FONT_DIR / "DejaVuSans-Bold.ttf"
+
+
+def ensure_unicode_fonts(pdf: FPDF) -> None:
+    if DEFAULT_FONT_FAMILY in getattr(pdf, "fonts", {}):
+        return
+    if not DEFAULT_FONT_REGULAR.exists() or not DEFAULT_FONT_BOLD.exists():
+        raise FileNotFoundError(
+            f"Missing Unicode fonts in {FONT_DIR}. Expected {DEFAULT_FONT_REGULAR} and {DEFAULT_FONT_BOLD}."
+        )
+    pdf.add_font(DEFAULT_FONT_FAMILY, "", str(DEFAULT_FONT_REGULAR), uni=True)
+    pdf.add_font(DEFAULT_FONT_FAMILY, "B", str(DEFAULT_FONT_BOLD), uni=True)
 
 
 class LabelContentGenerator(ABC):

@@ -9,6 +9,7 @@ import uuid
 from nextintranet_backend.models import NIModel
 from nextintranet_backend.models.user import User
 from django.urls import reverse
+from django.core.exceptions import ValidationError
 import datetime
 
 class Stocktaking(NIModel):
@@ -22,6 +23,8 @@ class Stocktaking(NIModel):
 
     open_from = models.DateTimeField(blank=True, null=True)
     open_until = models.DateTimeField(blank=True, null=True)
+    target_date = models.DateField(blank=True, null=True)
+    is_active = models.BooleanField(default=False)
 
     authors = models.ManyToManyField(User, related_name='stocktaking_authors')
 
@@ -29,3 +32,10 @@ class Stocktaking(NIModel):
         return reverse('stocktaking-process', args=[str(self.id)])
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        if self.is_active:
+            conflict = Stocktaking.objects.filter(is_active=True).exclude(pk=self.pk).first()
+            if conflict:
+                raise ValidationError(_('Only one stocktaking can be active at a time.'))
+        super().save(*args, **kwargs)

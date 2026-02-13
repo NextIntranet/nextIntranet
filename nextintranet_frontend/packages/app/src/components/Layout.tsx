@@ -5,6 +5,7 @@ import { SiteHeader } from "@/components/SiteHeader"
 import { ThemeProvider } from "@/components/theme-provider"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { Toaster } from "@/components/ui/sonner"
+import { HardwareScannerListener } from "@/components/HardwareScannerListener"
 
 export function Layout() {
   return (
@@ -17,6 +18,7 @@ export function Layout() {
             <Outlet />
           </div>
         </SidebarInset>
+        <HardwareScannerListener />
         <Toaster richColors />
       </SidebarProvider>
     </ThemeProvider>

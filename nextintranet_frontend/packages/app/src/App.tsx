@@ -6,6 +6,9 @@ import { ComponentDetailPage } from './pages/ComponentDetailPage';
 import { LocationsPage } from './pages/LocationsPage';
 import { SuppliersPage } from './pages/SuppliersPage';
 import { CategoriesPage } from './pages/CategoriesPage';
+import { ParameterTypesPage } from './pages/ParameterTypesPage';
+import { InventoryCampaignsPage } from './pages/InventoryCampaignsPage';
+import { InventoryPage } from './pages/InventoryPage';
 import { ReservationsPage } from './pages/ReservationsPage';
 import { PurchaseRequestsPage } from './pages/PurchaseRequestsPage';
 import { UsersPage } from './pages/UsersPage';
@@ -15,6 +18,9 @@ import { ForbiddenPage } from './pages/ForbiddenPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { UnauthorizedPage } from './pages/UnauthorizedPage';
 import { PacketDetailPage } from './pages/PacketDetailPage';
+import { PrintQueuePage } from './pages/PrintQueuePage';
+import { HardwarePage } from './pages/HardwarePage';
+import { SupplierRelationPage } from './pages/SupplierRelationPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Layout } from './components/Layout';
 import { RequirePermission } from './components/RequirePermission';
@@ -70,6 +76,46 @@ export function App() {
           <Route path="store/category" element={<CategoriesPage />} />
           <Route path="store/category/:id" element={<CategoriesPage />} />
           <Route
+            path="store/parameter-type"
+            element={
+              <RequirePermission area="warehouse" minLevel="read">
+                <ParameterTypesPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="store/parameter-type/:id"
+            element={
+              <RequirePermission area="warehouse" minLevel="read">
+                <ParameterTypesPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="store/inventory-campaign"
+            element={
+              <RequirePermission area="warehouse" minLevel="read">
+                <InventoryCampaignsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="store/inventory-campaign/:id"
+            element={
+              <RequirePermission area="warehouse" minLevel="read">
+                <InventoryCampaignsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="store/inventory"
+            element={
+              <RequirePermission area="warehouse" minLevel="read">
+                <InventoryPage />
+              </RequirePermission>
+            }
+          />
+          <Route
             path="store/reservations"
             element={
               <RequirePermission area="warehouse-operations" minLevel="read">
@@ -103,10 +149,34 @@ export function App() {
           />
           <Route path="store/component/:id" element={<ComponentDetailPage />} />
           <Route
+            path="store/supplier-relation/:id"
+            element={
+              <RequirePermission area="warehouse" minLevel="read">
+                <SupplierRelationPage />
+              </RequirePermission>
+            }
+          />
+          <Route
             path="store/packet/:id"
             element={
               <RequirePermission area="warehouse" minLevel="read">
                 <PacketDetailPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="print/queue"
+            element={
+              <RequirePermission area="warehouse-operations" minLevel="read">
+                <PrintQueuePage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="print/queue/:id"
+            element={
+              <RequirePermission area="warehouse-operations" minLevel="read">
+                <PrintQueuePage />
               </RequirePermission>
             }
           />
@@ -120,6 +190,7 @@ export function App() {
           />
           <Route path="user/:id" element={<UserDetailPage />} />
           <Route path="profile" element={<ProfileRedirectPage />} />
+          <Route path="hardware" element={<HardwarePage />} />
           <Route path="401" element={<UnauthorizedPage />} />
           <Route path="403" element={<ForbiddenPage />} />
           <Route path="404" element={<NotFoundPage />} />

@@ -135,13 +135,25 @@ class SupplierDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
 class SupplierForm(forms.ModelForm):
     class Meta:
         model = Supplier
-        fields = ['name', 'contact_info', 'website', 'link_template', 'min_order_quantity']
+        fields = [
+            'name',
+            'contact_info',
+            'website',
+            'link_template',
+            'min_order_quantity',
+            'api_plugin_instance',
+            'api_config',
+            'api_mapping',
+        ]
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'contact_info': forms.Textarea(attrs={'class': 'form-control'}),
             'website': forms.URLInput(attrs={'class': 'form-control'}),
             'link_template': forms.TextInput(attrs={'class': 'form-control'}),
             'min_order_quantity': forms.NumberInput(attrs={'class': 'form-control'}),
+            'api_plugin_instance': forms.Select(attrs={'class': 'form-select'}),
+            'api_config': forms.Textarea(attrs={'class': 'form-control', 'rows': 6}),
+            'api_mapping': forms.Textarea(attrs={'class': 'form-control', 'rows': 6}),
         }
 
 
@@ -171,7 +183,16 @@ class SupplierDetailView(View):
 class SupplierCreateView(CreateView):
     model = Supplier
     template_name = 'warehouse/supplier_edit.html'
-    fields = ['name', 'contact_info', 'website', 'link_template', 'min_order_quantity']
+    fields = [
+        'name',
+        'contact_info',
+        'website',
+        'link_template',
+        'min_order_quantity',
+        'api_plugin_instance',
+        'api_config',
+        'api_mapping',
+    ]
     success_url = reverse_lazy('supplier-list')
 
     def form_valid(self, form):

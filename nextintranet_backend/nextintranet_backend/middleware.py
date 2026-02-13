@@ -52,8 +52,13 @@ class LoginRequiredMiddleware:
             reverse('login'),
             reverse('token_obtain_pair'),
             reverse('token_refresh'),
-            # reverse('kicad'),
         ]
+        # Django admin has its own authentication
+        if request.path.startswith('/admin/'):
+            return True
+        # KiCad HTTP library API
+        if request.path.startswith('/api/kicad/'):
+            return True
         return any(request.path.startswith(path) for path in exempt_paths)
 
 

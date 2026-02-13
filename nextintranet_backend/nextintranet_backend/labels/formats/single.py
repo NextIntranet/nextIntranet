@@ -1,5 +1,9 @@
 from fpdf import FPDF
-from nextintranet_backend.labels.base import LabelFormatGenerator
+from nextintranet_backend.labels.base import (
+    DEFAULT_FONT_FAMILY,
+    LabelFormatGenerator,
+    ensure_unicode_fonts,
+)
 
 
 class SingleLabelGenerator(LabelFormatGenerator):
@@ -17,6 +21,7 @@ class SingleLabelGenerator(LabelFormatGenerator):
         self.pdf = FPDF(orientation=orientation, unit='mm', format=(self.height_mm, self.width_mm))
         self.pdf.set_auto_page_break(auto=False, margin=0)
         self.pdf.set_margins(0, 0, 0)
+        ensure_unicode_fonts(self.pdf)
         
     def generate_pdf(self, data):
         """Generate a PDF with single labels."""
@@ -33,19 +38,20 @@ class SingleLabelGenerator(LabelFormatGenerator):
             # Generate content based on the label type
             if type in self.content_generators:
                 print(f"SingleLabelGenerator: Using registered generator for '{type}'")
+                label_data = record.get('data', record)
                 # Pass label dimensions to the content generator
                 self.content_generators[type].generate_label_content(
                     self.pdf, 
-                    record, 
+                    label_data,
                     label_width=self.width_mm, 
                     label_height=self.height_mm
                 )
             else:
                 print(f"SingleLabelGenerator: No registered generator for '{type}', using default")
                 # Default label handling
-                self.pdf.set_font('Arial', 'B', 12)
+                self.pdf.set_font(DEFAULT_FONT_FAMILY, 'B', 12)
                 self.pdf.cell(0, 10, f"Label: {type}", 0, 1, 'C')
-                self.pdf.set_font('Arial', '', 10)
+                self.pdf.set_font(DEFAULT_FONT_FAMILY, '', 10)
                 self.pdf.cell(0, 10, f"Data: {record}", 0, 1, 'L')
         
         print("SingleLabelGenerator: PDF generation complete")        

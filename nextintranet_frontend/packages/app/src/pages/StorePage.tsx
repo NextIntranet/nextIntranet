@@ -33,8 +33,11 @@ interface Component {
   };
   inventory_summary: {
     total_quantity: number;
+    home_quantity?: number | null;
     reserved_quantity: number;
     purchase_quantity: number;
+    purchase_requested_quantity?: number;
+    purchase_ordered_quantity?: number;
   };
   internal_price?: number;
   selling_price?: number;
@@ -489,16 +492,22 @@ export function StorePage() {
         ),
         cell: ({ row }) => {
           const inv = row.original.inventory_summary;
+          const homeQuantity = inv.home_quantity ?? null;
+          const requestQuantity =
+            inv.purchase_requested_quantity ?? inv.purchase_quantity ?? 0;
           return (
-            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
               <span className="flex items-center gap-1">
-                📦 {inv.total_quantity}
+                🏠 {homeQuantity ?? "—"}
+              </span>
+              <span className="flex items-center gap-1">
+                🌐 {inv.total_quantity}
               </span>
               <span className="flex items-center gap-1">
                 🔒 {inv.reserved_quantity}
               </span>
               <span className="flex items-center gap-1">
-                🛒 {inv.purchase_quantity}
+                🛒 {requestQuantity}
               </span>
             </div>
           );
@@ -703,15 +712,18 @@ export function StorePage() {
                             <div className="mt-auto flex items-center justify-between gap-2 border-t border-border/60 pt-3">
                               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                                 <span className="flex items-center gap-1">
-                                  📦 {component.inventory_summary?.total_quantity ?? 0}
+                                  🏠 {component.inventory_summary?.home_quantity ?? "—"}
                                 </span>
-                                <span className="text-muted-foreground/70">/</span>
+                                <span className="flex items-center gap-1">
+                                  🌐 {component.inventory_summary?.total_quantity ?? 0}
+                                </span>
                                 <span className="flex items-center gap-1">
                                   🔒 {component.inventory_summary?.reserved_quantity ?? 0}
                                 </span>
-                                <span className="text-muted-foreground/70">/</span>
                                 <span className="flex items-center gap-1">
-                                  🛒 {component.inventory_summary?.purchase_quantity ?? 0}
+                                  🛒 {component.inventory_summary?.purchase_requested_quantity ??
+                                    component.inventory_summary?.purchase_quantity ??
+                                    0}
                                 </span>
                               </div>
                               {component.selling_price && (
@@ -768,15 +780,18 @@ export function StorePage() {
                               </p>
                               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                                 <span className="flex items-center gap-1">
-                                  📦 {component.inventory_summary?.total_quantity ?? 0}
+                                  🏠 {component.inventory_summary?.home_quantity ?? "—"}
                                 </span>
-                                <span className="text-muted-foreground/70">/</span>
+                                <span className="flex items-center gap-1">
+                                  🌐 {component.inventory_summary?.total_quantity ?? 0}
+                                </span>
                                 <span className="flex items-center gap-1">
                                   🔒 {component.inventory_summary?.reserved_quantity ?? 0}
                                 </span>
-                                <span className="text-muted-foreground/70">/</span>
                                 <span className="flex items-center gap-1">
-                                  🛒 {component.inventory_summary?.purchase_quantity ?? 0}
+                                  🛒 {component.inventory_summary?.purchase_requested_quantity ??
+                                    component.inventory_summary?.purchase_quantity ??
+                                    0}
                                 </span>
                               </div>
                             </div>

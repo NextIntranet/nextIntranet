@@ -11,6 +11,13 @@ class UserSetting(models.Model):
 
     #default_warehouse = models.ForeignKey('Warehouse', on_delete=models.SET_NULL, null=True, blank=True)
     ip_based_warehouse = models.BooleanField(default=False)
+    home_location = models.ForeignKey(
+        'nextintranet_warehouse.Warehouse',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='home_location_users',
+    )
 
     def __str__(self):
         return f'{self.user}  settings'

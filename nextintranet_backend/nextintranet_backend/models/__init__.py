@@ -2,6 +2,8 @@
 # from .component import *
 from .user import *
 from .userSettings import *
+from .plugin import *
+from .serviceToken import *
 
 from django.db import models
 from django.utils import timezone

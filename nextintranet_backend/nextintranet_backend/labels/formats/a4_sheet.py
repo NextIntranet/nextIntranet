@@ -1,5 +1,9 @@
 from fpdf import FPDF
-from nextintranet_backend.labels.base import LabelFormatGenerator
+from nextintranet_backend.labels.base import (
+    DEFAULT_FONT_FAMILY,
+    LabelFormatGenerator,
+    ensure_unicode_fonts,
+)
 
 
 class A4SheetLabelGenerator(LabelFormatGenerator):
@@ -39,6 +43,7 @@ class A4SheetLabelGenerator(LabelFormatGenerator):
         self.pdf = FPDF(orientation='P', unit='mm', format='A4')
         self.pdf.set_auto_page_break(auto=False, margin=0)
         self.pdf.set_margins(0, 0, 0)
+        ensure_unicode_fonts(self.pdf)
         
     def generate_pdf(self, data):
         """Generate a PDF with labels arranged on A4 sheets."""
@@ -121,11 +126,12 @@ class A4SheetLabelGenerator(LabelFormatGenerator):
                     # Generate content based on the label type
                     if type in self.content_generators:
                         print(f"A4SheetLabelGenerator: Using registered generator for '{type}'")
+                        label_data = record.get('data', record)
                         
                         # Call the content generator with current position - PASS THE COORDINATES
                         self.content_generators[type].generate_label_content(
                             self.pdf,
-                            record,
+                            label_data,
                             label_width=self.width_mm,
                             label_height=self.height_mm,
                             x_position=x,  # Pass x position
@@ -134,9 +140,9 @@ class A4SheetLabelGenerator(LabelFormatGenerator):
                     else:
                         print(f"A4SheetLabelGenerator: No registered generator for '{type}', using default")
                         # Default label handling
-                        self.pdf.set_font('Arial', 'B', 12)
+                        self.pdf.set_font(DEFAULT_FONT_FAMILY, 'B', 12)
                         self.pdf.cell(self.width_mm, 10, f"Label: {type}", 0, 1, 'C')
-                        self.pdf.set_font('Arial', '', 10)
+                        self.pdf.set_font(DEFAULT_FONT_FAMILY, '', 10)
                         self.pdf.cell(self.width_mm, 10, f"Data: {record}", 0, 1, 'L')
                     
                     item_index += 1

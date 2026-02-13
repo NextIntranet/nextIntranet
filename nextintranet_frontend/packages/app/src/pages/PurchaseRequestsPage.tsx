@@ -73,6 +73,8 @@ export function PurchaseRequestsPage() {
   const [isCreateSheetOpen, setIsCreateSheetOpen] = useState(false)
 
   const mode: EditMode = searchParams.get("mode") === "edit" ? "edit" : "detail"
+  const createFromQuery = searchParams.get("create") === "1"
+  const createComponentId = searchParams.get("component") || ""
 
   const { data: user } = useQuery<User>({
     queryKey: ["me"],
@@ -189,6 +191,42 @@ export function PurchaseRequestsPage() {
     navigate("/store/purchase-requests", { replace: true })
   }
 
+  useEffect(() => {
+    if (!createFromQuery) {
+      return
+    }
+    setIsCreateSheetOpen(true)
+    if (createComponentId) {
+      setCreateFormState((prev) => ({
+        ...prev,
+        use_custom: false,
+        component_id: createComponentId,
+        item_name: "",
+      }))
+    }
+  }, [createFromQuery, createComponentId])
+
+  const handleOpenCreateSheet = () => {
+    setSearchParams((params) => {
+      const next = new URLSearchParams(params)
+      next.set("create", "1")
+      return next
+    })
+    setIsCreateSheetOpen(true)
+  }
+
+  const handleCreateSheetOpenChange = (open: boolean) => {
+    setIsCreateSheetOpen(open)
+    if (!open) {
+      setSearchParams((params) => {
+        const next = new URLSearchParams(params)
+        next.delete("create")
+        next.delete("component")
+        return next
+      })
+    }
+  }
+
   const handleEditMode = (nextMode: EditMode) => {
     setSearchParams((params) => {
       const next = new URLSearchParams(params)
@@ -268,7 +306,7 @@ export function PurchaseRequestsPage() {
             </p>
           </div>
           {canEdit && (
-            <Button className="gap-2" onClick={() => setIsCreateSheetOpen(true)}>
+            <Button className="gap-2" onClick={handleOpenCreateSheet}>
               <Plus className="h-4 w-4" />
               New Request
             </Button>
@@ -386,7 +424,7 @@ export function PurchaseRequestsPage() {
           </div>
         </div>
 
-        <Sheet open={isCreateSheetOpen} onOpenChange={setIsCreateSheetOpen}>
+        <Sheet open={isCreateSheetOpen} onOpenChange={handleCreateSheetOpenChange}>
           <SheetContent side="right" className="w-full max-w-lg">
             <SheetHeader>
               <SheetTitle>Create purchase request</SheetTitle>

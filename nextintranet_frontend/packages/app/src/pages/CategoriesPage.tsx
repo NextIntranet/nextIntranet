@@ -6,6 +6,7 @@ import { ChevronRight, Pencil } from "lucide-react"
 import { toast } from "sonner"
 
 import { CategoryParentSelect } from "@/components/CategoryParentSelect"
+import { ShowComponentsButton } from "@/components/ShowComponentsButton"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
@@ -262,14 +263,17 @@ export function CategoriesPage() {
             <Table className="w-full table-fixed">
               <TableHeader className="bg-muted/40">
                 <TableRow className="border-border/50">
-                  <TableHead className="h-9 w-[34%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableHead className="h-9 w-[30%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Name
                   </TableHead>
-                  <TableHead className="h-9 w-[28%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableHead className="h-9 w-[30%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Full path
                   </TableHead>
-                  <TableHead className="h-9 w-[38%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableHead className="h-9 w-[30%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Description
+                  </TableHead>
+                  <TableHead className="h-9 w-[10%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Actions
                   </TableHead>
                 </TableRow>
               </TableHeader>
@@ -346,12 +350,15 @@ export function CategoriesPage() {
                           "-"
                         )}
                       </TableCell>
+                      <TableCell className="px-3 py-2 text-sm align-top">
+                        <ShowComponentsButton to={`/store?categories=${row.id}`} />
+                      </TableCell>
                     </TableRow>
                   ))
                 ) : (
                   <TableRow className="border-border/40">
                     <TableCell
-                      colSpan={3}
+                      colSpan={4}
                       className="py-8 text-center text-sm text-muted-foreground"
                     >
                       No categories found.

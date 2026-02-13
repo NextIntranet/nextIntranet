@@ -1,8 +1,7 @@
 import io
 import datetime
 import treepoem
-from nextintranet_backend.labels.base import LabelContentGenerator
-from fpdf import FPDF
+from nextintranet_backend.labels.base import LabelContentGenerator, DEFAULT_FONT_FAMILY
 import os
 
 from nextintranet_warehouse.models.component import Packet
@@ -47,9 +46,7 @@ class PacketLabelGenerator(LabelContentGenerator):
 
 
         print(os.getcwd())
-        pdf.add_font('DejaVu', '', "./nextintranet_backend/labels/content/OpenSans.ttf", uni=True)
-        pdf.add_font('DejaVu', 'B', "./nextintranet_backend/labels/content/OpenSans-Bold.ttf", uni=True)
-        pdf.set_font('DejaVu', '', 12) 
+        pdf.set_font(DEFAULT_FONT_FAMILY, '', 12)
         
         # If no dimensions provided, use PDF dimensions
         if label_width is None:
@@ -86,7 +83,7 @@ class PacketLabelGenerator(LabelContentGenerator):
         # "Packet" text in the top left with UUID - using x0, y0 as base coordinates
         pdf.set_text_color(*text_color_header)
         # Use built-in monospaced font instead
-        pdf.set_font('DejaVu', '', int(font_size_small))
+        pdf.set_font(DEFAULT_FONT_FAMILY, '', int(font_size_small))
         pdf.set_xy(x0+2, y0+1)
         pdf.cell(label_width/2, 4.5, "Packet", align='L')
         
@@ -99,7 +96,7 @@ class PacketLabelGenerator(LabelContentGenerator):
         pdf.set_fill_color(*header_color)
         pdf.set_text_color(*text_color_normal)
         # Use built-in monospaced font
-        pdf.set_font('DejaVu', 'B', font_size_title)
+        pdf.set_font(DEFAULT_FONT_FAMILY, 'B', font_size_title)
         pdf.set_xy(x0+2, y0+4.5)
         
         # Truncate and resize name if too long
@@ -112,7 +109,7 @@ class PacketLabelGenerator(LabelContentGenerator):
         if name_length > label_width-6:
             print(f"PacketLabelGenerator: Adjusting font size for long name ({name_length}mm > {label_width-6}mm)")
             for size in range(0, int(font_size_title*10)):
-                pdf.set_font('DejaVu', 'B', font_size_title - size / 10)
+                pdf.set_font(DEFAULT_FONT_FAMILY, 'B', font_size_title - size / 10)
                 name_length = pdf.get_string_width(label_name)
                 if name_length < label_width-6:
                     break
@@ -139,23 +136,23 @@ class PacketLabelGenerator(LabelContentGenerator):
             if len(parts) > 1:
                 # Path part (before last slash) - regular font
                 path_part = '/'.join(parts[:-1]) + '/ '
-                pdf.set_font('DejaVu', '', font_size_normal)  # Using built-in DejaVu font
+                pdf.set_font(DEFAULT_FONT_FAMILY, '', font_size_normal)
                 path_width = pdf.get_string_width(path_part)
                 pdf.cell(path_width, 3, path_part, 0, 0, 'L')
                 
                 # Name part (after last slash) - bold font
                 name_part = parts[-1]
-                pdf.set_font('DejaVu', 'B', font_size_normal)  # Using built-in DejaVu font
+                pdf.set_font(DEFAULT_FONT_FAMILY, 'B', font_size_normal)
                 pdf.cell(label_width-10-path_width, 3, name_part, 0, 1, 'L')
             else:
                 # Only one part (no slashes)
-                pdf.set_font('DejaVu', 'B', font_size_normal)  # Using built-in DejaVu font
+                pdf.set_font(DEFAULT_FONT_FAMILY, 'B', font_size_normal)
                 pdf.cell(label_width-10, 3, position, 0, 1, 'L')
                 
             print(f"PacketLabelGenerator: Added formatted position: {position}")
         
         # Component description - adjust position based on label size - using x0, y0 as base
-        pdf.set_font('Arial', '', font_size_small)  # Regular font for description is fine
+        pdf.set_font(DEFAULT_FONT_FAMILY, '', font_size_small)
         description = component_description[:110].strip() if component_description else ""
         # Sanitize description to ensure compatibility with PDF encoding
         #description = self._sanitize_text(description)

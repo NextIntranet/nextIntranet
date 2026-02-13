@@ -1,13 +1,83 @@
 from rest_framework import serializers
-from nextintranet_backend.models.printList import PrintList, PrintItem
+from nextintranet_backend.models.printList import PrintList, PrintItem, PrintRenderJob
+
 
 class PrintItemSerializer(serializers.ModelSerializer):
     """
     Serializer for PrintItem model.
     """
+
+    content_type_model = serializers.SerializerMethodField()
+    content_label = serializers.SerializerMethodField()
+    content_url = serializers.SerializerMethodField()
+
     class Meta:
         model = PrintItem
-        fields = '__all__'
+        fields = [
+            "id",
+            "print_list",
+            "kind",
+            "status",
+            "payload",
+            "content_type",
+            "object_id",
+            "content_type_model",
+            "content_label",
+            "content_url",
+            "created_at",
+            "printed_at",
+        ]
+
+    def get_content_type_model(self, obj):
+        return obj.content_type.model if obj.content_type else None
+
+    def get_content_label(self, obj):
+        content = obj.content_object
+        if not content:
+            return None
+        if hasattr(content, "name") and content.name:
+            return content.name
+        return str(getattr(content, "id", content))
+
+    def get_content_url(self, obj):
+        content = obj.content_object
+        if not content:
+            return None
+        if hasattr(content, "url"):
+            try:
+                return content.url
+            except Exception:
+                return None
+        if hasattr(content, "get_url"):
+            try:
+                return content.get_url
+            except Exception:
+                return None
+        return None
+
+
+class PrintQueueSerializer(serializers.ModelSerializer):
+    """
+    Lightweight serializer for print queues.
+    """
+
+    items_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PrintList
+        fields = [
+            "id",
+            "name",
+            "created_at",
+            "printed_at",
+            "owner",
+            "is_public",
+            "is_default",
+            "items_count",
+        ]
+
+    def get_items_count(self, obj):
+        return obj.items.count()
 
 
 class PrintListSerializer(serializers.ModelSerializer):
@@ -15,9 +85,42 @@ class PrintListSerializer(serializers.ModelSerializer):
     Serializer for PrintList model.
     Includes nested PrintItems.
     """
-    items = PrintItemSerializer(many=True, read_only=True, source='printitem_set')
+
+    items = PrintItemSerializer(many=True, read_only=True)
 
     class Meta:
         model = PrintList
-        fields = '__all__'
+        fields = "__all__"
         # read_only_fields = ['owner', 'created_at', 'updated_at']
+
+
+class PrintRenderJobSerializer(serializers.ModelSerializer):
+    file_url = serializers.SerializerMethodField()
+    expires_at = serializers.SerializerMethodField()
+    items = serializers.PrimaryKeyRelatedField(read_only=True, many=True)
+
+    class Meta:
+        model = PrintRenderJob
+        fields = [
+            "id",
+            "status",
+            "payload",
+            "print_list",
+            "items",
+            "file",
+            "file_url",
+            "expires_at",
+            "error",
+            "created_at",
+            "completed_at",
+        ]
+
+    def get_file_url(self, obj):
+        if not obj.file:
+            return None
+        return obj.file.url
+
+    def get_expires_at(self, obj):
+        if not obj.file:
+            return None
+        return obj.file.expires_at

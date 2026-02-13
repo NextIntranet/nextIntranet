@@ -1,4 +1,4 @@
-from nextintranet_backend.labels.base import LabelContentGenerator
+from nextintranet_backend.labels.base import LabelContentGenerator, DEFAULT_FONT_FAMILY
 
 
 class LocationLabelGenerator(LabelContentGenerator):
@@ -12,8 +12,7 @@ class LocationLabelGenerator(LabelContentGenerator):
         x0 = x_position if x_position is not None else 0
         y0 = y_position if y_position is not None else 0
         
-        # Using built-in Courier font
-        pdf.set_font('Courier', 'B', 12)
+        pdf.set_font(DEFAULT_FONT_FAMILY, 'B', 12)
         pdf.set_xy(x0 + 2, y0 + 2)
         pdf.cell((label_width - 4) if label_width else 0, 10, "LOCATION", 0, 1, 'C')
         
@@ -23,7 +22,7 @@ class LocationLabelGenerator(LabelContentGenerator):
         pdf.line(x0+1, y0+12, x0+label_width-1, y0+12)
         
         # Location details
-        pdf.set_font('Courier', '', 10)
+        pdf.set_font(DEFAULT_FONT_FAMILY, '', 10)
         pdf.set_xy(x0 + 2, y0 + 15)
         pdf.cell((label_width - 4) if label_width else 0, 10, f"Building: {data.get('building', 'N/A')}", 0, 1, 'L')
         

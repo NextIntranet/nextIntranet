@@ -8,7 +8,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .views import warehouse
 
 # from .serializers.components import ComponentSerializer
-from .views.components import ComponentListAPIView, ComponentDetailAPIView, ComponentParameterListAPIView, ComponentParameterCreateAPIView
+from .views.components import ComponentListAPIView, ComponentDetailAPIView, ComponentHistoryAPIView, ComponentParameterListAPIView, ComponentParameterCreateAPIView
 from .views.warehouse import WarehousePositionsListAPIView, WarehousePositionsTreeAPIView
 from .views.category import CategoryRouter
 from .views.packets import PacketRouter, PacketListCreateAPIView, PDFGeneratorView, PacketOperationsAPIView
@@ -17,15 +17,18 @@ from .views.supplier import SupplierRouter, SupplierRelationRouter, ComponentSup
 # from .views.parameters import ParameterTypeListAPIView, ParameterTypeDetailAPIView, ComponentParameterDetailAPIView
 from .views.locations import LocationRouter
 from .views.parameters import ParameterRouter, ParameterTypeRouter
+from .views.stocktaking_api import StocktakingRouter
 from .views.stockOperation import StockOperationRouter
 from .views.purchase_requests import PurchaseRequestListAPIView, PurchaseRequestDetailAPIView
 from .views.document_api import ComponentDocumentListCreateAPIView, ComponentDocumentDetailAPIView, DocumentDetailAPIView
 from .views.reservations import ReservationListAPIView, ReservationDetailAPIView
+from .views.supplier_api import SupplierRelationApplyAPIView, SupplierRelationSyncAPIView
 
 # /api/v1/warehouse/
 urlpatterns = [
     path('components/', ComponentListAPIView.as_view(), name='api_warehouse_components'),
     path('component/<uuid:pk>/', ComponentDetailAPIView.as_view(), name='api_warehouse_component_detail'),
+    path('component/<uuid:pk>/history/', ComponentHistoryAPIView.as_view(), name='api_warehouse_component_history'),
     #path('component/<uuid:pk>/parameter/new/', ComponentParameterCreateAPIView.as_view(), name='api_warehouse_component_parameter_create'),
     #path('component/<uuid:pk>/parameter/', ComponentParameterListAPIView.as_view(), name='api_warehouse_component_parameters'),
     #path('parameter/<uuid:pk>/', ComponentParameterDetailAPIView.as_view(), name='api_warehouse_component_parameter_detail'),
@@ -49,12 +52,15 @@ urlpatterns = [
 
 # ParameterType
     path('parameterTypes/', include(ParameterTypeRouter.urls), name='api_warehouse_parameter_types'),
+    path('stocktaking/', include(StocktakingRouter.urls), name='api_warehouse_stocktaking'),
 
     path('positions/', WarehousePositionsListAPIView.as_view(), name='api_warehouse_positions'), # deprecated
     path('locations/tree/', WarehousePositionsTreeAPIView.as_view(), name='api_warehouse_locations_tree'),
     path('location/', include(LocationRouter.urls), name='api_warehouse_locations'),
     path('locations/', WarehousePositionsListAPIView.as_view(), name='api_warehouse_locations'),
     path('supplier/relation/', include(SupplierRelationRouter.urls), name='api_warehouse_supplier_relations'),
+    path('supplier/relation/<uuid:pk>/sync/', SupplierRelationSyncAPIView.as_view(), name='api_warehouse_supplier_relation_sync'),
+    path('supplier/relation/<uuid:pk>/apply/', SupplierRelationApplyAPIView.as_view(), name='api_warehouse_supplier_relation_apply'),
     path('supplier/', include(SupplierRouter.urls), name='api_warehouse_suppliers'),
     path('category/', include(CategoryRouter.urls), name='api_warehouse_categories'),
     path('tags/', TagListAPIView.as_view(), name='api_warehouse_tags'),

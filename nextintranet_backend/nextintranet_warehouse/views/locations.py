@@ -28,6 +28,7 @@ from rest_framework.pagination import PageNumberPagination
 from nextintranet_backend.routers import NoFormatSuffixRouter as DefaultRouter
 
 from rest_framework import serializers
+from rest_framework.parsers import FormParser, MultiPartParser, JSONParser
 
 
 class WarehouseModelTable(NIT_Table):
@@ -78,6 +79,7 @@ class LocationAPIView(viewsets.ModelViewSet):
     queryset = Warehouse.objects.all()
     serializer_class = WarehouseSerializer
     pagination_class = CustomPagination
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def build_tree(self, locations, parent=None):
         tree = []
@@ -86,12 +88,14 @@ class LocationAPIView(viewsets.ModelViewSet):
                 children = self.build_tree(locations, location)
                 tree.append({
                     'id': location.id,
+                    'uuid': str(location.uuid),
                     'name': location.name,
                     'location': location.location,
                     'description': location.description,
                     'full_path': location.full_path,
                     'can_store_items': location.can_store_items,
                     'parent': location.parent_id,
+                    'map': location.map.url if location.map else None,
                     'children': children
                 })
         return tree

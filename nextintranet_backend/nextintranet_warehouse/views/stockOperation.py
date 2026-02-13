@@ -106,8 +106,11 @@ class StockOperationViewSet(viewsets.ModelViewSet):
     serializer_class = StockOperationSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ['packet', 'operation_type', 'created_at']
+    filterset_fields = ['packet', 'operation_type', 'created_at', 'reference']
     # pagination_class = PageNumberPagination
+
+    def perform_create(self, serializer):
+        serializer.save(author=self.request.user)
 
 
 StockOperationRouter = DefaultRouter(trailing_slash=True)

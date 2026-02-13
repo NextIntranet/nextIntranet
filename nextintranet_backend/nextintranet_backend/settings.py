@@ -29,7 +29,7 @@ DEBUG = True
 
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', '*']
 
-SITE_URL = 'http://localhost:8000'
+SITE_URL = os.getenv('SITE_URL', 'http://localhost:8000')
 
 CORS_ORIGIN_WHITELIST = [
     "http://localhost:9000",
@@ -78,6 +78,8 @@ if S3_ENDPOINT_URL and S3_STORAGE_BUCKET_NAME:
         },
     }
 
+PRINT_RENDER_TTL_SECONDS = int(os.getenv("PRINT_RENDER_TTL_SECONDS", "3600"))
+
 # Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -105,6 +107,7 @@ INSTALLED_APPS = [
     "formtools",
     'drf_spectacular',
     'drf_spectacular_sidecar',
+    'django_q',
 
 
     'nextintranet_backend',
@@ -127,6 +130,20 @@ CONSTANCE_REDIS_CONNECTION = {
     'host': 'redis',
     'port': 6379,
     'db': 0,
+}
+
+Q_CLUSTER = {
+    'name': 'nextintranet',
+    'workers': int(os.getenv('Q_CLUSTER_WORKERS', '2')),
+    'recycle': int(os.getenv('Q_CLUSTER_RECYCLE', '500')),
+    'timeout': int(os.getenv('Q_CLUSTER_TIMEOUT', '300')),
+    'retry': int(os.getenv('Q_CLUSTER_RETRY', '300')),
+    'queue_limit': int(os.getenv('Q_CLUSTER_QUEUE_LIMIT', '50')),
+    'redis': {
+        'host': os.getenv('REDIS_HOST', 'redis'),
+        'port': int(os.getenv('REDIS_PORT', '6379')),
+        'db': int(os.getenv('REDIS_DB', '0')),
+    },
 }
 
 
@@ -274,7 +291,7 @@ SELECT2_CACHE_BACKEND = "select2"
 SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
 SESSION_CACHE_ALIAS = 'default'
 
-LOGIN_URL = '/login/'
+LOGIN_URL = '/admin/login/'
 
 ASGI_APPLICATION = "nextintranet_backend.asgi.application"
 

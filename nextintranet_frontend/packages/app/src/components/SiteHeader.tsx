@@ -1,8 +1,12 @@
 import { useMemo } from "react"
 import { Link, useLocation } from "react-router-dom"
+import { RotateCw } from "lucide-react"
+import { useQueryClient } from "@tanstack/react-query"
 
+import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { SidebarTrigger } from "@/components/ui/sidebar"
+import { ExtensionPoint } from "@/plugins/ExtensionPoint"
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -27,6 +31,11 @@ const segmentTitleMap: Record<string, string> = {
   settings: "Settings",
   teams: "Teams",
   billing: "Billing",
+  print: "Print",
+  queue: "Queue",
+  "parameter-type": "Parameter types",
+  "inventory-campaign": "Inventory campaigns",
+  inventory: "Inventory",
   user: "Users",
   profile: "Profile",
   projects: "Projects",
@@ -50,6 +59,7 @@ const formatSegment = (segment: string) => {
 
 export function SiteHeader() {
   const location = useLocation()
+  const queryClient = useQueryClient()
 
   const breadcrumbs = useMemo(() => {
     const segments = location.pathname.split("/").filter(Boolean)
@@ -63,7 +73,7 @@ export function SiteHeader() {
   }, [location.pathname])
 
   return (
-    <header className="flex h-16 shrink-0 items-center gap-2">
+    <header className="flex h-16 shrink-0 items-center justify-between gap-2">
       <div className="flex items-center gap-2 px-4">
         <SidebarTrigger className="-ml-1" />
         <Separator
@@ -89,7 +99,7 @@ export function SiteHeader() {
                     <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
                   ) : (
                     <BreadcrumbLink asChild>
-                      <Link to={crumb.href}>{crumb.label}</Link>
+                     <Link to={crumb.href}>{crumb.label}</Link>
                     </BreadcrumbLink>
                   )}
                 </BreadcrumbItem>
@@ -97,6 +107,20 @@ export function SiteHeader() {
             })}
           </BreadcrumbList>
         </Breadcrumb>
+      </div>
+      <div className="flex items-center gap-2 px-4">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="gap-2"
+          onClick={() => {
+            queryClient.invalidateQueries()
+            queryClient.refetchQueries({ type: "active" })
+          }}
+        >
+          <RotateCw className="h-4 w-4" />
+        </Button>
+        <ExtensionPoint name="page.status" />
       </div>
     </header>
   )

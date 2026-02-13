@@ -1,4 +1,5 @@
 from rest_framework.permissions import BasePermission, SAFE_METHODS
+from nextintranet_backend.models.serviceToken import ServiceToken
 
 
 LEVEL_ORDER = {
@@ -49,3 +50,10 @@ class AreaAccessPermission(BasePermission):
         if LEVEL_ORDER.get(required_level, 0) < LEVEL_ORDER.get('write', 0):
             return 'write'
         return required_level
+
+
+class IsAuthenticatedOrServiceToken(BasePermission):
+    def has_permission(self, request, view):
+        if getattr(request.user, "is_authenticated", False):
+            return True
+        return isinstance(getattr(request, "auth", None), ServiceToken)

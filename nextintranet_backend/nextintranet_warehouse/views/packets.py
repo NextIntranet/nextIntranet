@@ -24,6 +24,7 @@ from rest_framework import mixins
 from rest_framework import generics
 from rest_framework import viewsets
 from nextintranet_backend.routers import NoFormatSuffixRouter as DefaultRouter
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.pagination import PageNumberPagination
 from rest_framework import status
 
@@ -50,8 +51,9 @@ class PacketSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
     def to_representation(self, instance):
-        if instance.count == 0 and instance.operations.exists():
-            instance.calculate()
+        # Disabled: avoid recalculating on read; rely on StockOperation.save() for count updates.
+        # if instance.count == 0 and instance.operations.exists():
+        #     instance.calculate()
         response = super().to_representation(instance)
         response['component'] = ComponentSerializer(instance.component).data
         response['location'] = WarehouseSerializer(instance.location).data
@@ -92,6 +94,8 @@ class PacketAPIView(viewsets.ModelViewSet):
     queryset = Packet.objects.all()
     serializer_class = PacketSerializer
     pagination_class = CustomPagination
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ["location", "component"]
 
     @action(detail=True, methods=['post'])
     def calculate(self, request, *args, **kwargs):

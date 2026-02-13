@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiFetch } from "@nextintranet/core"
 import { toast } from "sonner"
 
+import { LocationParentSelect } from "@/components/LocationParentSelect"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -34,6 +35,16 @@ interface UserMe {
   id: string
   is_superuser: boolean
   access_permissions: UserAccessPermission[]
+  settings?: {
+    home_location?: string | null
+  }
+}
+
+interface LocationNode {
+  id: string
+  name: string
+  full_path: string
+  children?: LocationNode[]
 }
 
 const getRoleLabel = (user: UserAdmin) => {
@@ -64,6 +75,7 @@ export function UserDetailPage() {
     is_superuser: false,
     access_permissions: [] as Array<{ area: string; level: string }>,
   })
+  const [homeLocationId, setHomeLocationId] = useState<string | null>(null)
 
   const { data: user, isLoading, error } = useQuery<UserAdmin>({
     queryKey: ["user", id],
@@ -75,6 +87,15 @@ export function UserDetailPage() {
     queryKey: ["me"],
     queryFn: () => apiFetch<UserMe>("/api/v1/me/"),
   })
+
+  const { data: locationsTree, isLoading: locationsLoading } = useQuery<LocationNode[]>({
+    queryKey: ["locations-tree"],
+    queryFn: () => apiFetch<LocationNode[]>("/api/v1/store/location/tree/"),
+  })
+  const homeLocationOptions = useMemo(
+    () => (locationsTree || []).map((node) => ({ ...node, children: [] })),
+    [locationsTree],
+  )
 
   useEffect(() => {
     if (!user) {
@@ -96,6 +117,13 @@ export function UserDetailPage() {
     })
   }, [user])
 
+  useEffect(() => {
+    if (!me?.settings) {
+      return
+    }
+    setHomeLocationId(me.settings.home_location ?? null)
+  }, [me?.settings?.home_location])
+
   const isSelf = !!me?.id && !!id && String(me.id) === String(id)
   const userPermission = me?.access_permissions?.find((permission) => permission.area === "user")
   const permissionLevel = userPermission?.level
@@ -107,6 +135,8 @@ export function UserDetailPage() {
       (permission) =>
         permission.area === "user" && ["write", "admin"].includes(permission.level),
     )
+  const homeLocationDirty =
+    (homeLocationId ?? null) !== (me?.settings?.home_location ?? null)
 
   const fullName = useMemo(() => {
     if (!user) return "-"
@@ -127,6 +157,23 @@ export function UserDetailPage() {
     },
     onError: () => {
       toast.error("Failed to update user.")
+    },
+  })
+
+  const updateSettingsMutation = useMutation({
+    mutationFn: (payload: { home_location: string | null }) =>
+      apiFetch("/api/v1/me/", {
+        method: "PATCH",
+        body: JSON.stringify({
+          settings: payload,
+        }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["me"] })
+      toast.success("Home location updated.")
+    },
+    onError: () => {
+      toast.error("Failed to update home location.")
     },
   })
 
@@ -240,6 +287,41 @@ export function UserDetailPage() {
             )}
           </CardContent>
         </Card>
+        {isSelf && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Home location</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">
+                  Top location level
+                </label>
+                {locationsLoading ? (
+                  <Skeleton className="h-10 w-full" />
+                ) : (
+                  <LocationParentSelect
+                    locations={homeLocationOptions}
+                    value={homeLocationId}
+                    onChange={(value) => setHomeLocationId(value)}
+                    emptyLabel="No home location"
+                    placeholder="Select home location"
+                  />
+                )}
+              </div>
+              <Button
+                onClick={() =>
+                  updateSettingsMutation.mutate({
+                    home_location: homeLocationId || null,
+                  })
+                }
+                disabled={!homeLocationDirty || updateSettingsMutation.isPending}
+              >
+                {updateSettingsMutation.isPending ? "Saving..." : "Save location"}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {canEdit && (

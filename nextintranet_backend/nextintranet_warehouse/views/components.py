@@ -3,6 +3,7 @@ from rest_framework import serializers
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import generics
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.views import APIView
 
 from django.forms import ModelForm
 from django.views.generic.edit import FormView
@@ -11,11 +12,12 @@ from rest_framework import serializers
 
 from nextintranet_warehouse.models import Warehouse
 from nextintranet_warehouse.models import Warehouse
+from nextintranet_backend.models.userSettings import UserSetting
 
 from django.views.generic import DetailView, ListView
 
 from ..models.warehouse import Warehouse
-from ..models.component import Component, Supplier, SupplierRelation, Packet
+from ..models.component import Component, Supplier, SupplierRelation, Packet, StockOperation
 from rest_framework.response import Response
 
 from django.views.generic.edit import CreateView
@@ -183,21 +185,34 @@ class ComponentSerializer(serializers.ModelSerializer):
 
     def get_inventory_summary(self, instance):
         total_quantity = 0
+        home_quantity = 0
         reserved_quantity = instance.reservations.aggregate(
             total_reserved=models.Sum('quantity')
         )['total_reserved'] or 0
+        home_location_ids = self.context.get('home_location_ids')
         for packet in instance.packets.all():
-            if packet.count == 0 and packet.operations.exists():
-                packet.calculate()
-            total_quantity += packet.count or 0
+            # Disabled: avoid recalculating on read; rely on StockOperation.save() for count updates.
+            # if packet.count == 0 and packet.operations.exists():
+            #     packet.calculate()
+            packet_count = packet.count or 0
+            total_quantity += packet_count
+            if home_location_ids and packet.location_id in home_location_ids:
+                home_quantity += packet_count
         purchase_quantity = PurchaseRequest.objects.filter(
             component=instance,
             purchase__isnull=True,
         ).aggregate(total_requested=models.Sum('quantity'))['total_requested'] or 0
+        ordered_quantity = PurchaseRequest.objects.filter(
+            component=instance,
+            purchase__isnull=False,
+        ).aggregate(total_ordered=models.Sum('quantity'))['total_ordered'] or 0
         return {
             'total_quantity': float(total_quantity),
+            'home_quantity': float(home_quantity) if home_location_ids else None,
             'reserved_quantity': float(reserved_quantity),
             'purchase_quantity': float(purchase_quantity),
+            'purchase_requested_quantity': float(purchase_quantity),
+            'purchase_ordered_quantity': float(ordered_quantity),
         }
 
 
@@ -218,6 +233,16 @@ class ComponentListAPIView(generics.ListAPIView):
     serializer_class = ComponentSerializer
     pagination_class = StandardResultsSetPagination
     permission_classes = [IsAuthenticated]
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        user_settings = UserSetting.objects.filter(user=self.request.user).select_related('home_location').first()
+        if user_settings and user_settings.home_location:
+            location_ids = user_settings.home_location.get_descendants(include_self=True).values_list('id', flat=True)
+            context['home_location_ids'] = set(location_ids)
+        else:
+            context['home_location_ids'] = None
+        return context
 
     def get_queryset(self):
         queryset = Component.objects.all()
@@ -262,6 +287,63 @@ class ComponentDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Component.objects.all()
     serializer_class = ComponentSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        user_settings = UserSetting.objects.filter(user=self.request.user).select_related('home_location').first()
+        if user_settings and user_settings.home_location:
+            location_ids = user_settings.home_location.get_descendants(include_self=True).values_list('id', flat=True)
+            context['home_location_ids'] = set(location_ids)
+        else:
+            context['home_location_ids'] = None
+        return context
+
+
+class ComponentHistoryAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        component = get_object_or_404(Component, pk=pk)
+        packets = list(
+            Packet.objects.filter(component=component)
+            .select_related('location')
+            .order_by('created_at', 'id')
+        )
+
+        packet_items = [
+            {
+                'id': str(packet.id),
+                'label': packet.location.full_path if packet.location else str(packet.id),
+            }
+            for packet in packets
+        ]
+
+        levels = {str(packet.id): 0.0 for packet in packets}
+        operations = (
+            StockOperation.objects.filter(packet__component=component)
+            .select_related('packet')
+            .order_by('timestamp', 'id')
+        )
+
+        history = []
+        for operation in operations:
+            packet_id = str(operation.packet_id)
+            current = levels.get(packet_id, 0.0)
+            if operation.relative_quantity:
+                next_value = current + (operation.quantity or 0.0)
+            else:
+                next_value = operation.quantity or 0.0
+            levels[packet_id] = float(next_value)
+            snapshot = {key: float(value) for key, value in levels.items()}
+            history.append(
+                {
+                    'timestamp': operation.timestamp.isoformat(),
+                    'levels': snapshot,
+                    'total': float(sum(snapshot.values())),
+                }
+            )
+
+        return Response({'packets': packet_items, 'history': history})
 
 
 class PacketForm(forms.ModelForm):
@@ -371,13 +453,25 @@ class PacketDeleteView(CreateView):
 class SupplierForm(forms.ModelForm):
     class Meta:
         model = Supplier
-        fields = ['name', 'contact_info', 'website', 'link_template', 'min_order_quantity']
+        fields = [
+            'name',
+            'contact_info',
+            'website',
+            'link_template',
+            'min_order_quantity',
+            'api_plugin_instance',
+            'api_config',
+            'api_mapping',
+        ]
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
             'contact_info': forms.Textarea(attrs={'class': 'form-control'}),
             'website': forms.URLInput(attrs={'class': 'form-control'}),
             'link_template': forms.TextInput(attrs={'class': 'form-control'}),
             'min_order_quantity': forms.NumberInput(attrs={'class': 'form-control'}),
+            'api_plugin_instance': forms.Select(attrs={'class': 'form-select'}),
+            'api_config': forms.Textarea(attrs={'class': 'form-control', 'rows': 6}),
+            'api_mapping': forms.Textarea(attrs={'class': 'form-control', 'rows': 6}),
         }
 
 

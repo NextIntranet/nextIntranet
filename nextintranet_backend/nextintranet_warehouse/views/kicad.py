@@ -6,12 +6,16 @@ from nextintranet_warehouse.models.category import Category
 from nextintranet_warehouse.models.component import Component
 
 from django.http import HttpResponse
+from django.conf import settings
 import json
 import uuid
 
 class KicadAPITemplateView(APIView):
     permission_classes = []
     def get(self, request, format=None):
+        site_url = getattr(settings, 'SITE_URL', 'http://localhost:8000')
+        root_url = f"{site_url.rstrip('/')}/api/kicad/"
+
         data = {
             "meta": {
                 "version": 1.0
@@ -21,7 +25,7 @@ class KicadAPITemplateView(APIView):
             "source": {
                 "type": "REST_API",
                 "api_version": "v1",
-                "root_url": "http://localhost:8080/api/kicad/",
+                "root_url": root_url,
                 "token": "token",
                 "timeout_parts_seconds": 60,
                 "timeout_categories_seconds": 600

@@ -2,17 +2,21 @@ import { useEffect, useMemo, useState } from "react"
 import { Link, useParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiFetch } from "@nextintranet/core"
-import { Pencil } from "lucide-react"
+import { Pencil, Plus } from "lucide-react"
 import { toast } from "sonner"
 
 import { LocationParentSelect } from "@/components/LocationParentSelect"
+import { PacketOperationSheet } from "@/components/PacketOperationSheet"
 import { PriceLabel } from "@/components/PriceLabel"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Switch } from "@/components/ui/switch"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { ExtensionPoint } from "@/plugins/ExtensionPoint"
+import { PrintActions } from "@/components/PrintActions"
+import { getOperationLabel } from "@/lib/stockOperations"
 
 interface PacketComponent {
   id: string
@@ -31,6 +35,7 @@ interface PacketDetail {
   count?: number | null
   itemValue?: number | null
   totalValue?: number | null
+  is_active?: boolean
   created_at: string
   date_added?: string
   component: PacketComponent
@@ -64,6 +69,7 @@ export function PacketDetailPage() {
   const { id } = useParams<{ id: string }>()
   const queryClient = useQueryClient()
   const [editMode, setEditMode] = useState(false)
+  const [operationSheetOpen, setOperationSheetOpen] = useState(false)
 
   const { data: user } = useQuery<User>({
     queryKey: ["me"],
@@ -98,6 +104,7 @@ export function PacketDetailPage() {
   const [formState, setFormState] = useState({
     description: "",
     location: "",
+    isActive: true,
   })
 
   useEffect(() => {
@@ -107,11 +114,12 @@ export function PacketDetailPage() {
     setFormState({
       description: packet.description || "",
       location: packet.location?.id || "",
+      isActive: packet.is_active ?? true,
     })
   }, [packet?.id])
 
   const updateMutation = useMutation({
-    mutationFn: (payload: { description?: string | null; location?: string | null }) =>
+    mutationFn: (payload: { description?: string | null; location?: string | null; is_active?: boolean }) =>
       apiFetch(`/api/v1/store/packet/${id}/`, {
         method: "PATCH",
         body: JSON.stringify(payload),
@@ -133,11 +141,26 @@ export function PacketDetailPage() {
     updateMutation.mutate({
       description: formState.description.trim() || null,
       location: formState.location || null,
+      is_active: formState.isActive,
     })
   }
 
   const formattedCount = packet?.count ?? 0
   const operationsList = useMemo(() => operations ?? [], [operations])
+  const packetOptions = useMemo(
+    () =>
+      packet
+        ? [
+            {
+              id: packet.id,
+              label: packet.location?.full_path || packet.id,
+              locationId: packet.location?.id || null,
+              count: packet.count ?? null,
+            },
+          ]
+        : [],
+    [packet],
+  )
 
   if (isLoading) {
     return (
@@ -174,16 +197,20 @@ export function PacketDetailPage() {
             <h1 className="text-2xl font-semibold text-foreground">Packet</h1>
             <p className="text-sm text-muted-foreground">ID: {packet.id}</p>
           </div>
-          {canEdit && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setEditMode((prev) => !prev)}
-            >
-              <Pencil className="h-4 w-4" />
-              {editMode ? "Cancel" : "Edit"}
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            <ExtensionPoint name="packets.actions" context={{ packetId: packet.id }} />
+            <PrintActions targetType="packet" targetId={packet.id} label={packet.id} compact />
+            {canEdit && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setEditMode((prev) => !prev)}
+              >
+                <Pencil className="h-4 w-4" />
+                {editMode ? "Cancel" : "Edit"}
+              </Button>
+            )}
+          </div>
         </div>
 
         <div className="mt-4 grid gap-4 lg:grid-cols-3">
@@ -265,6 +292,26 @@ export function PacketDetailPage() {
                 </div>
               </div>
               <div className="flex items-center justify-between rounded-lg border border-border/70 px-4 py-3">
+                <span className="text-muted-foreground">Status</span>
+                {editMode ? (
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={formState.isActive}
+                      onCheckedChange={(checked) =>
+                        setFormState({ ...formState, isActive: checked })
+                      }
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      {formState.isActive ? "Active" : "Inactive"}
+                    </span>
+                  </div>
+                ) : (
+                  <span className="text-foreground">
+                    {packet.is_active === false ? "Inactive" : "Active"}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-border/70 px-4 py-3">
                 <span className="text-muted-foreground">Created</span>
                 <span className="text-foreground">
                   {new Date(packet.created_at || packet.date_added || "").toLocaleString()}
@@ -307,8 +354,19 @@ export function PacketDetailPage() {
         </div>
 
         <Card className="mt-4">
-          <CardHeader>
+          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <CardTitle>Operations</CardTitle>
+            {canEdit && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setOperationSheetOpen(true)}
+                className="gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Add operation
+              </Button>
+            )}
           </CardHeader>
           <CardContent>
             {operationsLoading ? (
@@ -336,7 +394,7 @@ export function PacketDetailPage() {
                     {operationsList.map((operation) => (
                       <TableRow key={operation.id} className="border-border/40">
                         <TableCell className="h-9 px-3 text-sm text-foreground">
-                          {operation.operation_type}
+                          {getOperationLabel(operation.operation_type)}
                         </TableCell>
                         <TableCell className="h-9 px-3 text-sm text-foreground">
                           {operation.quantity}
@@ -369,6 +427,18 @@ export function PacketDetailPage() {
           </CardContent>
         </Card>
       </div>
+      <PacketOperationSheet
+        open={operationSheetOpen}
+        onOpenChange={setOperationSheetOpen}
+        packetOptions={packetOptions}
+        initialPacketId={packet?.id}
+        showPacketSelect={false}
+        componentId={packet?.component.id}
+        onOperationCreated={() => {
+          queryClient.invalidateQueries({ queryKey: ["packet-operations", id] })
+          queryClient.invalidateQueries({ queryKey: ["packet", id] })
+        }}
+      />
     </TooltipProvider>
   )
 }
