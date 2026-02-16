@@ -31,6 +31,8 @@ const segmentTitleMap: Record<string, string> = {
   settings: "Settings",
   setting: "Settings",
   hardware: "Hardware",
+  software: "Software",
+  "service-token": "Service tokens",
   teams: "Teams",
   billing: "Billing",
   print: "Print",

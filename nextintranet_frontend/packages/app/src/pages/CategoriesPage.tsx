@@ -2,8 +2,9 @@ import { useEffect, useMemo, useState } from "react"
 import { useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiFetch } from "@nextintranet/core"
-import { ChevronRight, Pencil } from "lucide-react"
+import { ChevronRight, Pencil, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
+import Select, { type SingleValue } from "react-select"
 
 import { CategoryParentSelect } from "@/components/CategoryParentSelect"
 import { ShowComponentsButton } from "@/components/ShowComponentsButton"
@@ -34,6 +35,26 @@ interface CategoryDetail {
   icon?: string | null
   parent?: string | null
 }
+
+interface ParameterType {
+  id: string
+  name: string
+}
+
+interface EffectiveRule {
+  id: string
+  parameter_type: ParameterType
+  value_template: string
+  is_own: boolean
+  source_category_name: string
+}
+
+interface RuleDraft {
+  parameter_type_id: string
+  value_template: string
+}
+
+type SelectOption = { value: string; label: string }
 
 interface User {
   is_superuser: boolean
@@ -130,6 +151,11 @@ export function CategoriesPage() {
     enabled: !!id,
   })
 
+  const { data: rulesSummary } = useQuery<Record<string, { name: string; template: string }[]>>({
+    queryKey: ["category-rules-summary"],
+    queryFn: () => apiFetch("/api/v1/store/category/rules-summary/"),
+  })
+
   useEffect(() => {
     if (categoriesTree && expandedIds.length === 0) {
       setExpandedIds(collectExpandableIds(categoriesTree))
@@ -203,6 +229,81 @@ export function CategoriesPage() {
     },
   })
 
+  const { data: effectiveRules } = useQuery<EffectiveRule[]>({
+    queryKey: ["category-rules", id],
+    queryFn: () => apiFetch<EffectiveRule[]>(`/api/v1/store/category/${id}/rules/effective/`),
+    enabled: !!id,
+  })
+
+  const { data: parameterTypesRaw } = useQuery<{ results?: ParameterType[] } | ParameterType[]>({
+    queryKey: ["parameter-types"],
+    queryFn: () => apiFetch("/api/v1/store/parameterTypes/"),
+    enabled: !!id && mode === "edit",
+  })
+
+  const parameterTypesList: ParameterType[] = Array.isArray(parameterTypesRaw)
+    ? parameterTypesRaw
+    : parameterTypesRaw?.results || []
+
+  const [ruleDrafts, setRuleDrafts] = useState<RuleDraft[]>([])
+  const [newRule, setNewRule] = useState<RuleDraft>({ parameter_type_id: "", value_template: "" })
+
+  // Sync own rules into edit drafts when entering edit mode
+  useEffect(() => {
+    if (mode === "edit" && effectiveRules) {
+      setRuleDrafts(
+        effectiveRules
+          .filter((r) => r.is_own)
+          .map((r) => ({ parameter_type_id: r.parameter_type.id, value_template: r.value_template })),
+      )
+      setNewRule({ parameter_type_id: "", value_template: "" })
+    }
+  }, [mode, effectiveRules])
+
+  const createRuleMutation = useMutation({
+    mutationFn: (payload: { parameter_type: string; value_template: string }) =>
+      apiFetch(`/api/v1/store/category/${id}/rules/`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["category-rules", id] })
+      queryClient.invalidateQueries({ queryKey: ["category-rules-summary"] })
+      toast.success("Rule added.")
+    },
+    onError: () => toast.error("Failed to add rule."),
+  })
+
+  const deleteRuleMutation = useMutation({
+    mutationFn: (ruleId: string) =>
+      apiFetch(`/api/v1/store/category/${id}/rules/${ruleId}/`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["category-rules", id] })
+      queryClient.invalidateQueries({ queryKey: ["category-rules-summary"] })
+      toast.success("Rule removed.")
+    },
+    onError: () => toast.error("Failed to remove rule."),
+  })
+
+  const handleAddRule = () => {
+    if (!newRule.parameter_type_id || !newRule.value_template.trim()) return
+    createRuleMutation.mutate({
+      parameter_type: newRule.parameter_type_id,
+      value_template: newRule.value_template.trim(),
+    })
+    setNewRule({ parameter_type_id: "", value_template: "" })
+  }
+
+  const handleDeleteRule = (rule: EffectiveRule) => {
+    if (!window.confirm(`Remove rule for ${rule.parameter_type.name}?`)) return
+    deleteRuleMutation.mutate(rule.id)
+  }
+
+  const paramTypeOptions: SelectOption[] = parameterTypesList.map((pt) => ({
+    value: pt.id,
+    label: pt.name,
+  }))
+
   const handleToggle = (categoryId: string) => {
     setExpandedIds((prev) =>
       prev.includes(categoryId)
@@ -263,16 +364,19 @@ export function CategoriesPage() {
             <Table className="w-full table-fixed">
               <TableHeader className="bg-muted/40">
                 <TableRow className="border-border/50">
-                  <TableHead className="h-9 w-[30%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableHead className="h-9 w-[25%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Name
                   </TableHead>
-                  <TableHead className="h-9 w-[30%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableHead className="h-9 w-[25%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Full path
                   </TableHead>
-                  <TableHead className="h-9 w-[30%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableHead className="h-9 w-[20%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Rules
+                  </TableHead>
+                  <TableHead className="h-9 w-[22%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Description
                   </TableHead>
-                  <TableHead className="h-9 w-[10%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableHead className="h-9 w-[8%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Actions
                   </TableHead>
                 </TableRow>
@@ -280,7 +384,7 @@ export function CategoriesPage() {
               <TableBody>
                 {isTreeLoading ? (
                   <TableRow className="border-border/40">
-                    <TableCell colSpan={3} className="py-8">
+                    <TableCell colSpan={5} className="py-8">
                       <div className="space-y-2">
                         <Skeleton className="h-5 w-1/2" />
                         <Skeleton className="h-5 w-3/4" />
@@ -336,6 +440,24 @@ export function CategoriesPage() {
                       <TableCell className="h-9 px-3 text-sm text-muted-foreground">
                         {row.full_path}
                       </TableCell>
+                      <TableCell className="h-9 px-3">
+                        {rulesSummary?.[row.id] ? (
+                          <div className="flex flex-wrap gap-1">
+                            {rulesSummary[row.id].map((rule) => (
+                              <Tooltip key={rule.name}>
+                                <TooltipTrigger asChild>
+                                  <span className="inline-flex items-center rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                                    {rule.name}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>{rule.name} = {rule.template}</TooltipContent>
+                              </Tooltip>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
                       <TableCell className="px-3 py-2 text-sm text-muted-foreground align-top">
                         {row.description ? (
                           <Tooltip>
@@ -358,7 +480,7 @@ export function CategoriesPage() {
                 ) : (
                   <TableRow className="border-border/40">
                     <TableCell
-                      colSpan={4}
+                      colSpan={5}
                       className="py-8 text-center text-sm text-muted-foreground"
                     >
                       No categories found.
@@ -446,6 +568,41 @@ export function CategoriesPage() {
                         {categoryDetail.description || "No description."}
                       </p>
                     </div>
+
+                    {/* Parameter Rules */}
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold uppercase text-muted-foreground">
+                        Parameter Rules
+                      </p>
+                      {effectiveRules && effectiveRules.length > 0 ? (
+                        <div className="space-y-1">
+                          {effectiveRules.map((rule) => (
+                            <div
+                              key={rule.id}
+                              className={`flex items-center justify-between rounded-md border px-3 py-1.5 text-sm ${
+                                rule.is_own ? "" : "border-border/50 text-muted-foreground"
+                              }`}
+                            >
+                              <span>
+                                <span className="font-medium">{rule.parameter_type.name}</span>
+                                {" = "}
+                                <span className={rule.is_own ? "" : "italic"}>
+                                  {rule.value_template}
+                                </span>
+                              </span>
+                              {!rule.is_own && (
+                                <span className="ml-2 text-xs text-muted-foreground">
+                                  from {rule.source_category_name}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No parameter rules.</p>
+                      )}
+                    </div>
+
                     {canEdit && (
                       <Button className="mt-2 w-full gap-2" onClick={() => handleEditMode("edit")}>
                         <Pencil className="h-4 w-4" />
@@ -513,6 +670,81 @@ export function CategoriesPage() {
                         placeholder="Category description"
                       />
                     </div>
+                    {/* Parameter Rules - edit mode */}
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">Parameter Rules</label>
+                      {/* Own rules - deletable */}
+                      {effectiveRules
+                        ?.filter((r) => r.is_own)
+                        .map((rule) => (
+                          <div
+                            key={rule.id}
+                            className="flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm"
+                          >
+                            <span className="flex-1">
+                              <span className="font-medium">{rule.parameter_type.name}</span>
+                              {" = "}
+                              {rule.value_template}
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => handleDeleteRule(rule)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        ))}
+                      {/* Inherited rules - read only */}
+                      {effectiveRules
+                        ?.filter((r) => !r.is_own)
+                        .map((rule) => (
+                          <div
+                            key={rule.id}
+                            className="flex items-center gap-2 rounded-md border border-border/50 px-3 py-1.5 text-sm text-muted-foreground"
+                          >
+                            <span className="flex-1 italic">
+                              <span className="font-medium">{rule.parameter_type.name}</span>
+                              {" = "}
+                              {rule.value_template}
+                            </span>
+                            <span className="text-xs">from {rule.source_category_name}</span>
+                          </div>
+                        ))}
+                      {/* Add new rule */}
+                      <div className="flex items-end gap-2">
+                        <div className="flex-1">
+                          <Select<SelectOption>
+                            options={paramTypeOptions}
+                            value={paramTypeOptions.find((o) => o.value === newRule.parameter_type_id) || null}
+                            onChange={(opt: SingleValue<SelectOption>) =>
+                              setNewRule({ ...newRule, parameter_type_id: opt?.value || "" })
+                            }
+                            placeholder="Parameter type..."
+                            isClearable
+                            menuPortalTarget={document.body}
+                            styles={{ menuPortal: (base) => ({ ...base, zIndex: 9999 }) }}
+                          />
+                        </div>
+                        <Input
+                          className="flex-1"
+                          placeholder="Value template"
+                          value={newRule.value_template}
+                          onChange={(e) => setNewRule({ ...newRule, value_template: e.target.value })}
+                        />
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          className="h-9 w-9"
+                          onClick={handleAddRule}
+                          disabled={!newRule.parameter_type_id || !newRule.value_template.trim()}
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+
                     <div className="flex gap-2 pt-2">
                       <Button
                         variant="outline"

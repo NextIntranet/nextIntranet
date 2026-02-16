@@ -16,6 +16,7 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.http import JsonResponse
 from django.core.exceptions import ObjectDoesNotExist
+from django.core.cache import cache
 
 
 from nextintranet_backend.views.crud import create_crud_urls
@@ -29,6 +30,8 @@ from nextintranet_backend.routers import NoFormatSuffixRouter as DefaultRouter
 
 from rest_framework import serializers
 from rest_framework.parsers import FormParser, MultiPartParser, JSONParser
+from django.db.models import Count, Max
+from django.core.files.storage import default_storage
 
 
 class WarehouseModelTable(NIT_Table):
@@ -81,36 +84,127 @@ class LocationAPIView(viewsets.ModelViewSet):
     pagination_class = CustomPagination
     parser_classes = [JSONParser, MultiPartParser, FormParser]
 
-    def build_tree(self, locations, parent=None):
-        tree = []
-        for location in locations:
-            if location.parent_id == (parent.id if parent else None):
-                children = self.build_tree(locations, location)
-                tree.append({
-                    'id': location.id,
-                    'uuid': str(location.uuid),
-                    'name': location.name,
-                    'location': location.location,
-                    'description': location.description,
-                    'full_path': location.full_path,
-                    'can_store_items': location.can_store_items,
-                    'parent': location.parent_id,
-                    'map': location.map.url if location.map else None,
-                    'children': children
-                })
-        return tree
+    def _cache_key(self, suffix):
+        marker = Warehouse.objects.aggregate(last_created=Max('created_at'), total=Count('id'))
+        last_created = marker['last_created']
+        ts = last_created.isoformat() if last_created else '0'
+        return f"warehouse:locations:tree:{suffix}:{marker['total']}:{ts}"
+
+    def _base_tree_values_queryset(self):
+        return Warehouse.objects.order_by('tree_id', 'lft').values(
+            'id',
+            'uuid',
+            'name',
+            'location',
+            'description',
+            'can_store_items',
+            'parent_id',
+            'map',
+        )
+
+    def _build_tree_payload(self, rows, root_id=None, root_full_path=None):
+        nodes_by_id = {}
+        children_by_parent = {}
+        full_path_by_id = {}
+
+        for row in rows:
+            row_id = row['id']
+            parent_id = row['parent_id']
+
+            if root_id is not None and row_id == root_id and root_full_path:
+                full_path = root_full_path
+            else:
+                parent_path = full_path_by_id.get(parent_id)
+                full_path = f"{parent_path}/{row['name']}" if parent_path else row['name']
+            full_path_by_id[row_id] = full_path
+
+            map_name = row['map']
+            map_url = default_storage.url(map_name) if map_name else None
+
+            node = {
+                'id': row_id,
+                'uuid': str(row['uuid']),
+                'name': row['name'],
+                'location': row['location'],
+                'description': row['description'],
+                'full_path': full_path,
+                'can_store_items': row['can_store_items'],
+                'parent': parent_id,
+                'map': map_url,
+                'children': [],
+            }
+
+            nodes_by_id[row_id] = node
+            children_by_parent.setdefault(parent_id, []).append(node)
+
+        for parent_id, children in children_by_parent.items():
+            if parent_id is None:
+                continue
+            parent = nodes_by_id.get(parent_id)
+            if parent is not None:
+                parent['children'] = children
+
+        if root_id is not None:
+            root_node = nodes_by_id.get(root_id)
+            return [root_node] if root_node else []
+
+        return children_by_parent.get(None, [])
 
     @action(detail=False, methods=['get'], url_path='tree')
     def tree_all(self, request):
-        locations = Warehouse.objects.all()
-        tree = self.build_tree(locations)
+        cache_key = self._cache_key('all')
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return Response(cached)
+
+        rows = list(self._base_tree_values_queryset())
+        tree = self._build_tree_payload(rows)
+        cache.set(cache_key, tree, 60)
         return Response(tree)
 
     @action(detail=True, methods=['get'], url_path='tree')
     def tree(self, request, pk=None):
-        location = Warehouse.objects.get(id=pk)
-        objects = location.get_descendants(include_self=True)
-        tree = self.build_tree(objects)
+        root = Warehouse.objects.filter(id=pk).values('id', 'tree_id', 'lft', 'rght').first()
+        if root is None:
+            return Response({'detail': 'Not found.'}, status=404)
+
+        cache_key = self._cache_key(f"node:{pk}")
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return Response(cached)
+
+        rows = list(
+            Warehouse.objects.filter(
+                tree_id=root['tree_id'],
+                lft__gte=root['lft'],
+                rght__lte=root['rght'],
+            )
+            .order_by('lft')
+            .values(
+                'id',
+                'uuid',
+                'name',
+                'location',
+                'description',
+                'can_store_items',
+                'parent_id',
+                'map',
+            )
+        )
+
+        ancestor_names = list(
+            Warehouse.objects.filter(
+                tree_id=root['tree_id'],
+                lft__lte=root['lft'],
+                rght__gte=root['rght'],
+            )
+            .order_by('lft')
+            .values_list('name', flat=True)
+        )
+        root_full_path = "/".join(ancestor_names)
+
+        tree = self._build_tree_payload(rows, root_id=root['id'], root_full_path=root_full_path)
+        cache.set(cache_key, tree, 60)
         return Response(tree)
 
 LocationRouter = DefaultRouter(trailing_slash=True)

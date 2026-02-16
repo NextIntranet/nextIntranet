@@ -8,6 +8,8 @@ import uuid
 
 from nextintranet_backend.models import NIModel
 
+
+
 class Category(MPTTModel, NIModel):
     
     # Kategorie součástek
@@ -50,4 +52,16 @@ class Category(MPTTModel, NIModel):
     
     def __str__(self):
         return f"{self.full_path}"
+
+
+class CategoryParameterRule(NIModel):
+    category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name='parameter_rules')
+    parameter_type = models.ForeignKey('nextintranet_warehouse.ParameterType', on_delete=models.CASCADE)
+    value_template = models.CharField(max_length=500)
+
+    class Meta:
+        unique_together = ('category', 'parameter_type')
+
+    def __str__(self):
+        return f"{self.category.name} -> {self.parameter_type.name}: {self.value_template}"
 

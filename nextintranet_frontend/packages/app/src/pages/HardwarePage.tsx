@@ -423,6 +423,19 @@ export function HardwarePage() {
             <CardDescription>Local or LAN services that expose HW capabilities.</CardDescription>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              variant={profile.agentsEnabled !== false ? "default" : "outline"}
+              size="sm"
+              onClick={() => {
+                const enabled = profile.agentsEnabled === false
+                const nextProfile = { ...profile, agentsEnabled: enabled }
+                setProfile(nextProfile)
+                nextIO.setAgentsEnabled(enabled)
+                toast.success(enabled ? "Agents enabled." : "Agents disabled.")
+              }}
+            >
+              {profile.agentsEnabled !== false ? "Enabled" : "Disabled"}
+            </Button>
             <Button variant="outline" size="sm" onClick={handleRefreshStatus}>
               Refresh status
             </Button>

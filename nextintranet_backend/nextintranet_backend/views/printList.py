@@ -232,8 +232,10 @@ class PrintRenderJobViewSet(ModelViewSet):
             if key in data and key not in payload:
                 payload[key] = data[key]
 
-        if service_token and service_token.scopes and "print:render" not in service_token.scopes:
-            return Response({"error": "Service token scope denied."}, status=status.HTTP_403_FORBIDDEN)
+        if service_token and service_token.scopes:
+            scopes = set(service_token.scopes)
+            if "print:render" not in scopes and "api:all" not in scopes:
+                return Response({"error": "Service token scope denied."}, status=status.HTTP_403_FORBIDDEN)
 
         print_list = self._resolve_print_list(user, print_list_id, service_token)
         if print_list_id and not print_list:

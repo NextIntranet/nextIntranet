@@ -32,8 +32,29 @@ from nextintranet_backend.views.crud import create_crud_urls
 from nextintranet_backend.help.crud import NIT_Table
 
 from ..models.component import ParameterType, ComponentParameter, Component
+from ..services.parameter_values import coerce_decimal_for_storage, format_parameter_display_value
+
+
+def _normalize_boolean_value(raw_value):
+    if raw_value is None:
+        return None
+    normalized = str(raw_value).strip().lower()
+    if normalized in {'true', '1', 'yes', 'on'}:
+        return 'true'
+    if normalized in {'false', '0', 'no', 'off'}:
+        return 'false'
+    return None
+
 
 class ParameterTypeSerializer(serializers.ModelSerializer):
+    def validate(self, attrs):
+        value_type = attrs.get('value_type')
+        if value_type is None and self.instance is not None:
+            value_type = self.instance.value_type
+        if value_type != 'number':
+            attrs['format_with_si_prefix'] = False
+        return attrs
+
     class Meta:
         model = ParameterType
         fields = '__all__'
@@ -73,11 +94,55 @@ class ComponentParameterSerializer(serializers.ModelSerializer):
     class Meta:
         model = ComponentParameter
         fields = '__all__'
+        read_only_fields = ('value_number', 'is_inherited', 'source_rule')
+
+    def validate(self, attrs):
+        parameter_type = attrs.get('parameter_type')
+        if parameter_type is None and self.instance is not None:
+            parameter_type = self.instance.parameter_type
+
+        value = attrs.get('value')
+        if 'value' not in attrs and self.instance is not None:
+            value = self.instance.value
+
+        if parameter_type and parameter_type.value_type == 'number':
+            try:
+                attrs['value_number'] = coerce_decimal_for_storage(value, strict=True)
+            except ValueError as exc:
+                raise serializers.ValidationError({'value': str(exc)})
+        elif parameter_type and parameter_type.value_type == 'bool':
+            normalized_bool = _normalize_boolean_value(value)
+            if normalized_bool is None:
+                if value is None or str(value).strip() == '':
+                    normalized_bool = 'false'
+                else:
+                    raise serializers.ValidationError(
+                        {'value': "Expected a boolean value: true/false."}
+                    )
+            attrs['value'] = normalized_bool
+            attrs['value_number'] = None
+        else:
+            attrs['value_number'] = None
+
+        return attrs
     
+    def update(self, instance, validated_data):
+        # If editing an inherited param, convert it to manual
+        if instance.is_inherited:
+            instance.is_inherited = False
+            instance.source_rule = None
+        return super().update(instance, validated_data)
+
     def to_representation(self, instance):
         data = super().to_representation(instance)
         if instance.parameter_type:
             data['parameter_type'] = ParameterTypeSerializer(instance.parameter_type).data
+        data['display_value'] = format_parameter_display_value(
+            instance.value,
+            instance.value_number,
+            instance.parameter_type,
+        )
+        data['is_inherited'] = instance.is_inherited
 
         return data
 

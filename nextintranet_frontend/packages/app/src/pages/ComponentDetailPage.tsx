@@ -137,12 +137,18 @@ interface ParameterType {
   id: string
   name: string
   description?: string | null
+  unit?: string | null
+  value_type?: "text" | "number" | "bool"
+  format_with_si_prefix?: boolean
 }
 
 interface ComponentParameter {
   id: string
   parameter_type?: ParameterType | string | null
   value?: string | null
+  value_number?: string | null
+  display_value?: string | null
+  is_inherited?: boolean
 }
 
 interface Component {
@@ -178,6 +184,15 @@ interface ComponentHistoryEntry {
 interface ComponentHistoryResponse {
   packets: Array<{ id: string; label: string }>
   history: ComponentHistoryEntry[]
+}
+
+interface UsedInManufacturing {
+  bom_id: string
+  bom_name: string
+  product_id: string
+  product_name: string
+  status: string
+  planned_date?: string | null
 }
 
 interface User {
@@ -291,6 +306,20 @@ export function ComponentDetailPage() {
     parameterTypeId: "",
     value: "",
   })
+
+  const normalizeBooleanValue = (value?: string | null): "true" | "false" | "" => {
+    if (value == null) {
+      return ""
+    }
+    const normalized = String(value).trim().toLowerCase()
+    if (["true", "1", "yes", "on"].includes(normalized)) {
+      return "true"
+    }
+    if (["false", "0", "no", "off"].includes(normalized)) {
+      return "false"
+    }
+    return ""
+  }
   const queryClient = useQueryClient()
   const highlightPacketId = searchParams.get("packet")
 
@@ -354,6 +383,13 @@ export function ComponentDetailPage() {
   const { data: historyData, isLoading: isHistoryLoading } = useQuery<ComponentHistoryResponse>({
     queryKey: ["component-history", id],
     queryFn: () => apiFetch<ComponentHistoryResponse>(`/api/v1/store/component/${id}/history/`),
+    enabled: !!id,
+  })
+
+  const { data: usedInManufacturing = [] } = useQuery<UsedInManufacturing[]>({
+    queryKey: ["component-used-in-manufacturing", id],
+    queryFn: () =>
+      apiFetch<UsedInManufacturing[]>(`/api/v1/production/productions/used-in/?component=${id}`),
     enabled: !!id,
   })
 
@@ -734,10 +770,14 @@ export function ComponentDetailPage() {
     if (!id || !parameterForm.parameterTypeId.trim()) {
       return
     }
+    const value = normalizeParameterValueForSubmit(
+      parameterForm.parameterTypeId,
+      parameterForm.value,
+    )
     const payload = {
       component: id,
       parameter_type: parameterForm.parameterTypeId,
-      value: parameterForm.value.trim(),
+      value,
     }
     createParameterMutation.mutate(payload)
   }
@@ -748,9 +788,14 @@ export function ComponentDetailPage() {
         ? parameter.parameter_type
         : parameter.parameter_type?.id || ""
     setParameterEditId(parameter.id)
+    const parameterType =
+      typeof parameter.parameter_type === "string" ? null : parameter.parameter_type
     setParameterForm({
       parameterTypeId,
-      value: parameter.value || "",
+      value:
+        parameterType?.value_type === "bool"
+          ? normalizeBooleanValue(parameter.value) || "false"
+          : parameter.value || "",
     })
     setParameterSheetOpen(true)
   }
@@ -759,11 +804,15 @@ export function ComponentDetailPage() {
     if (!parameterEditId || !parameterForm.parameterTypeId.trim()) {
       return
     }
+    const value = normalizeParameterValueForSubmit(
+      parameterForm.parameterTypeId,
+      parameterForm.value,
+    )
     updateParameterMutation.mutate({
       id: parameterEditId,
       data: {
         parameter_type: parameterForm.parameterTypeId,
-        value: parameterForm.value.trim(),
+        value,
       },
     })
   }
@@ -835,6 +884,17 @@ export function ComponentDetailPage() {
   const selectedParameterTypeOption = parameterTypeOptions.find(
     (option) => option.value === parameterForm.parameterTypeId,
   )
+  const selectedParameterType = parameterTypesList.find(
+    (type) => type.id === parameterForm.parameterTypeId,
+  )
+  const isBooleanParameterType = selectedParameterType?.value_type === "bool"
+  const normalizeParameterValueForSubmit = (parameterTypeId: string, rawValue: string) => {
+    const parameterType = parameterTypesList.find((type) => type.id === parameterTypeId)
+    if (parameterType?.value_type === "bool") {
+      return normalizeBooleanValue(rawValue) || "false"
+    }
+    return rawValue.trim()
+  }
   const packetOptions = useMemo(
     () =>
       (component?.packets ?? []).map((packet) => ({
@@ -1288,19 +1348,29 @@ export function ComponentDetailPage() {
           const label =
             typeof value === "string" ? value : value?.name || "Unknown parameter"
           return (
-            <span className="text-sm text-foreground">{label}</span>
+            <span className="text-sm text-foreground">
+              {label}
+              {row.original.is_inherited && (
+                <span className="ml-1.5 text-xs text-muted-foreground italic">(inherited)</span>
+              )}
+            </span>
           )
         },
       },
       {
         accessorKey: "value",
         header: "Value",
-        cell: ({ row }) =>
-          row.original.value ? (
-            renderTruncatedText(row.original.value)
+        cell: ({ row }) => {
+          const value = row.original.display_value || row.original.value
+          const isInherited = row.original.is_inherited
+          return value ? (
+            <span className={isInherited ? "text-muted-foreground italic" : ""}>
+              {renderTruncatedText(value)}
+            </span>
           ) : (
             <span className="text-muted-foreground">-</span>
-          ),
+          )
+        },
       },
     ]
 
@@ -1323,16 +1393,26 @@ export function ComponentDetailPage() {
         {
           id: "delete",
           header: "",
-          cell: ({ row }) => (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => handleDeleteParameter(row.original)}
-              aria-label="Remove parameter"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          ),
+          cell: ({ row }) =>
+            row.original.is_inherited ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex h-8 w-8 items-center justify-center text-xs text-muted-foreground">
+                    auto
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>Inherited from category rule</TooltipContent>
+              </Tooltip>
+            ) : (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => handleDeleteParameter(row.original)}
+                aria-label="Remove parameter"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            ),
         },
       )
     }
@@ -1795,8 +1875,8 @@ export function ComponentDetailPage() {
       
                 <div className="space-y-10">
     
-              <section className="space-y-4">
-                  <div className="space-y-1">
+          <section className="space-y-4">
+              <div className="space-y-1">
           <h2 className="text-lg font-semibold text-foreground">Description</h2>
           <div className="rounded-lg border border-border/70 bg-card p-4">
             {editMode ? (
@@ -1813,6 +1893,68 @@ export function ComponentDetailPage() {
           </div>
   </div>
   </section>
+
+          <section className="space-y-4">
+            <div className="space-y-1">
+              <h2 className="text-lg font-semibold text-foreground">Used in manufacturing</h2>
+              <p className="text-sm text-muted-foreground">
+                BOMs where this component is linked.
+              </p>
+            </div>
+            <div className="overflow-hidden rounded-lg border border-border/70">
+              <Table>
+                <TableHeader className="bg-muted/40">
+                  <TableRow className="border-border/50">
+                    <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      BOM
+                    </TableHead>
+                    <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Product
+                    </TableHead>
+                    <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Status
+                    </TableHead>
+                    <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Date
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {usedInManufacturing.length > 0 ? (
+                    usedInManufacturing.map((row) => (
+                      <TableRow key={row.bom_id} className="border-border/40">
+                        <TableCell className="h-9 px-3 text-sm">
+                          <Link
+                            to={`/production/${row.product_id}/bom/${row.bom_id}`}
+                            className="text-primary hover:underline"
+                          >
+                            {row.bom_name}
+                          </Link>
+                        </TableCell>
+                        <TableCell className="h-9 px-3 text-sm text-foreground">
+                          {row.product_name}
+                        </TableCell>
+                        <TableCell className="h-9 px-3 text-sm">
+                          <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                            {row.status}
+                          </span>
+                        </TableCell>
+                        <TableCell className="h-9 px-3 text-sm text-muted-foreground">
+                          {row.planned_date ? new Date(row.planned_date).toLocaleDateString() : "-"}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow className="border-border/40">
+                      <TableCell colSpan={4} className="py-6 text-center text-sm text-muted-foreground">
+                        This component is not used in any manufacturing BOM.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </section>
 
 
           <section className="space-y-4">
@@ -2225,21 +2367,42 @@ export function ComponentDetailPage() {
                 value={selectedParameterTypeOption || null}
                 placeholder="Select parameter type"
                 styles={selectStyles}
-                onChange={(option: SingleValue<OptionType>) =>
+                onChange={(option: SingleValue<OptionType>) => {
+                  const parameterTypeId = option?.value || ""
+                  const selectedType = parameterTypesList.find(
+                    (type) => type.id === parameterTypeId,
+                  )
                   setParameterForm({
                     ...parameterForm,
-                    parameterTypeId: option?.value || "",
+                    parameterTypeId,
+                    value:
+                      selectedType?.value_type === "bool"
+                        ? normalizeBooleanValue(parameterForm.value) || "false"
+                        : parameterForm.value,
                   })
-                }
+                }}
               />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Value</label>
-              <Input
-                value={parameterForm.value}
-                onChange={(e) => setParameterForm({ ...parameterForm, value: e.target.value })}
-                placeholder="Parameter value"
-              />
+              {isBooleanParameterType ? (
+                <select
+                  value={normalizeBooleanValue(parameterForm.value) || "false"}
+                  onChange={(e) =>
+                    setParameterForm({ ...parameterForm, value: e.target.value })
+                  }
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <option value="true">True</option>
+                  <option value="false">False</option>
+                </select>
+              ) : (
+                <Input
+                  value={parameterForm.value}
+                  onChange={(e) => setParameterForm({ ...parameterForm, value: e.target.value })}
+                  placeholder="Parameter value"
+                />
+              )}
             </div>
           </div>
           {(createParameterMutation.error || updateParameterMutation.error) && (

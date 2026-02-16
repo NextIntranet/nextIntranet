@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom"
-import { Cpu } from "lucide-react"
+import { Cpu, KeyRound, Laptop } from "lucide-react"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -28,6 +28,40 @@ export function SettingsPage() {
           <CardContent>
             <Button asChild>
               <Link to="/setting/hardware">Open hardware settings</Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+              <KeyRound className="h-5 w-5 text-muted-foreground" />
+            </div>
+            <CardTitle>Service tokens</CardTitle>
+            <CardDescription>
+              Generate and manage personal integration tokens.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild>
+              <Link to="/settings/service-token">Open service tokens</Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+              <Laptop className="h-5 w-5 text-muted-foreground" />
+            </div>
+            <CardTitle>Software</CardTitle>
+            <CardDescription>
+              Download integration config files for desktop tools.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild>
+              <Link to="/settings/software">Open software settings</Link>
             </Button>
           </CardContent>
         </Card>

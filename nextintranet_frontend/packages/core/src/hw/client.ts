@@ -213,18 +213,31 @@ export class NextIOClient {
     disconnectDevice: (deviceId: string) => this.browserSerialManager.disconnectDevice(deviceId),
   }
 
+  isAgentsEnabled(): boolean {
+    return this.profile.agentsEnabled !== false
+  }
+
+  setAgentsEnabled(enabled: boolean): void {
+    this.profile = { ...this.profile, agentsEnabled: enabled }
+    saveStationProfile(this.profile)
+    this.syncConnections()
+  }
+
   private syncConnections(): void {
-    const next = new Map<string, AgentConnection>()
-    const stationId = this.profile.stationId ?? null
-
-    for (const agent of this.profile.agents) {
-      const connection = new AgentConnection(agent, stationId, (event) => this.emit(event))
-      connection.connect()
-      next.set(agent.id, connection)
-    }
-
+    // Disconnect all existing connections first
     for (const connection of this.connections.values()) {
       connection.disconnect()
+    }
+
+    const next = new Map<string, AgentConnection>()
+
+    if (this.profile.agentsEnabled !== false) {
+      const stationId = this.profile.stationId ?? null
+      for (const agent of this.profile.agents) {
+        const connection = new AgentConnection(agent, stationId, (event) => this.emit(event))
+        connection.connect()
+        next.set(agent.id, connection)
+      }
     }
 
     this.connections = next

@@ -10,7 +10,7 @@ from .views import warehouse
 # from .serializers.components import ComponentSerializer
 from .views.components import ComponentListAPIView, ComponentDetailAPIView, ComponentHistoryAPIView, ComponentParameterListAPIView, ComponentParameterCreateAPIView
 from .views.warehouse import WarehousePositionsListAPIView, WarehousePositionsTreeAPIView
-from .views.category import CategoryRouter
+from .views.category import CategoryRouter, CategoryRuleRouter
 from .views.packets import PacketRouter, PacketListCreateAPIView, PDFGeneratorView, PacketOperationsAPIView
 from .views.tags import TagListAPIView
 from .views.supplier import SupplierRouter, SupplierRelationRouter, ComponentSuppliersRelationCreateAPIView, ComponentSuppliersRelationListAPIView, SupplierListCreateAPIView, SupplierDetailAPIView, SupplierRelationViewSet
@@ -62,6 +62,7 @@ urlpatterns = [
     path('supplier/relation/<uuid:pk>/sync/', SupplierRelationSyncAPIView.as_view(), name='api_warehouse_supplier_relation_sync'),
     path('supplier/relation/<uuid:pk>/apply/', SupplierRelationApplyAPIView.as_view(), name='api_warehouse_supplier_relation_apply'),
     path('supplier/', include(SupplierRouter.urls), name='api_warehouse_suppliers'),
+    path('category/<uuid:category_pk>/rules/', include(CategoryRuleRouter.urls)),
     path('category/', include(CategoryRouter.urls), name='api_warehouse_categories'),
     path('tags/', TagListAPIView.as_view(), name='api_warehouse_tags'),
     path('purchase-requests/', PurchaseRequestListAPIView.as_view(), name='api_warehouse_purchase_requests'),

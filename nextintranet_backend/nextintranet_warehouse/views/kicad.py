@@ -1,6 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 
 from nextintranet_warehouse.models.category import Category
 from nextintranet_warehouse.models.component import Component
@@ -8,6 +9,8 @@ from nextintranet_warehouse.models.component import Component
 from django.http import HttpResponse
 from django.conf import settings
 import json
+
+from nextintranet_backend.authentication import ServiceTokenAuthentication
 
 
 def _replace_none_with_empty_string(value):
@@ -21,7 +24,9 @@ def _replace_none_with_empty_string(value):
 
 
 class KicadAPITemplateView(APIView):
-    permission_classes = []
+    authentication_classes = [ServiceTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, format=None):
         site_url = getattr(settings, 'SITE_URL', 'http://localhost:8000')
         root_url = f"{site_url.rstrip('/')}/api/kicad/"
@@ -47,7 +52,9 @@ class KicadAPITemplateView(APIView):
 
 
 class KicadApiView(APIView):
-    permission_classes = []
+    authentication_classes = [ServiceTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, format=None):
 
         data = {
@@ -58,10 +65,10 @@ class KicadApiView(APIView):
         return Response(data, status=status.HTTP_200_OK)
 
 class KicadAPICategoriesView(APIView):
-    permission_classes = []
-    def get(self, request, format=None):
-        permission_classes = []
+    authentication_classes = [ServiceTokenAuthentication]
+    permission_classes = [IsAuthenticated]
 
+    def get(self, request, format=None):
         categories = Category.objects.all()
         
         data = []
@@ -84,7 +91,8 @@ class KicadAPICategoriesView(APIView):
 
 
 class KicadPartsCategoryView(APIView):
-    permission_classes = []
+    authentication_classes = [ServiceTokenAuthentication]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, id):
         print(f"chci kategorii {id}")
@@ -106,17 +114,22 @@ class KicadPartsCategoryView(APIView):
 
 
 class KicadPartsView(APIView):
-    permission_classes = []
+    authentication_classes = [ServiceTokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
     def get(self, request, id=None):
         print("Chci informace o ", id)
         
         part = Component.objects.get(pk=id)
         category = part.category
         category_name = category.name if category and category.name else ""
+        category_path = category.full_path if category else ""
 
         data = {
             "id": str(part.id),
             "name": part.name,
+            "description": part.description,
+            "datasheet": "",
             "symbolIdStr": "",
             "exclude_from_bom": "False",
             "exclude_from_board": "False",
@@ -174,11 +187,13 @@ class KicadPartsView(APIView):
             }
         
         for documents in part.documents.all():
-            if documents.doc_type == 'datasheet':
+            if (documents.doc_type or "").strip().lower() == "datasheet":
+                data["datasheet"] = documents.url
                 data["fields"]["datasheet"] = {
                     "value": documents.url,
                     "visible": "False"
                 }
+                break
 
         sanitized_data = _replace_none_with_empty_string(data)
         print(

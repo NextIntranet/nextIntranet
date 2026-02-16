@@ -6,6 +6,7 @@ from django.dispatch import receiver
 
 from nextintranet_backend.realtime import broadcast_event
 from .models.component import Component, ComponentParameter, Document, SupplierRelation
+from .models.category import CategoryParameterRule
 
 IGNORED_APP_LABELS = {
     'admin',
@@ -61,6 +62,11 @@ def _emit_component_update(
 def component_saved(sender, instance: Component, created: bool, **kwargs):
     _emit_component_update(instance.id, 'created' if created else 'updated', entity='component', entity_id=instance.id)
 
+    # Apply inherited parameters when a component is created or its category might have changed
+    if created or 'category_id' in (kwargs.get('update_fields') or []):
+        from .services.parameter_inheritance import apply_inherited_parameters
+        transaction.on_commit(lambda: apply_inherited_parameters(instance))
+
 
 @receiver(post_delete, sender=Component)
 def component_deleted(sender, instance: Component, **kwargs):
@@ -76,6 +82,15 @@ def component_parameter_saved(sender, instance: ComponentParameter, created: boo
 @receiver(post_delete, sender=ComponentParameter)
 def component_parameter_deleted(sender, instance: ComponentParameter, **kwargs):
     _emit_component_update(instance.component_id, 'parameter.deleted', entity='component_parameter', entity_id=instance.id)
+
+    # When a manual parameter is deleted, re-apply inheritance so the
+    # inherited value is restored if a matching rule exists.
+    if not instance.is_inherited:
+        from .services.parameter_inheritance import apply_inherited_parameters
+        component_id = instance.component_id
+        transaction.on_commit(lambda: apply_inherited_parameters(
+            Component.objects.filter(id=component_id).select_related('category').first()
+        ))
 
 
 @receiver(post_save, sender=SupplierRelation)
@@ -127,3 +142,19 @@ def model_m2m_changed(sender, instance, action: str, reverse: bool, model, pk_se
         'action': f'm2m.{action}',
     }
     _emit_model_change(instance, 'updated', using=using, extra=payload)
+
+
+# --- CategoryParameterRule signals ---
+
+@receiver(post_save, sender=CategoryParameterRule)
+def category_rule_saved(sender, instance: CategoryParameterRule, **kwargs):
+    from .services.parameter_inheritance import bulk_update_for_rule_change
+    category = instance.category
+    transaction.on_commit(lambda: bulk_update_for_rule_change(category))
+
+
+@receiver(post_delete, sender=CategoryParameterRule)
+def category_rule_deleted(sender, instance: CategoryParameterRule, **kwargs):
+    from .services.parameter_inheritance import bulk_update_for_rule_change
+    category = instance.category
+    transaction.on_commit(lambda: bulk_update_for_rule_change(category))

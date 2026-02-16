@@ -132,10 +132,22 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       ],
     },
     {
+      title: "Productions",
+      url: "/production",
+      icon: Command,
+      items: [
+        { title: "Products", url: "/production" },
+      ],
+    },
+    {
       title: "Settings",
       url: "/settings",
       icon: Settings2,
-      items: [{ title: "Hardware", url: "/setting/hardware" }],
+      items: [
+        { title: "Hardware", url: "/setting/hardware" },
+        { title: "Software", url: "/settings/software" },
+        { title: "Service tokens", url: "/settings/service-token" },
+      ],
     },
   ]
 

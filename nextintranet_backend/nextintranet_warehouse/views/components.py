@@ -27,7 +27,8 @@ from django.contrib import messages
 from django import forms
 
 from django.db import models
-from django.db.models import Q
+from django.db.models import Q, Sum, Value, Case, When, F, DecimalField
+from django.db.models.functions import Coalesce
 
 from ..models.component import Component
 from ..models.purchase import PurchaseRequest
@@ -137,6 +138,104 @@ class StandardResultsSetPagination(PageNumberPagination):
 def get_url(self, obj):
     return obj.url
 
+
+class ComponentListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for the component list view — no packets, documents, or suppliers."""
+    primary_image_url = serializers.SerializerMethodField()
+    inventory_summary = serializers.SerializerMethodField()
+    category = CategorySerializer(read_only=True)
+
+    class Meta:
+        model = Component
+        fields = [
+            'id', 'name', 'description', 'category',
+            'primary_image_url', 'inventory_summary',
+            'selling_price', 'internal_price', 'unit_type',
+        ]
+
+    def get_primary_image_url(self, instance):
+        # Use prefetched documents if available
+        docs = instance.documents.all()
+        primary = None
+        for doc in docs:
+            if doc.is_primary:
+                primary = doc
+                break
+        if primary:
+            url = primary.get_url
+        else:
+            url = instance.primary_image
+        if not url:
+            return None
+
+        public_endpoint = getattr(settings, 'S3_PUBLIC_ENDPOINT_URL', None)
+        internal_endpoint = getattr(settings, 'S3_ENDPOINT_URL', None)
+        bucket = getattr(settings, 'S3_STORAGE_BUCKET_NAME', None)
+        if not public_endpoint:
+            public_endpoint = getattr(settings, 'AWS_S3_PUBLIC_ENDPOINT_URL', None)
+        if not internal_endpoint:
+            internal_endpoint = getattr(settings, 'AWS_S3_ENDPOINT_URL', None)
+        if not bucket:
+            bucket = getattr(settings, 'AWS_STORAGE_BUCKET_NAME', None)
+
+        if public_endpoint and internal_endpoint and url.startswith(internal_endpoint):
+            return public_endpoint.rstrip('/') + url[len(internal_endpoint):]
+
+        parsed = urlparse(url)
+        path = parsed.path or ''
+        if public_endpoint and bucket and path.startswith(f'/{bucket}/'):
+            return f"{public_endpoint.rstrip('/')}{path}"
+        if public_endpoint and bucket and path.startswith('/documents/'):
+            return f"{public_endpoint.rstrip('/')}/{bucket}{path}"
+
+        return url
+
+    def get_inventory_summary(self, instance):
+        # Use annotated values from queryset when available (avoids N+1)
+        total_quantity = getattr(instance, '_total_quantity', None)
+        home_quantity = getattr(instance, '_home_quantity', None)
+        reserved_quantity = getattr(instance, '_reserved_quantity', None)
+        purchase_quantity = getattr(instance, '_purchase_requested_quantity', None)
+        ordered_quantity = getattr(instance, '_purchase_ordered_quantity', None)
+
+        if total_quantity is not None:
+            return {
+                'total_quantity': float(total_quantity),
+                'home_quantity': float(home_quantity) if home_quantity is not None else None,
+                'reserved_quantity': float(reserved_quantity or 0),
+                'purchase_quantity': float(purchase_quantity or 0),
+                'purchase_requested_quantity': float(purchase_quantity or 0),
+                'purchase_ordered_quantity': float(ordered_quantity or 0),
+            }
+
+        # Fallback: compute in Python (shouldn't happen with optimized queryset)
+        home_location_ids = self.context.get('home_location_ids')
+        total = 0
+        home = 0
+        for packet in instance.packets.all():
+            packet_count = packet.count or 0
+            total += packet_count
+            if home_location_ids and packet.location_id in home_location_ids:
+                home += packet_count
+        res_qty = instance.reservations.aggregate(
+            total_reserved=Sum('quantity')
+        )['total_reserved'] or 0
+        purch_qty = PurchaseRequest.objects.filter(
+            component=instance, purchase__isnull=True,
+        ).aggregate(total_requested=Sum('quantity'))['total_requested'] or 0
+        ord_qty = PurchaseRequest.objects.filter(
+            component=instance, purchase__isnull=False,
+        ).aggregate(total_ordered=Sum('quantity'))['total_ordered'] or 0
+        return {
+            'total_quantity': float(total),
+            'home_quantity': float(home) if home_location_ids else None,
+            'reserved_quantity': float(res_qty),
+            'purchase_quantity': float(purch_qty),
+            'purchase_requested_quantity': float(purch_qty),
+            'purchase_ordered_quantity': float(ord_qty),
+        }
+
+
 class ComponentSerializer(serializers.ModelSerializer):
     documents = DocumentSerializer(many=True, read_only=True)
     primary_image_url = serializers.SerializerMethodField()
@@ -178,6 +277,8 @@ class ComponentSerializer(serializers.ModelSerializer):
 
         parsed = urlparse(url)
         path = parsed.path or ''
+        if public_endpoint and bucket and path.startswith(f'/{bucket}/'):
+            return f"{public_endpoint.rstrip('/')}{path}"
         if public_endpoint and bucket and path.startswith('/documents/'):
             return f"{public_endpoint.rstrip('/')}/{bucket}{path}"
 
@@ -230,7 +331,7 @@ class ComponentSerializer(serializers.ModelSerializer):
 
 
 class ComponentListAPIView(generics.ListAPIView):
-    serializer_class = ComponentSerializer
+    serializer_class = ComponentListSerializer
     pagination_class = StandardResultsSetPagination
     permission_classes = [IsAuthenticated]
 
@@ -254,7 +355,7 @@ class ComponentListAPIView(generics.ListAPIView):
         if categories:
             categories = categories.split(',')
             categories = Category.objects.filter(id__in=categories)
-        
+
         filters = []
         if categories:
             filters.append(Q(category__in=categories))
@@ -265,21 +366,94 @@ class ComponentListAPIView(generics.ListAPIView):
             Q(description__icontains=search) |
             Q(id__icontains=search)
             )
-        
+
         if name:
             filters.append(Q(name__icontains=name))
-        
+
         if description:
             filters.append(Q(description__icontains=description))
 
         if locations:
             locations = locations.split(',')
-            locations = Warehouse.objects.filter(id__in=locations).get_descendants(include_self=True).distinct() 
+            locations = Warehouse.objects.filter(id__in=locations).get_descendants(include_self=True).distinct()
             filters.append(Q(packets__location__in=locations))
 
         if filters:
             queryset = queryset.filter(*filters)
-        return queryset.order_by('id')
+
+        # Build home_quantity annotation
+        home_location_ids = None
+        user_settings = UserSetting.objects.filter(
+            user=self.request.user
+        ).select_related('home_location').first()
+        if user_settings and user_settings.home_location:
+            home_location_ids = set(
+                user_settings.home_location.get_descendants(include_self=True)
+                .values_list('id', flat=True)
+            )
+
+        annotations = {
+            '_total_quantity': Coalesce(
+                Sum('packets__count'), Value(0), output_field=DecimalField()
+            ),
+            '_reserved_quantity': Coalesce(
+                Sum('reservations__quantity'), Value(0), output_field=DecimalField()
+            ),
+            '_purchase_requested_quantity': Coalesce(
+                Sum(
+                    Case(
+                        When(
+                            purchase_requests__purchase__isnull=True,
+                            then=F('purchase_requests__quantity'),
+                        ),
+                        default=Value(0),
+                        output_field=DecimalField(),
+                    )
+                ),
+                Value(0),
+                output_field=DecimalField(),
+            ),
+            '_purchase_ordered_quantity': Coalesce(
+                Sum(
+                    Case(
+                        When(
+                            purchase_requests__purchase__isnull=False,
+                            then=F('purchase_requests__quantity'),
+                        ),
+                        default=Value(0),
+                        output_field=DecimalField(),
+                    )
+                ),
+                Value(0),
+                output_field=DecimalField(),
+            ),
+        }
+
+        if home_location_ids:
+            annotations['_home_quantity'] = Coalesce(
+                Sum(
+                    Case(
+                        When(
+                            packets__location_id__in=home_location_ids,
+                            then=F('packets__count'),
+                        ),
+                        default=Value(0),
+                        output_field=DecimalField(),
+                    )
+                ),
+                Value(0),
+                output_field=DecimalField(),
+            )
+
+        queryset = (
+            queryset
+            .select_related('category')
+            .prefetch_related('documents')
+            .annotate(**annotations)
+            .order_by('id')
+        )
+
+        return queryset
 
 
 

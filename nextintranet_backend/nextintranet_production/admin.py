@@ -7,7 +7,8 @@ from .models import (
     Template,
     TemplateComponent,
     Realization,
-    RealizationComponent
+    RealizationComponent,
+    TemplateComponentScan,
 )
 
 
@@ -22,7 +23,7 @@ class ProductionFolderAdmin(MPTTModelAdmin):
 class TemplateComponentInline(admin.TabularInline):
     model = TemplateComponent
     extra = 1
-    fields = ['component', 'position', 'notes', 'attributes']
+    fields = ['component', 'position', 'value', 'footprint', 'qty_per_board', 'dnp', 'notes', 'attributes']
     autocomplete_fields = ['component']
 
 
@@ -45,8 +46,8 @@ class ProductionAdmin(admin.ModelAdmin):
 
 @admin.register(Template)
 class TemplateAdmin(admin.ModelAdmin):
-    list_display = ['name', 'production', 'version', 'created_at']
-    list_filter = ['production', 'created_at']
+    list_display = ['name', 'production', 'status', 'qty_planned', 'planned_date', 'version', 'created_at']
+    list_filter = ['production', 'status', 'created_at']
     search_fields = ['name', 'description', 'production__name']
     autocomplete_fields = ['production']
     inlines = [TemplateComponentInline]
@@ -54,9 +55,9 @@ class TemplateAdmin(admin.ModelAdmin):
 
 @admin.register(TemplateComponent)
 class TemplateComponentAdmin(admin.ModelAdmin):
-    list_display = ['template', 'component', 'position']
-    list_filter = ['template']
-    search_fields = ['template__name', 'component__name']
+    list_display = ['template', 'component', 'value', 'footprint', 'qty_per_board', 'dnp', 'position']
+    list_filter = ['template', 'dnp', 'source_type']
+    search_fields = ['template__name', 'component__name', 'value', 'footprint', 'ref_group']
     autocomplete_fields = ['template', 'component']
 
 
@@ -92,3 +93,11 @@ class RealizationComponentAdmin(admin.ModelAdmin):
     list_filter = ['realization', 'is_modified']
     search_fields = ['realization__name', 'component__name']
     autocomplete_fields = ['realization', 'component', 'template_component']
+
+
+@admin.register(TemplateComponentScan)
+class TemplateComponentScanAdmin(admin.ModelAdmin):
+    list_display = ['template', 'template_component', 'mode', 'barcode', 'resolved_component', 'created_at']
+    list_filter = ['mode', 'template', 'created_at']
+    search_fields = ['template__name', 'template_component__value', 'barcode', 'resolved_component__name']
+    autocomplete_fields = ['template', 'template_component', 'resolved_component']

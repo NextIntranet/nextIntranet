@@ -5,6 +5,22 @@ from django.utils import timezone
 
 
 class ServiceToken(models.Model):
+    SCOPE_API_READ = "api:read"
+    SCOPE_API_ALL = "api:all"
+    SCOPE_KICAD_READ = "kicad:read"
+    SCOPE_PRINT_RENDER = "print:render"
+    SCOPE_MCP_READ = "mcp:read"
+    SCOPE_MCP_WRITE = "mcp:write"
+
+    SCOPE_CHOICES = [
+        (SCOPE_API_READ, "API read-only"),
+        (SCOPE_API_ALL, "API all"),
+        (SCOPE_KICAD_READ, "KiCad read-only"),
+        (SCOPE_PRINT_RENDER, "Print render"),
+        (SCOPE_MCP_READ, "MCP read-only"),
+        (SCOPE_MCP_WRITE, "MCP read-write"),
+    ]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=255)
     token_prefix = models.CharField(max_length=16, unique=True)
@@ -40,3 +56,7 @@ class ServiceToken(models.Model):
         if not self.scopes:
             return False
         return scope in self.scopes
+
+    @classmethod
+    def allowed_scopes(cls):
+        return {scope for scope, _label in cls.SCOPE_CHOICES}

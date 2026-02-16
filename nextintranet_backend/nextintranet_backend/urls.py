@@ -43,6 +43,7 @@ from nextintranet_warehouse import urls as warehouse_urls
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include(api_urls)),
+    path('', include('mcp_server.urls')),
 
     path("select2/", include("django_select2.urls")),
 

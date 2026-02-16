@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import { Info } from "lucide-react"
 import { Link } from "react-router-dom"
 
@@ -10,6 +10,7 @@ interface ComponentInfo {
   name: string
   description?: string | null
   primary_image_url?: string | null
+  primary_image?: string | null
   category?: {
     id: string
     name: string
@@ -20,13 +21,52 @@ interface ComponentInfoPopoverProps {
   component: ComponentInfo
   packetId?: string
   children?: ReactNode
+  openOnHover?: boolean
 }
 
 export function ComponentInfoPopover({
   component,
   packetId,
   children,
+  openOnHover = false,
 }: ComponentInfoPopoverProps) {
+  const [hoverOpen, setHoverOpen] = useState(false)
+  const [imageSrc, setImageSrc] = useState<string | null>(
+    component.primary_image_url || component.primary_image || null,
+  )
+  const closeTimeoutRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    setImageSrc(component.primary_image_url || component.primary_image || null)
+  }, [component.id, component.primary_image_url, component.primary_image])
+
+  useEffect(() => {
+    return () => {
+      if (closeTimeoutRef.current != null) {
+        window.clearTimeout(closeTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  const clearCloseTimeout = () => {
+    if (closeTimeoutRef.current != null) {
+      window.clearTimeout(closeTimeoutRef.current)
+      closeTimeoutRef.current = null
+    }
+  }
+
+  const openPopover = () => {
+    clearCloseTimeout()
+    setHoverOpen(true)
+  }
+
+  const closePopover = () => {
+    clearCloseTimeout()
+    closeTimeoutRef.current = window.setTimeout(() => {
+      setHoverOpen(false)
+    }, 120)
+  }
+
   const componentLink = `/store/component/${component.id}${
     packetId ? `?packet=${packetId}` : ""
   }`
@@ -37,17 +77,43 @@ export function ComponentInfoPopover({
     </Button>
   )
 
+  const triggerNode = openOnHover ? (
+    <span
+      className="inline-flex"
+      onMouseEnter={openPopover}
+      onMouseLeave={closePopover}
+    >
+      {trigger}
+    </span>
+  ) : (
+    trigger
+  )
+
   return (
-    <Popover>
-      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-      <PopoverContent className="w-80">
+    <Popover
+      open={openOnHover ? hoverOpen : undefined}
+      onOpenChange={openOnHover ? setHoverOpen : undefined}
+    >
+      <PopoverTrigger asChild>{triggerNode}</PopoverTrigger>
+      <PopoverContent
+        className="w-80"
+        onMouseEnter={openOnHover ? openPopover : undefined}
+        onMouseLeave={openOnHover ? closePopover : undefined}
+      >
         <div className="flex items-start gap-3">
-          {component.primary_image_url ? (
+          {imageSrc ? (
             <img
-              src={component.primary_image_url}
+              src={imageSrc}
               alt={component.name}
               className="h-12 w-12 rounded-md border border-border object-contain"
               loading="lazy"
+              onError={() => {
+                if (imageSrc !== component.primary_image && component.primary_image) {
+                  setImageSrc(component.primary_image)
+                  return
+                }
+                setImageSrc(null)
+              }}
             />
           ) : (
             <div className="flex h-12 w-12 items-center justify-center rounded-md border border-border bg-muted text-[10px] text-muted-foreground">

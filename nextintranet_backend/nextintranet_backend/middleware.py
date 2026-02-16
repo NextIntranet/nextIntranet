@@ -6,9 +6,21 @@ from rest_framework.exceptions import AuthenticationFailed
 from django.http import JsonResponse
 
 
+def _mask_secret(value):
+    if not value:
+        return ""
+    value = str(value)
+    if len(value) <= 10:
+        return f"{value[:2]}..."
+    return f"{value[:4]}...{value[-4:]}"
+
+
 def debug_middleware(get_response):
     def middleware(request):
-        print(f"Authorization Header: {request.META.get('HTTP_AUTHORIZATION')}")
+        authorization = request.META.get("HTTP_AUTHORIZATION")
+        service_token = request.META.get("HTTP_X_SERVICE_TOKEN")
+        print(f"Authorization Header: {_mask_secret(authorization)}")
+        print(f"Service Token Header: {_mask_secret(service_token)}")
         print(f"User: {request.user}")
         return get_response(request)
     return middleware
@@ -37,6 +49,12 @@ class LoginRequiredMiddleware:
             print("No JWT token found")
 
 
+        # Service token authentication is handled by DRF authentication classes.
+        # If token headers are present, don't block request in Django middleware.
+        if self._has_service_token_header(request):
+            request.auth_method = "service"
+            return self.get_response(request)
+
         if not request.user.is_authenticated and not self._is_exempt_path(request):
             if request.path.startswith('/api/'):
                 response_data = {
@@ -59,7 +77,17 @@ class LoginRequiredMiddleware:
         # KiCad HTTP library API
         if request.path.startswith('/api/kicad/'):
             return True
+        # MCP server endpoint
+        if request.path.startswith('/mcp'):
+            return True
         return any(request.path.startswith(path) for path in exempt_paths)
+
+    def _has_service_token_header(self, request):
+        if request.headers.get("X-Service-Token"):
+            return True
+        auth_header = request.headers.get("Authorization", "")
+        auth_header_lower = auth_header.lower()
+        return auth_header_lower.startswith("service ") or auth_header_lower.startswith("token ")
 
 
 class InAppMiddleware:

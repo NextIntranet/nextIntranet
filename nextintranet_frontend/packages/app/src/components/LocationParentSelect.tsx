@@ -1,4 +1,4 @@
-import Select, { type StylesConfig, type SingleValue } from 'react-select';
+import Select, { type InputActionMeta, type StylesConfig, type SingleValue } from 'react-select';
 
 interface LocationNode {
   id: string;
@@ -73,6 +73,9 @@ type Props = {
   locations: LocationNode[];
   value: string | null;
   onChange: (value: string | null) => void;
+  onInputChange?: (value: string, meta: InputActionMeta) => void;
+  onMenuOpen?: () => void;
+  isLoading?: boolean;
   excludeId?: string;
   isDisabled?: boolean;
   emptyLabel?: string;
@@ -83,6 +86,9 @@ export function LocationParentSelect({
   locations,
   value,
   onChange,
+  onInputChange,
+  onMenuOpen,
+  isLoading = false,
   excludeId,
   isDisabled = false,
   emptyLabel = 'No parent',
@@ -103,7 +109,10 @@ export function LocationParentSelect({
       placeholder={placeholder}
       menuPlacement="auto"
       styles={selectStyles}
+      isLoading={isLoading}
       isDisabled={isDisabled}
+      onMenuOpen={onMenuOpen}
+      onInputChange={onInputChange}
       onChange={(option: SingleValue<LocationOption>) =>
         onChange(option?.value ? option.value : null)
       }

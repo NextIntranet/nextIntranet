@@ -22,6 +22,7 @@ from .views.printList import (
 )
 from .views.dashboard import DashboardMetricsAPIView
 from .views.plugins import PluginInstanceRouter, PluginExecuteView
+from .views.serviceToken import ServiceTokenRouter
 
 
 from .schema import schema
@@ -75,4 +76,5 @@ urlpatterns = [
 
     path('v1/plugins/', include(PluginInstanceRouter.urls), name='api_plugins'),
     path('v1/plugins/instances/<uuid:pk>/execute/', PluginExecuteView.as_view(), name='api_plugin_execute'),
+    path('v1/service-token/', include(ServiceTokenRouter.urls), name='api_service_token'),
 ]

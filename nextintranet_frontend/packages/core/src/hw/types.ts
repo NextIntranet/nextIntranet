@@ -57,6 +57,7 @@ export interface BrowserDeviceProfile {
 export interface StationProfile {
   version: 1
   stationId?: string | null
+  agentsEnabled?: boolean
   agents: AgentProfile[]
   browserDevices?: BrowserDeviceProfile[]
 }

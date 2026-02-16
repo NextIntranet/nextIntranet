@@ -12,13 +12,16 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
+type ParameterValueType = "text" | "number" | "bool"
+
 interface ParameterType {
   id: string
   name: string
   description?: string | null
   special_meaning?: boolean
   unit?: string | null
-  value_type?: "text" | "number"
+  value_type?: ParameterValueType
+  format_with_si_prefix?: boolean
   validation_min?: number | null
   validation_max?: number | null
   validation_regex?: string | null
@@ -78,7 +81,8 @@ export function ParameterTypesPage() {
     description: "",
     special_meaning: false,
     unit: "",
-    value_type: "text" as "text" | "number",
+    value_type: "text" as ParameterValueType,
+    format_with_si_prefix: false,
     validation_min: "",
     validation_max: "",
     validation_regex: "",
@@ -90,7 +94,8 @@ export function ParameterTypesPage() {
     description: "",
     special_meaning: false,
     unit: "",
-    value_type: "text" as "text" | "number",
+    value_type: "text" as ParameterValueType,
+    format_with_si_prefix: false,
     validation_min: "",
     validation_max: "",
     validation_regex: "",
@@ -107,6 +112,7 @@ export function ParameterTypesPage() {
       special_meaning: Boolean(parameterTypeDetail.special_meaning),
       unit: parameterTypeDetail.unit || "",
       value_type: parameterTypeDetail.value_type || "text",
+      format_with_si_prefix: Boolean(parameterTypeDetail.format_with_si_prefix),
       validation_min:
         parameterTypeDetail.validation_min !== null &&
         parameterTypeDetail.validation_min !== undefined
@@ -164,6 +170,7 @@ export function ParameterTypesPage() {
         special_meaning: false,
         unit: "",
         value_type: "text",
+        format_with_si_prefix: false,
         validation_min: "",
         validation_max: "",
         validation_regex: "",
@@ -207,6 +214,8 @@ export function ParameterTypesPage() {
       special_meaning: formState.special_meaning,
       unit: formState.unit.trim() || null,
       value_type: formState.value_type,
+      format_with_si_prefix:
+        formState.value_type === "number" ? formState.format_with_si_prefix : false,
       validation_min: formState.validation_min.trim()
         ? Number(formState.validation_min)
         : null,
@@ -225,6 +234,8 @@ export function ParameterTypesPage() {
       special_meaning: createForm.special_meaning,
       unit: createForm.unit.trim() || null,
       value_type: createForm.value_type,
+      format_with_si_prefix:
+        createForm.value_type === "number" ? createForm.format_with_si_prefix : false,
       validation_min: createForm.validation_min.trim()
         ? Number(createForm.validation_min)
         : null,
@@ -238,6 +249,15 @@ export function ParameterTypesPage() {
 
   const formValid = formState.name.trim() !== ""
   const createFormValid = createForm.name.trim() !== ""
+  const getValueTypeLabel = (valueType?: ParameterValueType) => {
+    if (valueType === "number") {
+      return "Number"
+    }
+    if (valueType === "bool") {
+      return "Boolean"
+    }
+    return "Text"
+  }
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 lg:px-6">
@@ -274,6 +294,9 @@ export function ParameterTypesPage() {
                   Type
                 </TableHead>
                 <TableHead className="h-9 w-[10%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  SI format
+                </TableHead>
+                <TableHead className="h-9 w-[10%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                   Special meaning
                 </TableHead>
               </TableRow>
@@ -281,7 +304,7 @@ export function ParameterTypesPage() {
             <TableBody>
               {isParameterTypesLoading ? (
                 <TableRow className="border-border/40">
-                  <TableCell colSpan={5} className="py-8">
+                  <TableCell colSpan={6} className="py-8">
                     <div className="space-y-2">
                       <Skeleton className="h-5 w-1/2" />
                       <Skeleton className="h-5 w-3/4" />
@@ -309,7 +332,14 @@ export function ParameterTypesPage() {
                       {parameterType.unit || "-"}
                     </TableCell>
                     <TableCell className="h-9 px-3 text-sm text-muted-foreground">
-                      {parameterType.value_type === "number" ? "Number" : "Text"}
+                      {getValueTypeLabel(parameterType.value_type)}
+                    </TableCell>
+                    <TableCell className="h-9 px-3 text-sm text-muted-foreground">
+                      {parameterType.value_type === "number"
+                        ? parameterType.format_with_si_prefix
+                          ? "Yes"
+                          : "No"
+                        : "-"}
                     </TableCell>
                     <TableCell className="h-9 px-3 text-sm text-muted-foreground">
                       {parameterType.special_meaning ? "Yes" : "No"}
@@ -319,7 +349,7 @@ export function ParameterTypesPage() {
               ) : (
                 <TableRow className="border-border/40">
                   <TableCell
-                    colSpan={5}
+                    colSpan={6}
                     className="py-8 text-center text-sm text-muted-foreground"
                   >
                     No parameter types found.
@@ -372,7 +402,19 @@ export function ParameterTypesPage() {
                       Value type
                     </p>
                     <p className="text-sm text-foreground">
-                      {parameterTypeDetail.value_type === "number" ? "Number" : "Text"}
+                      {getValueTypeLabel(parameterTypeDetail.value_type)}
+                    </p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold uppercase text-muted-foreground">
+                      SI format
+                    </p>
+                    <p className="text-sm text-foreground">
+                      {parameterTypeDetail.value_type === "number"
+                        ? parameterTypeDetail.format_with_si_prefix
+                          ? "Enabled"
+                          : "Disabled"
+                        : "-"}
                     </p>
                   </div>
                   <div className="space-y-1">
@@ -445,13 +487,18 @@ export function ParameterTypesPage() {
                         onChange={(e) =>
                           setFormState({
                             ...formState,
-                            value_type: e.target.value as "text" | "number",
+                            value_type: e.target.value as ParameterValueType,
+                            format_with_si_prefix:
+                              e.target.value === "number"
+                                ? formState.format_with_si_prefix
+                                : false,
                           })
                         }
                         className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                       >
                         <option value="text">Text</option>
                         <option value="number">Number</option>
+                        <option value="bool">Boolean</option>
                       </select>
                     </div>
                   </div>
@@ -512,6 +559,16 @@ export function ParameterTypesPage() {
                       placeholder="Comma-separated values"
                     />
                   </div>
+                  <label className="flex items-center justify-between rounded-lg border border-border/70 px-4 py-3 text-sm text-foreground">
+                    <span>Use SI prefix formatting</span>
+                    <Switch
+                      checked={formState.format_with_si_prefix}
+                      onCheckedChange={(checked) =>
+                        setFormState({ ...formState, format_with_si_prefix: checked })
+                      }
+                      disabled={formState.value_type !== "number"}
+                    />
+                  </label>
                   <label className="flex items-center justify-between rounded-lg border border-border/70 px-4 py-3 text-sm text-foreground">
                     <span>Special meaning</span>
                     <Switch
@@ -579,13 +636,16 @@ export function ParameterTypesPage() {
                   onChange={(e) =>
                     setCreateForm({
                       ...createForm,
-                      value_type: e.target.value as "text" | "number",
+                      value_type: e.target.value as ParameterValueType,
+                      format_with_si_prefix:
+                        e.target.value === "number" ? createForm.format_with_si_prefix : false,
                     })
                   }
                   className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <option value="text">Text</option>
                   <option value="number">Number</option>
+                  <option value="bool">Boolean</option>
                 </select>
               </div>
             </div>
@@ -646,6 +706,16 @@ export function ParameterTypesPage() {
                 placeholder="Comma-separated values"
               />
             </div>
+            <label className="flex items-center justify-between rounded-lg border border-border/70 px-4 py-3 text-sm text-foreground">
+              <span>Use SI prefix formatting</span>
+              <Switch
+                checked={createForm.format_with_si_prefix}
+                onCheckedChange={(checked) =>
+                  setCreateForm({ ...createForm, format_with_si_prefix: checked })
+                }
+                disabled={createForm.value_type !== "number"}
+              />
+            </label>
             <label className="flex items-center justify-between rounded-lg border border-border/70 px-4 py-3 text-sm text-foreground">
               <span>Special meaning</span>
               <Switch

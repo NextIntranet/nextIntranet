@@ -146,6 +146,7 @@ export function StorePage() {
   const [selectedLocation, setSelectedLocation] = useState<string | null>(
     searchParams.get('locations') || searchParams.get('location') || null
   );
+  const [locationsRequested, setLocationsRequested] = useState(Boolean(searchParams.get('locations') || searchParams.get('location')));
 
   const [createForm, setCreateForm] = useState({
     name: '',
@@ -184,10 +185,11 @@ export function StorePage() {
   const categories = Array.isArray(categoriesData) ? categoriesData : categoriesData?.results || [];
 
   // Fetch locations
-  const { data: locationsData } = useQuery<Location[] | PaginatedLocations>({
+  const { data: locationsData, isFetching: isLocationsFetching } = useQuery<Location[] | PaginatedLocations>({
     queryKey: ['locations'],
     queryFn: () =>
       apiFetch<Location[] | PaginatedLocations>('/api/v1/store/locations/?page_size=1000'),
+    enabled: locationsRequested,
   });
   const locations = Array.isArray(locationsData) ? locationsData : locationsData?.results || [];
 
@@ -415,17 +417,15 @@ export function StorePage() {
           )}
         </div>
         <div className="rounded-md">
-          {locations && locations.length > 0 ? (
-            <LocationParentSelect
-              locations={locationTree}
-              value={selectedLocation}
-              onChange={handleLocationSelect}
-              emptyLabel="All locations"
-              placeholder="All locations"
-            />
-          ) : (
-            <div className="text-sm text-muted-foreground">No locations</div>
-          )}
+          <LocationParentSelect
+            locations={locationTree}
+            value={selectedLocation}
+            onChange={handleLocationSelect}
+            onMenuOpen={() => setLocationsRequested(true)}
+            isLoading={locationsRequested && isLocationsFetching}
+            emptyLabel="All locations"
+            placeholder={locationsRequested ? "All locations" : "Open to load locations"}
+          />
         </div>
       </div>
     </div>

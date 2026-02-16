@@ -5,7 +5,8 @@ from rest_framework import generics
 from rest_framework.pagination import PageNumberPagination
 
 from rest_framework import serializers
-from django.db.models import Q
+from django.db.models import Q, Count, Max
+from django.core.cache import cache
 
 
 
@@ -68,9 +69,9 @@ class StandardResultsSetPagination(PageNumberPagination):
     page_size_query_param = 'page_size'
     max_page_size = 100
 
-# Serializer for Warehouse model
+# Serializer for Warehouse detail
 class WarehouseSerializer(serializers.ModelSerializer):
-    full_path = serializers.CharField()
+    full_path = serializers.SerializerMethodField()
     class Meta:
         model = Warehouse
         # fields = '__all__'  # zachováme všechna pole modelu
@@ -79,10 +80,60 @@ class WarehouseSerializer(serializers.ModelSerializer):
     def get_full_path(self, obj):
         return obj.full_path
 
+class WarehouseListSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    uuid = serializers.UUIDField()
+    name = serializers.CharField()
+    parent = serializers.IntegerField(allow_null=True)
+    can_store_items = serializers.BooleanField()
+    full_path = serializers.CharField()
+
 class WarehousePositionsListAPIView(generics.ListAPIView):
     queryset = Warehouse.objects.all()
-    serializer_class = WarehouseSerializer
+    serializer_class = WarehouseListSerializer
     permission_classes = [IsAuthenticated]
+
+    def _cache_key(self):
+        marker = Warehouse.objects.aggregate(last_created=Max('created_at'), total=Count('id'))
+        last_created = marker['last_created']
+        ts = last_created.isoformat() if last_created else '0'
+        return f"warehouse:locations:list:v2:{marker['total']}:{ts}"
+
+    def list(self, request, *args, **kwargs):
+        cache_key = self._cache_key()
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return Response(cached)
+
+        rows = list(
+            Warehouse.objects.order_by('tree_id', 'lft').values(
+                'id',
+                'uuid',
+                'name',
+                'parent_id',
+                'can_store_items',
+            )
+        )
+
+        full_path_map = {}
+        payload = []
+        for row in rows:
+            parent_path = full_path_map.get(row['parent_id'])
+            full_path = f"{parent_path}/{row['name']}" if parent_path else row['name']
+            full_path_map[row['id']] = full_path
+            payload.append(
+                {
+                    'id': row['id'],
+                    'uuid': str(row['uuid']),
+                    'name': row['name'],
+                    'parent': row['parent_id'],
+                    'can_store_items': row['can_store_items'],
+                    'full_path': full_path,
+                }
+            )
+
+        cache.set(cache_key, payload, 60)
+        return Response(payload)
 
 class WarehousePositionsDetailAPIView(generics.RetrieveAPIView):
     def get_queryset(self):

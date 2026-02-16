@@ -29,7 +29,10 @@ export function HardwareScannerListener() {
         return
       }
 
-      if (location.pathname.startsWith("/store/inventory")) {
+      if (
+        location.pathname.startsWith("/store/inventory") ||
+        location.pathname.startsWith("/production")
+      ) {
         return
       }
 

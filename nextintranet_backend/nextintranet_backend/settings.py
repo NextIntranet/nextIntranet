@@ -108,7 +108,7 @@ INSTALLED_APPS = [
     'drf_spectacular',
     'drf_spectacular_sidecar',
     'django_q',
-
+    'mcp_server',
 
     'nextintranet_backend',
     'nextintranet_warehouse.apps.NextintranetWarehouseConfig',
@@ -225,6 +225,7 @@ CORS_ALLOW_HEADERS = [
     'content-type',
     'x-csrftoken',
     'x-requested-with',
+    'x-service-token',
 ]
 
 
@@ -300,6 +301,7 @@ REST_FRAMEWORK = {
         "rest_framework.permissions.IsAuthenticated",),
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "nextintranet_backend.authentication.ServiceTokenAuthentication",
     ),
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
@@ -357,3 +359,13 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# MCP Server
+DJANGO_MCP_AUTHENTICATION_CLASSES = [
+    "nextintranet_backend.authentication.ServiceTokenAuthentication",
+]
+
+DJANGO_MCP_GLOBAL_SERVER_CONFIG = {
+    "name": "nextintranet-warehouse",
+    "instructions": "NextIntranet Warehouse MCP Server. Provides tools for searching components, viewing inventory, and managing warehouse data.",
+}

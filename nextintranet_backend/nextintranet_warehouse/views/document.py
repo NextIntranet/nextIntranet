@@ -56,6 +56,8 @@ class DocumentSerializer(serializers.ModelSerializer):
 
         parsed = urlparse(url)
         path = parsed.path or ''
+        if public_endpoint and bucket and path.startswith(f'/{bucket}/'):
+            return f"{public_endpoint.rstrip('/')}{path}"
         if public_endpoint and bucket and path.startswith('/documents/'):
             return f"{public_endpoint.rstrip('/')}/{bucket}{path}"
 

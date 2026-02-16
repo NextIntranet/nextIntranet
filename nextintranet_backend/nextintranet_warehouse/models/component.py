@@ -14,6 +14,8 @@ from nextintranet_backend.models.plugin import PluginInstance
 from nextintranet_backend.models.user import User
 from django.urls import reverse
 
+from ..services.parameter_values import coerce_decimal_for_storage
+
 class Component(NIModel):
     class meta:
         verbose_name = _('Component')
@@ -115,10 +117,11 @@ class ParameterType(NIModel):
     unit = models.CharField(max_length=50, blank=True, null=True, verbose_name=_('Unit'))
     value_type = models.CharField(
         max_length=10,
-        choices=(('text', _('Text')), ('number', _('Number'))),
+        choices=(('text', _('Text')), ('number', _('Number')), ('bool', _('Boolean'))),
         default='text',
         verbose_name=_('Value type'),
     )
+    format_with_si_prefix = models.BooleanField(default=False, verbose_name=_('Format with SI prefix'))
     validation_min = models.FloatField(blank=True, null=True, verbose_name=_('Validation min'))
     validation_max = models.FloatField(blank=True, null=True, verbose_name=_('Validation max'))
     validation_regex = models.CharField(max_length=255, blank=True, null=True, verbose_name=_('Validation regex'))
@@ -127,15 +130,54 @@ class ParameterType(NIModel):
     def __str__(self):
         return self.name
 
+    def save(self, *args, **kwargs):
+        if self.value_type != 'number':
+            self.format_with_si_prefix = False
+        super().save(*args, **kwargs)
+
 
 class ComponentParameter(NIModel):
     # Parametr komponenty
     component = models.ForeignKey(Component, on_delete=models.CASCADE, related_name='parameters', verbose_name=_('Component'))
     parameter_type = models.ForeignKey(ParameterType, on_delete=models.CASCADE, verbose_name=_('Parameter type'), blank=True, null=True)
     value = models.CharField(max_length=255, verbose_name=_('Value'), null=True, blank=True)
+    value_number = models.DecimalField(
+        max_digits=100,
+        decimal_places=40,
+        null=True,
+        blank=True,
+        verbose_name=_('Numeric value'),
+    )
+    is_inherited = models.BooleanField(default=False, verbose_name=_('Is inherited'))
+    source_rule = models.ForeignKey(
+        'nextintranet_warehouse.CategoryParameterRule',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name=_('Source rule'),
+    )
 
     def __str__(self):
         return f"{self.parameter_type.name}: {self.value}, {self.id}"
+
+    def save(self, *args, **kwargs):
+        if self.parameter_type and self.parameter_type.value_type == 'number':
+            self.value_number = coerce_decimal_for_storage(self.value, strict=False)
+        else:
+            self.value_number = None
+
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None:
+            update_fields = set(update_fields)
+            update_fields.add('value_number')
+            kwargs['update_fields'] = list(update_fields)
+
+        super().save(*args, **kwargs)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['parameter_type', 'value_number'], name='ni_wh_param_type_num_idx'),
+        ]
 
 
 class Document(NIModel):
