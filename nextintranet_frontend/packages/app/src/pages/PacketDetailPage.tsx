@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Link, useParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { type ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table"
 import { apiFetch } from "@nextintranet/core"
-import { Pencil, Plus } from "lucide-react"
+import { Pencil, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
+import Select, { type SingleValue, type MultiValue } from "react-select"
+import type { StylesConfig } from "react-select"
 
 import { LocationParentSelect } from "@/components/LocationParentSelect"
 import { PacketOperationSheet } from "@/components/PacketOperationSheet"
@@ -17,6 +20,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { ExtensionPoint } from "@/plugins/ExtensionPoint"
 import { PrintActions } from "@/components/PrintActions"
 import { getOperationLabel } from "@/lib/stockOperations"
+import { setScannerCapture } from "@/lib/scannerCapture"
+import { IDENTIFIER_SCHEME_OPTIONS } from "@/lib/identifierSchemes"
+import { Input } from "@/components/ui/input"
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 
 interface PacketComponent {
   id: string
@@ -27,6 +34,12 @@ interface PacketLocation {
   id: string
   full_path: string
   description?: string | null
+}
+
+interface ExternalIdentifier {
+  id: string
+  scheme: string
+  identifier: string
 }
 
 interface PacketDetail {
@@ -40,6 +53,7 @@ interface PacketDetail {
   date_added?: string
   component: PacketComponent
   location?: PacketLocation | null
+  external_identifiers?: ExternalIdentifier[]
 }
 
 interface StockOperation {
@@ -70,6 +84,9 @@ export function PacketDetailPage() {
   const queryClient = useQueryClient()
   const [editMode, setEditMode] = useState(false)
   const [operationSheetOpen, setOperationSheetOpen] = useState(false)
+  const [identifierSheetOpen, setIdentifierSheetOpen] = useState(false)
+  const [identifierForm, setIdentifierForm] = useState({ scheme: "", identifier: "" })
+  const identifierInputRef = useRef<HTMLInputElement>(null)
 
   const { data: user } = useQuery<User>({
     queryKey: ["me"],
@@ -81,6 +98,16 @@ export function PacketDetailPage() {
     user?.access_permissions?.some(
       (permission) => permission.area === "warehouse" && ["write", "admin"].includes(permission.level),
     )
+
+  const identifierSelectStyles: StylesConfig<{ value: string; label: string }, false> = {
+    control: (base, state) => ({
+      ...base,
+      backgroundColor: "hsl(var(--background))",
+      borderColor: state.isFocused ? "hsl(var(--ring))" : "hsl(var(--input))",
+      minHeight: "2.25rem",
+    }),
+    menu: (base) => ({ ...base, zIndex: 30 }),
+  }
 
   const { data: packet, isLoading, error } = useQuery<PacketDetail>({
     queryKey: ["packet", id],
@@ -118,6 +145,20 @@ export function PacketDetailPage() {
     })
   }, [packet?.id])
 
+  useEffect(() => {
+    if (!identifierSheetOpen) return
+    setScannerCapture((text) => {
+      setIdentifierForm((prev) => ({ ...prev, identifier: text }))
+    })
+    return () => setScannerCapture(null)
+  }, [identifierSheetOpen])
+
+  useEffect(() => {
+    if (!identifierSheetOpen) return
+    const t = setTimeout(() => identifierInputRef.current?.focus(), 100)
+    return () => clearTimeout(t)
+  }, [identifierSheetOpen])
+
   const updateMutation = useMutation({
     mutationFn: (payload: { description?: string | null; location?: string | null; is_active?: boolean }) =>
       apiFetch(`/api/v1/store/packet/${id}/`, {
@@ -134,6 +175,37 @@ export function PacketDetailPage() {
     },
   })
 
+  const createIdentifierMutation = useMutation({
+    mutationFn: (payload: { scheme: string; identifier: string }) =>
+      apiFetch<ExternalIdentifier>(`/api/v1/store/packet/${id}/identifiers/`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["packet", id] })
+      setIdentifierSheetOpen(false)
+      setIdentifierForm({ scheme: "", identifier: "" })
+      toast.success("External identifier added.")
+    },
+    onError: () => {
+      toast.error("Failed to add external identifier.")
+    },
+  })
+
+  const deleteIdentifierMutation = useMutation({
+    mutationFn: (identifierId: string) =>
+      apiFetch(`/api/v1/store/packet/${id}/identifiers/${identifierId}/`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["packet", id] })
+      toast.success("External identifier removed.")
+    },
+    onError: () => {
+      toast.error("Failed to remove external identifier.")
+    },
+  })
+
   const handleSave = () => {
     if (!id) {
       return
@@ -144,6 +216,51 @@ export function PacketDetailPage() {
       is_active: formState.isActive,
     })
   }
+
+  const identifierColumns = useMemo<ColumnDef<ExternalIdentifier>[]>(() => {
+    const cols: ColumnDef<ExternalIdentifier>[] = [
+      {
+        id: "scheme",
+        header: "Scheme",
+        cell: ({ row }) => {
+          const scheme = row.original.scheme || ""
+          const label =
+            (IDENTIFIER_SCHEME_OPTIONS.find((o) => o.value === scheme)?.label ?? scheme) || "Internal"
+          return <span className="text-sm text-foreground">{label}</span>
+        },
+      },
+      {
+        accessorKey: "identifier",
+        header: "Identifier",
+        cell: ({ row }) => (
+          <span className="font-mono text-sm text-foreground">{row.original.identifier}</span>
+        ),
+      },
+    ]
+    if (canEdit) {
+      cols.push({
+        id: "delete",
+        header: "",
+        cell: ({ row }) => (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => deleteIdentifierMutation.mutate(row.original.id)}
+            aria-label="Remove external identifier"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        ),
+      })
+    }
+    return cols
+  }, [canEdit, deleteIdentifierMutation])
+
+  const identifiersTable = useReactTable({
+    data: packet?.external_identifiers ?? [],
+    columns: identifierColumns,
+    getCoreRowModel: getCoreRowModel(),
+  })
 
   const formattedCount = packet?.count ?? 0
   const operationsList = useMemo(() => operations ?? [], [operations])
@@ -353,9 +470,65 @@ export function PacketDetailPage() {
           </Card>
         </div>
 
-        <Card className="mt-4">
-          <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle>Operations</CardTitle>
+        <section className="mt-4 space-y-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1">
+              <h2 className="text-lg font-semibold text-foreground">External identifiers</h2>
+              <p className="text-sm text-muted-foreground">
+                EAN, SKU, supplier codes and other barcodes for scanning and search.
+              </p>
+            </div>
+            {canEdit && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setIdentifierSheetOpen(true)}
+                className="gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Add identifier
+              </Button>
+            )}
+          </div>
+          {(packet?.external_identifiers?.length ?? 0) > 0 ? (
+            <div className="overflow-hidden rounded-lg border border-border/70">
+              <Table>
+                <TableHeader className="bg-muted/40">
+                  {identifiersTable.getHeaderGroups().map((hg) => (
+                    <TableRow key={hg.id}>
+                      {hg.headers.map((header) => (
+                        <TableHead key={header.id}>
+                          {header.isPlaceholder
+                            ? null
+                            : flexRender(header.column.columnDef.header, header.getContext())}
+                        </TableHead>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableHeader>
+                <TableBody>
+                  {identifiersTable.getRowModel().rows.map((row) => (
+                    <TableRow key={row.id}>
+                      {row.getVisibleCells().map((cell) => (
+                        <TableCell key={cell.id}>
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <p className="rounded-lg border border-border/70 bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+              No external identifiers.
+            </p>
+          )}
+        </section>
+
+        <div className="mt-4 space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-lg font-semibold text-foreground">Operations</h2>
             {canEdit && (
               <Button
                 size="sm"
@@ -367,9 +540,8 @@ export function PacketDetailPage() {
                 Add operation
               </Button>
             )}
-          </CardHeader>
-          <CardContent>
-            {operationsLoading ? (
+          </div>
+          {operationsLoading ? (
               <Skeleton className="h-32 w-full" />
             ) : operationsList.length ? (
               <div className="overflow-hidden rounded-lg border border-border/70">
@@ -424,9 +596,65 @@ export function PacketDetailPage() {
             ) : (
               <div className="text-sm text-muted-foreground">No operations available.</div>
             )}
-          </CardContent>
-        </Card>
+        </div>
       </div>
+
+      <Sheet open={identifierSheetOpen} onOpenChange={setIdentifierSheetOpen}>
+        <SheetContent side="right" className="w-full max-w-lg">
+          <SheetHeader>
+            <SheetTitle>Add external identifier</SheetTitle>
+            <SheetDescription>
+              Add an EAN, SKU, supplier code or other barcode. When this sheet is open, scanner and RFID input are locked to the Code field—scan to fill it.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="mt-6 space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Scheme</label>
+              <Select
+                classNamePrefix="rs"
+                options={IDENTIFIER_SCHEME_OPTIONS}
+                value={IDENTIFIER_SCHEME_OPTIONS.find((o) => o.value === identifierForm.scheme) ?? null}
+                placeholder="Select type"
+                styles={identifierSelectStyles}
+                onChange={(option: SingleValue<{ value: string; label: string }> | MultiValue<{ value: string; label: string }>) => {
+                  const single = Array.isArray(option) ? option[0] : option
+                  setIdentifierForm({ ...identifierForm, scheme: single?.value ?? "" })
+                }}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Code</label>
+              <Input
+                ref={identifierInputRef}
+                value={identifierForm.identifier}
+                onChange={(e) =>
+                  setIdentifierForm({ ...identifierForm, identifier: e.target.value.trim() })
+                }
+                placeholder="Scan or type e.g. 8591234567890 or SUP-CODE-001"
+              />
+            </div>
+          </div>
+          <SheetFooter className="mt-6">
+            <Button variant="outline" onClick={() => setIdentifierSheetOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() =>
+                createIdentifierMutation.mutate({
+                  scheme: identifierForm.scheme,
+                  identifier: identifierForm.identifier,
+                })
+              }
+              disabled={
+                !identifierForm.identifier.trim() || createIdentifierMutation.isPending
+              }
+            >
+              {createIdentifierMutation.isPending ? "Adding..." : "Add identifier"}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
       <PacketOperationSheet
         open={operationSheetOpen}
         onOpenChange={setOperationSheetOpen}

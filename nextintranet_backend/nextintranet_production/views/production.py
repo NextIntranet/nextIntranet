@@ -42,6 +42,7 @@ from nextintranet_production.serializers import (
     RealizationComponentSerializer,
 )
 from nextintranet_backend.models.printList import PrintFile, PrintItem, PrintList
+from nextintranet_backend.models.userSettings import UserSetting
 from nextintranet_warehouse.models.component import Component, Packet, StockOperation
 
 
@@ -915,36 +916,79 @@ class TemplateViewSet(viewsets.ModelViewSet):
     def availability(self, request, pk=None):
         template = self.get_object()
 
-        rows = []
-        for line in template.components.select_related("component").all().order_by("position", "id"):
-            needed_total = _line_needed_total(line, template.qty_planned)
-            inventory_total = _safe_float(line.component.count) if line.component else 0.0
-            locations = _line_locations(line.component)
-            shortage = float(needed_total) > inventory_total
-            rows.append(
-                {
-                    "id": str(line.id),
-                    "ref_group": line.ref_group,
-                    "value": line.value,
-                    "footprint": line.footprint,
-                    "dnp": line.dnp,
-                    "linked_component": str(line.component_id) if line.component_id else None,
-                    "linked_component_name": line.component.name if line.component else None,
-                    "needed_total": float(needed_total),
-                    "in_stock": inventory_total,
-                    "locations": locations,
-                    "shortage": shortage,
-                    "unlinked": line.component_id is None,
-                }
+        home_location_ids = None
+        home_location_full_path = None
+        user_settings = UserSetting.objects.filter(user=request.user).select_related("home_location").first()
+        if user_settings and user_settings.home_location:
+            home_location_ids = set(
+                user_settings.home_location.get_descendants(include_self=True).values_list("id", flat=True)
             )
+            home_location_full_path = user_settings.home_location.full_path
 
-        return Response(
-            {
-                "bom_id": str(template.id),
-                "qty_planned": template.qty_planned,
-                "rows": rows,
-            }
+        rows = []
+        lines_qs = (
+            template.components.select_related("component")
+            .prefetch_related("component__packets__location", "component__reservations")
+            .order_by("position", "id")
         )
+        template_id_str = str(template.id)
+        for line in lines_qs:
+            needed_total = _line_needed_total(line, template.qty_planned)
+            locations = _line_locations(line.component)
+            total_quantity = sum(_safe_float(loc.get("quantity") or 0) for loc in locations)
+            # Available = total minus reservations that are NOT for this BOM (self-reservations don't reduce availability here)
+            if line.component:
+                total_reserved = sum(
+                    _safe_float(r.quantity) for r in line.component.reservations.all()
+                )
+                reserved_for_this_bom = sum(
+                    _safe_float(r.quantity)
+                    for r in line.component.reservations.all()
+                    if any(
+                        s.get("bom_id") == template_id_str
+                        for s in (r.sources or [])
+                    )
+                )
+                other_reserved = total_reserved - reserved_for_this_bom
+                inventory_total = max(0.0, total_quantity - other_reserved)
+            else:
+                inventory_total = 0.0
+            total_in_home = None
+            if home_location_ids and line.component:
+                total_in_home = sum(
+                    _safe_float(p.count)
+                    for p in line.component.packets.all()
+                    if p.location_id in home_location_ids
+                )
+            # DNP lines are not populated, so do not report shortage
+            shortage = not line.dnp and (float(needed_total) > inventory_total)
+            row = {
+                "id": str(line.id),
+                "ref_group": line.ref_group,
+                "value": line.value,
+                "footprint": line.footprint,
+                "dnp": line.dnp,
+                "linked_component": str(line.component_id) if line.component_id else None,
+                "linked_component_name": line.component.name if line.component else None,
+                "needed_total": float(needed_total),
+                "in_stock": inventory_total,
+                "total_quantity": total_quantity,
+                "locations": locations,
+                "shortage": shortage,
+                "unlinked": line.component_id is None,
+            }
+            if total_in_home is not None:
+                row["total_in_home"] = total_in_home
+            rows.append(row)
+
+        payload = {
+            "bom_id": str(template.id),
+            "qty_planned": template.qty_planned,
+            "rows": rows,
+        }
+        if home_location_full_path is not None:
+            payload["home_location_full_path"] = home_location_full_path
+        return Response(payload)
 
     @action(detail=True, methods=["post"], url_path="scan")
     @transaction.atomic

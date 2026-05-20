@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from rest_framework.permissions import IsAuthenticated
-from rest_framework import generics
+from rest_framework import generics, status
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.views import APIView
 
@@ -30,10 +30,11 @@ from django.db import models
 from django.db.models import Q, Sum, Value, Case, When, F, DecimalField
 from django.db.models.functions import Coalesce
 
-from ..models.component import Component
+from ..models.component import Component, Identifier
 from ..models.purchase import PurchaseRequest
 from ..models.component import Tag
 from ..models.category import Category
+from django.contrib.contenttypes.models import ContentType
 from .category import CategorySerializer
 from .document import DocumentSerializer
 from django.conf import settings
@@ -139,6 +140,26 @@ def get_url(self, obj):
     return obj.url
 
 
+class ComponentCreateSerializer(serializers.ModelSerializer):
+    """Serializer for creating a component (POST). Accepts only the fields needed for create."""
+    category = serializers.PrimaryKeyRelatedField(
+        queryset=Category.objects.all(),
+        required=True,
+        allow_null=False,
+    )
+    tags = serializers.PrimaryKeyRelatedField(
+        queryset=Tag.objects.all(),
+        many=True,
+        required=False,
+        default=list,
+    )
+
+    class Meta:
+        model = Component
+        fields = ['id', 'name', 'description', 'category', 'tags', 'unit_type']
+        read_only_fields = ['id']
+
+
 class ComponentListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for the component list view — no packets, documents, or suppliers."""
     primary_image_url = serializers.SerializerMethodField()
@@ -236,10 +257,18 @@ class ComponentListSerializer(serializers.ModelSerializer):
         }
 
 
+class ExternalIdentifierSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Identifier
+        fields = ['id', 'scheme', 'identifier']
+        read_only_fields = ['id']
+
+
 class ComponentSerializer(serializers.ModelSerializer):
     documents = DocumentSerializer(many=True, read_only=True)
     primary_image_url = serializers.SerializerMethodField()
     inventory_summary = serializers.SerializerMethodField()
+    external_identifiers = serializers.SerializerMethodField()
 
     category = serializers.PrimaryKeyRelatedField(
         queryset=Category.objects.all()
@@ -283,6 +312,11 @@ class ComponentSerializer(serializers.ModelSerializer):
             return f"{public_endpoint.rstrip('/')}/{bucket}{path}"
 
         return url
+
+    def get_external_identifiers(self, instance):
+        ct = ContentType.objects.get_for_model(Component)
+        qs = Identifier.objects.filter(content_type=ct, object_id=str(instance.pk))
+        return ExternalIdentifierSerializer(qs, many=True).data
 
     def get_inventory_summary(self, instance):
         total_quantity = 0
@@ -330,10 +364,15 @@ class ComponentSerializer(serializers.ModelSerializer):
 
 
 
-class ComponentListAPIView(generics.ListAPIView):
+class ComponentListAPIView(generics.ListCreateAPIView):
     serializer_class = ComponentListSerializer
     pagination_class = StandardResultsSetPagination
     permission_classes = [IsAuthenticated]
+
+    def get_serializer_class(self):
+        if self.request.method == 'POST':
+            return ComponentCreateSerializer
+        return ComponentListSerializer
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
@@ -471,6 +510,40 @@ class ComponentDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
         else:
             context['home_location_ids'] = None
         return context
+
+
+class ComponentIdentifierListCreateAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        component = get_object_or_404(Component, pk=pk)
+        ct = ContentType.objects.get_for_model(Component)
+        qs = Identifier.objects.filter(content_type=ct, object_id=str(component.pk))
+        return Response(ExternalIdentifierSerializer(qs, many=True).data)
+
+    def post(self, request, pk):
+        component = get_object_or_404(Component, pk=pk)
+        serializer = ExternalIdentifierSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ct = ContentType.objects.get_for_model(Component)
+        serializer.save(content_type=ct, object_id=str(component.pk))
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class ComponentIdentifierDetailAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, component_pk, identifier_pk):
+        component = get_object_or_404(Component, pk=component_pk)
+        ct = ContentType.objects.get_for_model(Component)
+        identifier = get_object_or_404(
+            Identifier,
+            pk=identifier_pk,
+            content_type=ct,
+            object_id=str(component.pk),
+        )
+        identifier.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class ComponentHistoryAPIView(APIView):

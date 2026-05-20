@@ -13,6 +13,13 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 
+type ReservationSource = {
+  type: string
+  bom_id?: string
+  line_id?: string
+  product_id?: string
+}
+
 interface Reservation {
   id: string
   component_id: string
@@ -20,9 +27,43 @@ interface Reservation {
   quantity: number
   priority?: string | null
   description?: string | null
+  sources?: ReservationSource[] | null
   reserved_by?: string | null
   reservation_date: string
   created_at: string
+}
+
+function ReservationSourcesCell({ sources }: { sources?: ReservationSource[] | null }) {
+  if (!sources?.length) return <span className="text-muted-foreground">—</span>
+  return (
+    <div className="flex flex-wrap gap-1">
+      {sources.map((s, i) => {
+        if (s.type === "production" && s.bom_id) {
+          const path =
+            s.product_id != null
+              ? `/production/${s.product_id}/bom/${s.bom_id}`
+              : `/production`
+          return (
+            <Link
+              key={i}
+              to={path}
+              className="inline-flex items-center rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-foreground hover:bg-muted/80 hover:underline"
+            >
+              Production BOM
+            </Link>
+          )
+        }
+        return (
+          <span
+            key={i}
+            className="inline-flex rounded-md bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground"
+          >
+            {s.type}
+          </span>
+        )
+      })}
+    </div>
+  )
 }
 
 interface PaginatedReservations {
@@ -230,7 +271,10 @@ export function ReservationsPage() {
                   <TableHead className="h-9 w-[20%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Reserved by
                   </TableHead>
-                  <TableHead className="h-9 w-[32%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableHead className="h-9 w-[20%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Source(s)
+                  </TableHead>
+                  <TableHead className="h-9 w-[24%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Description
                   </TableHead>
                 </TableRow>
@@ -238,7 +282,7 @@ export function ReservationsPage() {
               <TableBody>
                 {isReservationsLoading ? (
                   <TableRow className="border-border/40">
-                    <TableCell colSpan={4} className="py-8">
+                    <TableCell colSpan={5} className="py-8">
                       <div className="space-y-2">
                         <Skeleton className="h-5 w-1/2" />
                         <Skeleton className="h-5 w-3/4" />
@@ -273,26 +317,32 @@ export function ReservationsPage() {
                       <TableCell className="h-9 px-3 text-sm text-muted-foreground">
                         {reservation.reserved_by || "-"}
                       </TableCell>
+                      <TableCell className="px-3 py-2 align-top">
+                        <ReservationSourcesCell sources={reservation.sources} />
+                      </TableCell>
                       <TableCell className="px-3 py-2 text-sm text-muted-foreground align-top">
-                        {reservation.description ? (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="block whitespace-normal break-words leading-relaxed">
-                                {reservation.description}
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>{reservation.description}</TooltipContent>
-                          </Tooltip>
-                        ) : (
-                          "-"
-                        )}
+                        {(() => {
+                          const desc = reservation.description
+                          if (!desc) return "—"
+                          if (desc.startsWith("production:")) return "—"
+                          return (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="block whitespace-normal break-words leading-relaxed">
+                                  {desc}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>{desc}</TooltipContent>
+                            </Tooltip>
+                          )
+                        })()}
                       </TableCell>
                     </TableRow>
                   ))
                 ) : (
                   <TableRow className="border-border/40">
                     <TableCell
-                      colSpan={4}
+                      colSpan={5}
                       className="py-8 text-center text-sm text-muted-foreground"
                     >
                       No reservations found.
@@ -438,10 +488,23 @@ export function ReservationsPage() {
                     </div>
                     <div className="space-y-1">
                       <p className="text-xs font-semibold uppercase text-muted-foreground">
+                        Source(s)
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        <ReservationSourcesCell sources={reservationDetail.sources} />
+                        {!reservationDetail.sources?.length && (
+                          <span className="text-sm text-muted-foreground">—</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase text-muted-foreground">
                         Description
                       </p>
                       <p className="text-sm text-foreground">
-                        {reservationDetail.description || "No description."}
+                        {reservationDetail.description && !reservationDetail.description.startsWith("production:")
+                          ? reservationDetail.description
+                          : "No description."}
                       </p>
                     </div>
                     {canEdit && (

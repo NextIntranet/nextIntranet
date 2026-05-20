@@ -19,6 +19,19 @@ type ConnectionStateHandler = (state: RealtimeConnectionState) => void;
 
 const RECONNECT_DELAY_MS = 3000;
 const STATION_KEY = 'stationId';
+const SENDER_ID_KEY = 'realtime_sender_id';
+
+function getOrCreateSenderId(): string {
+  if (typeof window === 'undefined') return '';
+  let id = sessionStorage.getItem(SENDER_ID_KEY);
+  if (!id) {
+    id = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `tab-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+    sessionStorage.setItem(SENDER_ID_KEY, id);
+  }
+  return id;
+}
 
 export class RealtimeClient {
   private eventSocket?: WebSocket;
@@ -30,6 +43,7 @@ export class RealtimeClient {
   private connectionStateHandlers = new Set<ConnectionStateHandler>();
   
   private currentStationId: string | null = null;
+  private senderId: string = '';
   private connectionState: RealtimeConnectionState = {
     events: 'disconnected',
     station: 'disconnected',
@@ -42,6 +56,8 @@ export class RealtimeClient {
 
   initialize(): void {
     if (typeof window === 'undefined') return;
+
+    this.senderId = getOrCreateSenderId();
     
     const stationId = this.getStationFromUrl() || localStorage.getItem(STATION_KEY);
     if (stationId) {
@@ -51,6 +67,11 @@ export class RealtimeClient {
 
     this.connectEvents();
     this.connectStation();
+  }
+
+  /** Per-tab sender ID so we can ignore our own echoed messages but still react to other tabs. */
+  getSenderId(): string {
+    return this.senderId || getOrCreateSenderId();
   }
 
   setStation(stationId: string | null): void {
@@ -80,8 +101,11 @@ export class RealtimeClient {
       }
     }
 
+    // Mark events with this tab's sender ID so we can ignore only our own echoes (other tabs still react)
+    const eventWithSender = { ...event, _senderId: this.getSenderId() };
+
     if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify(event));
+      socket.send(JSON.stringify(eventWithSender));
     }
   }
 

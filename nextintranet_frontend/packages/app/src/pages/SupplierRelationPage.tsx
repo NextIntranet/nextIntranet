@@ -51,6 +51,8 @@ interface SupplierRelation {
   } | null
   api_fetched_at?: string | null
   api_applied_at?: string | null
+  api_price?: string | null
+  api_availability?: string | null
 }
 
 interface Component {
@@ -304,6 +306,18 @@ export function SupplierRelationPage() {
                     : "-"}
                 </p>
               </div>
+              {relation?.api_price != null && (
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">API price</p>
+                  <p className="text-sm text-foreground">{relation.api_price}</p>
+                </div>
+              )}
+              {relation?.api_availability != null && relation.api_availability !== "" && (
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">API availability</p>
+                  <p className="text-sm text-foreground">{relation.api_availability}</p>
+                </div>
+              )}
             </CardContent>
           </Card>
 

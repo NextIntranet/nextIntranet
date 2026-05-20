@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { apiFetch, tokenStorage } from '@nextintranet/core';
 
 interface TokenResponse {
@@ -13,6 +13,28 @@ export function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const nextPath = useMemo(() => {
+    const raw = searchParams.get('next');
+    if (!raw) return '/';
+    if (!raw.startsWith('/')) return '/';
+    if (raw.startsWith('//')) return '/';
+    if (raw === '/login' || raw.startsWith('/login?')) return '/';
+    return raw;
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (searchParams.get('next')) return;
+    const params = new URLSearchParams(searchParams);
+    params.set('next', '/');
+    setSearchParams(params, { replace: true });
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (!tokenStorage.isAuthenticated()) return;
+    navigate(nextPath, { replace: true });
+  }, [navigate, nextPath]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,7 +50,7 @@ export function LoginPage() {
       tokenStorage.setToken(response.access);
       tokenStorage.setRefreshToken(response.refresh);
       
-      navigate('/', { replace: true });
+      navigate(nextPath, { replace: true });
     } catch (err) {
       setError('Invalid username or password');
       console.error('Login error:', err);

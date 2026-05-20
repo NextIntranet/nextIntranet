@@ -24,6 +24,10 @@ export function useIbomBridge(templateId: string | null): UseIbomBridgeReturn {
   templateIdRef.current = templateId;
 
   const handleMessage = useCallback((event: RealtimeEvent) => {
+    // Ignore only messages from this tab when echoed back (other tabs and osazovák still apply)
+    const senderId = (event as RealtimeEvent & { _senderId?: string })._senderId;
+    if (senderId && senderId === getRealtimeClient().getSenderId()) return;
+
     const payload = event.payload as Record<string, unknown>;
 
     switch (event.type) {

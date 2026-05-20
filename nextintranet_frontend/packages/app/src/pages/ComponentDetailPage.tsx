@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
@@ -19,7 +19,10 @@ import {
 } from "recharts"
 import { apiFetch } from "@nextintranet/core"
 import { toast } from "sonner"
+import { setScannerCapture } from "@/lib/scannerCapture"
+import { IDENTIFIER_SCHEME_OPTIONS } from "@/lib/identifierSchemes"
 import {
+  Image as ImageIcon,
   Layers,
   Link2,
   Copy,
@@ -151,6 +154,12 @@ interface ComponentParameter {
   is_inherited?: boolean
 }
 
+interface ExternalIdentifier {
+  id: string
+  scheme: string
+  identifier: string
+}
+
 interface Component {
   id: string
   name: string
@@ -173,6 +182,7 @@ interface Component {
   packets?: ComponentPacket[]
   documents?: Document[]
   suppliers?: SupplierRelation[]
+  external_identifiers?: ExternalIdentifier[]
 }
 
 interface ComponentHistoryEntry {
@@ -306,6 +316,26 @@ export function ComponentDetailPage() {
     parameterTypeId: "",
     value: "",
   })
+  const [identifierSheetOpen, setIdentifierSheetOpen] = useState(false)
+  const [identifierForm, setIdentifierForm] = useState({
+    scheme: "",
+    identifier: "",
+  })
+  const identifierInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!identifierSheetOpen) return
+    setScannerCapture((text) => {
+      setIdentifierForm((prev) => ({ ...prev, identifier: text }))
+    })
+    return () => setScannerCapture(null)
+  }, [identifierSheetOpen])
+
+  useEffect(() => {
+    if (!identifierSheetOpen) return
+    const t = setTimeout(() => identifierInputRef.current?.focus(), 100)
+    return () => clearTimeout(t)
+  }, [identifierSheetOpen])
 
   const normalizeBooleanValue = (value?: string | null): "true" | "false" | "" => {
     if (value == null) {
@@ -322,6 +352,7 @@ export function ComponentDetailPage() {
   }
   const queryClient = useQueryClient()
   const highlightPacketId = searchParams.get("packet")
+  const highlightSupplierId = searchParams.get("supplier")
 
   const { data: availableCategories } = useQuery<Category[] | { results: Category[] }>({
     queryKey: ["categories"],
@@ -392,6 +423,55 @@ export function ComponentDetailPage() {
       apiFetch<UsedInManufacturing[]>(`/api/v1/production/productions/used-in/?component=${id}`),
     enabled: !!id,
   })
+
+  type PurchaseRequestRow = {
+    id: string
+    component_id?: string | null
+    component_name?: string | null
+    quantity: number
+    description?: string | null
+    requested_by_name?: string | null
+    purchase_id?: string | null
+    created_at?: string | null
+  }
+  const { data: purchaseRequestsData } = useQuery<
+    PurchaseRequestRow[] | { results: PurchaseRequestRow[] }
+  >({
+    queryKey: ["purchase-requests", "component", id],
+    queryFn: () =>
+      apiFetch<PurchaseRequestRow[] | { results: PurchaseRequestRow[] }>(
+        `/api/v1/store/purchase-requests/?page_size=500&component=${id}`,
+      ),
+    enabled: !!id,
+  })
+  const purchaseRequestsList = useMemo(() => {
+    const d = purchaseRequestsData
+    if (!d) return []
+    return Array.isArray(d) ? d : d.results || []
+  }, [purchaseRequestsData])
+
+  type ReservationRow = {
+    id: string
+    component_id: string
+    quantity: number
+    reserved_by?: string | null
+    reservation_date?: string | null
+  }
+  const { data: reservationsData } = useQuery<
+    ReservationRow[] | { results: ReservationRow[] }
+  >({
+    queryKey: ["reservations", "component", id],
+    queryFn: () =>
+      apiFetch<ReservationRow[] | { results: ReservationRow[] }>(
+        `/api/v1/store/reservations/?page_size=500&component=${id}`,
+      ),
+    enabled: !!id,
+  })
+  const reservationsList = useMemo(() => {
+    const d = reservationsData
+    if (!d) return []
+    return Array.isArray(d) ? d : d.results || []
+  }, [reservationsData])
 
   const updateMutation = useMutation({
     mutationFn: (data: ComponentUpdatePayload) =>
@@ -529,6 +609,37 @@ export function ComponentDetailPage() {
     },
     onError: () => {
       toast.error("Failed to apply supplier data.")
+    },
+  })
+
+  const createIdentifierMutation = useMutation({
+    mutationFn: (payload: { scheme: string; identifier: string }) =>
+      apiFetch<ExternalIdentifier>(`/api/v1/store/component/${id}/identifiers/`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["component", id] })
+      setIdentifierSheetOpen(false)
+      setIdentifierForm({ scheme: "", identifier: "" })
+      toast.success("External identifier added.")
+    },
+    onError: () => {
+      toast.error("Failed to add external identifier.")
+    },
+  })
+
+  const deleteIdentifierMutation = useMutation({
+    mutationFn: (identifierId: string) =>
+      apiFetch(`/api/v1/store/component/${id}/identifiers/${identifierId}/`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["component", id] })
+      toast.success("External identifier removed.")
+    },
+    onError: () => {
+      toast.error("Failed to remove external identifier.")
     },
   })
 
@@ -1238,9 +1349,14 @@ export function ComponentDetailPage() {
               <TooltipContent>{row.original.name || "Untitled"}</TooltipContent>
             </Tooltip>
             {row.original.is_primary && row.original.doc_type === "image" && (
-              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
-                Default image
-              </span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex shrink-0 items-center justify-center rounded text-primary" aria-label="Default image">
+                    <ImageIcon className="h-4 w-4" />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>Default image</TooltipContent>
+              </Tooltip>
             )}
           </div>
         ),
@@ -1423,6 +1539,50 @@ export function ComponentDetailPage() {
   const parametersTable = useReactTable({
     data: parametersList,
     columns: parameterColumns,
+    getCoreRowModel: getCoreRowModel(),
+  })
+
+  const identifierColumns = useMemo<ColumnDef<ExternalIdentifier>[]>(() => {
+    const columns: ColumnDef<ExternalIdentifier>[] = [
+      {
+        id: "scheme",
+        header: "Scheme",
+        cell: ({ row }) => {
+          const scheme = row.original.scheme || ""
+          const label = (IDENTIFIER_SCHEME_OPTIONS.find((o) => o.value === scheme)?.label ?? scheme) || "Internal"
+          return <span className="text-sm text-foreground">{label}</span>
+        },
+      },
+      {
+        accessorKey: "identifier",
+        header: "Identifier",
+        cell: ({ row }) => (
+          <span className="font-mono text-sm text-foreground">{row.original.identifier}</span>
+        ),
+      },
+    ]
+    if (canEdit) {
+      columns.push({
+        id: "delete",
+        header: "",
+        cell: ({ row }) => (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => deleteIdentifierMutation.mutate(row.original.id)}
+            aria-label="Remove external identifier"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        ),
+      })
+    }
+    return columns
+  }, [canEdit, deleteIdentifierMutation])
+
+  const identifiersTable = useReactTable({
+    data: component?.external_identifiers ?? [],
+    columns: identifierColumns,
     getCoreRowModel: getCoreRowModel(),
   })
 
@@ -1655,7 +1815,8 @@ export function ComponentDetailPage() {
       <div className="mt-4 grid gap-4">
         <div className="min-w-0 space-y-4">
           <Card>
-            <CardContent className="grid gap-6 p-4 sm:p-6 lg:grid-cols-[260px_1fr]">
+            <CardContent className="flex flex-col gap-6 p-4 sm:p-6">
+              <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
               <div className="space-y-4">
                 <div className="overflow-hidden rounded-lg border border-border/60 bg-muted/40">
                   {component.primary_image_url ? (
@@ -1749,117 +1910,152 @@ export function ComponentDetailPage() {
               </div>
 
               <div className="space-y-4">
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-lg border border-border/70 bg-muted/40 p-3 shadow-sm">
-                    <p className="text-xs font-semibold uppercase text-muted-foreground">
-                      Total
-                    </p>
-                    <p className="text-xl font-semibold text-foreground">
-                      {component.inventory_summary?.home_quantity ?? "—"} /{" "}
-                      {component.inventory_summary?.total_quantity ?? 0}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Home / All</p>
-                  </div>
-                  <div className="rounded-lg border border-border/70 bg-muted/40 p-3 shadow-sm">
-                    <p className="text-xs font-semibold uppercase text-muted-foreground">
-                      Reserved
-                    </p>
-                    <p className="text-xl font-semibold text-foreground">
-                      {component.inventory_summary?.reserved_quantity ?? 0}
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-border/70 bg-muted/40 p-3 shadow-sm">
-                    <p className="text-xs font-semibold uppercase text-muted-foreground">
-                      Purchase
-                    </p>
-                    <p className="text-xl font-semibold text-foreground">
-                      {component.inventory_summary?.purchase_ordered_quantity ?? 0} /{" "}
-                      {component.inventory_summary?.purchase_requested_quantity ??
-                        component.inventory_summary?.purchase_quantity ??
-                        0}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Ordered / Requested
-                    </p>
-                  </div>
-                </div>
-
-                <Separator />
-
+                <p className="text-sm font-medium text-muted-foreground">Summary</p>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-lg border border-border/70 bg-card p-3 shadow-sm">
-                    <p className="text-xs font-semibold uppercase text-muted-foreground">
-                      Internal price
-                    </p>
-                    {editMode ? (
-                      <Input
-                        type="number"
-                        value={editedData.internal_price ?? ""}
-                        onChange={(e) => {
-                          const value = e.target.value
-                          setEditedData({
-                            ...editedData,
-                            internal_price: value === "" ? undefined : Number(value),
-                          })
-                        }}
-                        className="mt-2"
-                      />
-                    ) : (
-                      <p className="mt-1 text-sm font-medium text-foreground">
-                        <PriceLabel value={component.internal_price} currency={component.currency} />
-                      </p>
-                    )}
-                  </div>
-                  <div className="rounded-lg border border-border/70 bg-card p-3 shadow-sm">
-                    <p className="text-xs font-semibold uppercase text-muted-foreground">
-                      Selling price
-                    </p>
-                    {editMode ? (
-                      <Input
-                        type="number"
-                        value={editedData.selling_price ?? ""}
-                        onChange={(e) => {
-                          const value = e.target.value
-                          setEditedData({
-                            ...editedData,
-                            selling_price: value === "" ? undefined : Number(value),
-                          })
-                        }}
-                        className="mt-2"
-                      />
-                    ) : (
-                      <p className="mt-1 text-sm font-medium text-foreground">
-                        <PriceLabel value={component.selling_price} currency={component.currency} />
-                      </p>
-                    )}
-                  </div>
-                </div>
+                      <div className="rounded-lg border border-border/70 bg-muted/40 p-3 shadow-sm">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">
+                          Stock
+                        </p>
+                        <dl className="mt-2 space-y-1.5 text-sm">
+                          <div className="flex justify-between gap-2">
+                            <dt className="text-muted-foreground">Total</dt>
+                            <dd className="font-semibold text-foreground">
+                              {component.inventory_summary?.home_quantity != null ? (
+                                <span>{component.inventory_summary.home_quantity} / {component.inventory_summary?.total_quantity ?? 0} <span className="font-normal text-muted-foreground">(home / all)</span></span>
+                              ) : (
+                                component.inventory_summary?.total_quantity ?? 0
+                              )}
+                            </dd>
+                          </div>
+                          <div className="flex justify-between gap-2">
+                            <dt className="text-muted-foreground">Reserved</dt>
+                            <dd className="font-semibold text-foreground">
+                              {component.inventory_summary?.reserved_quantity ?? 0}
+                            </dd>
+                          </div>
+                          <div className="flex justify-between gap-2 border-t border-border/70 pt-1.5">
+                            <dt className="text-muted-foreground">Available</dt>
+                            <dd className="font-semibold text-foreground">
+                              {Math.max(
+                                0,
+                                (component.inventory_summary?.total_quantity ?? 0) -
+                                  (component.inventory_summary?.reserved_quantity ?? 0),
+                              )}
+                            </dd>
+                          </div>
+                        </dl>
+                      </div>
+                      <div className="rounded-lg border border-border/70 bg-muted/40 p-3 shadow-sm">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">
+                          Purchase
+                        </p>
+                        <p className="text-xl font-semibold text-foreground">
+                          {component.inventory_summary?.purchase_ordered_quantity ?? 0} /{" "}
+                          {component.inventory_summary?.purchase_requested_quantity ??
+                            component.inventory_summary?.purchase_quantity ??
+                            0}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Ordered / Requested
+                        </p>
+                      </div>
+                    </div>
 
-                <div className="rounded-lg border border-border/70 bg-card p-3 shadow-sm">
-                  <div className="grid gap-2 text-sm text-foreground sm:grid-cols-2">
-                    <div className="flex items-center justify-between text-muted-foreground">
-                      <span>ID</span>
-                      <span className="font-medium text-foreground">{component.id}</span>
+                    <Separator />
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-lg border border-border/70 bg-card p-3 shadow-sm">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">
+                          Internal price
+                        </p>
+                        {editMode ? (
+                          <Input
+                            type="number"
+                            value={editedData.internal_price ?? ""}
+                            onChange={(e) => {
+                              const value = e.target.value
+                              setEditedData({
+                                ...editedData,
+                                internal_price: value === "" ? undefined : Number(value),
+                              })
+                            }}
+                            className="mt-2"
+                          />
+                        ) : (
+                          <p className="mt-1 text-sm font-medium text-foreground">
+                            <PriceLabel value={component.internal_price} currency={component.currency} />
+                          </p>
+                        )}
+                      </div>
+                      <div className="rounded-lg border border-border/70 bg-card p-3 shadow-sm">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">
+                          Selling price
+                        </p>
+                        {editMode ? (
+                          <Input
+                            type="number"
+                            value={editedData.selling_price ?? ""}
+                            onChange={(e) => {
+                              const value = e.target.value
+                              setEditedData({
+                                ...editedData,
+                                selling_price: value === "" ? undefined : Number(value),
+                              })
+                            }}
+                            className="mt-2"
+                          />
+                        ) : (
+                          <p className="mt-1 text-sm font-medium text-foreground">
+                            <PriceLabel value={component.selling_price} currency={component.currency} />
+                          </p>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between text-muted-foreground">
-                      <span>Created</span>
-                      <span className="font-medium text-foreground">
-                        {new Date(component.created_at).toLocaleDateString()}
-                      </span>
+
+                    <div className="rounded-lg border border-border/70 bg-card p-3 shadow-sm">
+                      <div className="grid gap-2 text-sm text-foreground sm:grid-cols-2">
+                        <div className="flex items-center justify-between text-muted-foreground">
+                          <span>ID</span>
+                          <span className="font-medium text-foreground">{component.id}</span>
+                        </div>
+                        <div className="flex items-center justify-between text-muted-foreground">
+                          <span>Created</span>
+                          <span className="font-medium text-foreground">
+                            {new Date(component.created_at).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-muted-foreground">
+                          <span>Packets</span>
+                          <span className="font-medium text-foreground">
+                            {component.packets?.length || 0}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-muted-foreground">
+                          <span>Documents</span>
+                          <span className="font-medium text-foreground">
+                            {component.documents?.length || 0}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between text-muted-foreground">
-                      <span>Packets</span>
-                      <span className="font-medium text-foreground">
-                        {component.packets?.length || 0}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-muted-foreground">
-                      <span>Documents</span>
-                      <span className="font-medium text-foreground">
-                        {component.documents?.length || 0}
-                      </span>
-                    </div>
-                  </div>
+
+              </div>
+              </div>
+
+              <div className="min-w-0 space-y-2">
+                <h3 className="text-sm font-semibold text-foreground">Description</h3>
+                <div className="rounded-lg border border-border/70 bg-card p-3">
+                  {editMode ? (
+                    <textarea
+                      value={editedData.description || ""}
+                      onChange={(e) => setEditedData({ ...editedData, description: e.target.value })}
+                      className="min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    />
+                  ) : (
+                    <p className="text-sm text-foreground">
+                      {component.description || "No description provided."}
+                    </p>
+                  )}
                 </div>
               </div>
             </CardContent>
@@ -1872,91 +2068,8 @@ export function ComponentDetailPage() {
               compact
             />
           </div>
-      
-                <div className="space-y-10">
-    
-          <section className="space-y-4">
-              <div className="space-y-1">
-          <h2 className="text-lg font-semibold text-foreground">Description</h2>
-          <div className="rounded-lg border border-border/70 bg-card p-4">
-            {editMode ? (
-              <textarea
-                value={editedData.description || ""}
-                onChange={(e) => setEditedData({ ...editedData, description: e.target.value })}
-                className="min-h-[140px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              />
-            ) : (
-              <p className="text-sm text-foreground">
-                {component.description || "No description provided."}
-              </p>
-            )}
-          </div>
-  </div>
-  </section>
 
-          <section className="space-y-4">
-            <div className="space-y-1">
-              <h2 className="text-lg font-semibold text-foreground">Used in manufacturing</h2>
-              <p className="text-sm text-muted-foreground">
-                BOMs where this component is linked.
-              </p>
-            </div>
-            <div className="overflow-hidden rounded-lg border border-border/70">
-              <Table>
-                <TableHeader className="bg-muted/40">
-                  <TableRow className="border-border/50">
-                    <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      BOM
-                    </TableHead>
-                    <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      Product
-                    </TableHead>
-                    <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      Status
-                    </TableHead>
-                    <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
-                      Date
-                    </TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {usedInManufacturing.length > 0 ? (
-                    usedInManufacturing.map((row) => (
-                      <TableRow key={row.bom_id} className="border-border/40">
-                        <TableCell className="h-9 px-3 text-sm">
-                          <Link
-                            to={`/production/${row.product_id}/bom/${row.bom_id}`}
-                            className="text-primary hover:underline"
-                          >
-                            {row.bom_name}
-                          </Link>
-                        </TableCell>
-                        <TableCell className="h-9 px-3 text-sm text-foreground">
-                          {row.product_name}
-                        </TableCell>
-                        <TableCell className="h-9 px-3 text-sm">
-                          <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-                            {row.status}
-                          </span>
-                        </TableCell>
-                        <TableCell className="h-9 px-3 text-sm text-muted-foreground">
-                          {row.planned_date ? new Date(row.planned_date).toLocaleDateString() : "-"}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow className="border-border/40">
-                      <TableCell colSpan={4} className="py-6 text-center text-sm text-muted-foreground">
-                        This component is not used in any manufacturing BOM.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </section>
-
-
+          <div className="space-y-10">
           <section className="space-y-4">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="space-y-1">
@@ -1979,14 +2092,20 @@ export function ComponentDetailPage() {
                 </div>
               )}
             </div>
-            {renderTable({
-              table: packetsTable,
-              emptyMessage: "No packets available.",
-              getRowClassName: (row) =>
-                highlightPacketId && row.original.id === highlightPacketId
-                  ? "bg-amber-100/90 shadow-[inset_0_0_0_2px_rgba(251,191,36,0.85)]"
-                  : undefined,
-            })}
+            {(component?.packets?.length ?? 0) > 0 ? (
+              renderTable({
+                table: packetsTable,
+                emptyMessage: "No packets available.",
+                getRowClassName: (row) =>
+                  highlightPacketId && row.original.id === highlightPacketId
+                    ? "bg-amber-100/90 shadow-[inset_0_0_0_2px_rgba(251,191,36,0.85)]"
+                    : undefined,
+              })
+            ) : (
+              <p className="rounded-lg border border-border/70 bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                No packets. Add a packet to track stock for this component.
+              </p>
+            )}
           </section>
 
           <section className="space-y-4">
@@ -2009,36 +2128,16 @@ export function ComponentDetailPage() {
                 </Button>
               )}
             </div>
-            {renderTable({
-              table: parametersTable,
-              emptyMessage: "No parameters available.",
-            })}
-          </section>
-
-          <section className="space-y-4">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="space-y-1">
-                <h2 className="text-lg font-semibold text-foreground">Suppliers</h2>
-                <p className="text-sm text-muted-foreground">
-                  {component?.suppliers?.length || 0} suppliers
-                </p>
-              </div>
-              {canEdit && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => setSupplierSheetOpen(true)}
-                  className="gap-2"
-                >
-                  <Plus className="h-4 w-4" />
-                  Assign supplier
-                </Button>
-              )}
-            </div>
-            {renderTable({
-              table: suppliersTable,
-              emptyMessage: "No suppliers available.",
-            })}
+            {parametersList.length > 0 ? (
+              renderTable({
+                table: parametersTable,
+                emptyMessage: "No parameters available.",
+              })
+            ) : (
+              <p className="rounded-lg border border-border/70 bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                No parameters. Add parameters to describe this component.
+              </p>
+            )}
           </section>
 
           <section className="space-y-4">
@@ -2067,10 +2166,279 @@ export function ComponentDetailPage() {
                 />
               </div>
             </div>
-            {renderTable({
-              table: documentsTable,
-              emptyMessage: "No documents attached.",
-            })}
+            {(component?.documents?.length ?? 0) > 0 ? (
+              renderTable({
+                table: documentsTable,
+                emptyMessage: "No documents attached.",
+              })
+            ) : (
+              <p className="rounded-lg border border-border/70 bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                No documents attached.
+              </p>
+            )}
+          </section>
+
+          <section className="space-y-4">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <h2 className="text-lg font-semibold text-foreground">Suppliers</h2>
+                <p className="text-sm text-muted-foreground">
+                  {component?.suppliers?.length || 0} suppliers
+                </p>
+              </div>
+              {canEdit && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setSupplierSheetOpen(true)}
+                  className="gap-2"
+                >
+                  <Plus className="h-4 w-4" />
+                  Assign supplier
+                </Button>
+              )}
+            </div>
+            {(component?.suppliers?.length ?? 0) > 0 ? (
+              renderTable({
+                table: suppliersTable,
+                emptyMessage: "No suppliers available.",
+                getRowClassName: (row) =>
+                  highlightSupplierId && row.original.supplier?.id === highlightSupplierId
+                    ? "bg-amber-100/90 shadow-[inset_0_0_0_2px_rgba(251,191,36,0.85)]"
+                    : undefined,
+              })
+            ) : (
+              <p className="rounded-lg border border-border/70 bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                No suppliers assigned.
+              </p>
+            )}
+          </section>
+
+          <section className="space-y-4">
+            <div className="space-y-1">
+              <h2 className="text-lg font-semibold text-foreground">Used in manufacturing</h2>
+              <p className="text-sm text-muted-foreground">
+                BOMs where this component is linked.
+              </p>
+            </div>
+            {usedInManufacturing.length > 0 ? (
+              <div className="overflow-hidden rounded-lg border border-border/70">
+                <Table>
+                  <TableHeader className="bg-muted/40">
+                    <TableRow className="border-border/50">
+                      <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        BOM
+                      </TableHead>
+                      <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Product
+                      </TableHead>
+                      <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Status
+                      </TableHead>
+                      <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Date
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {usedInManufacturing.map((row) => (
+                      <TableRow key={row.bom_id} className="border-border/40">
+                        <TableCell className="h-9 px-3 text-sm">
+                          <Link
+                            to={`/production/${row.product_id}/bom/${row.bom_id}`}
+                            className="text-primary hover:underline"
+                          >
+                            {row.bom_name}
+                          </Link>
+                        </TableCell>
+                        <TableCell className="h-9 px-3 text-sm text-foreground">
+                          {row.product_name}
+                        </TableCell>
+                        <TableCell className="h-9 px-3 text-sm">
+                          <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                            {row.status}
+                          </span>
+                        </TableCell>
+                        <TableCell className="h-9 px-3 text-sm text-muted-foreground">
+                          {row.planned_date ? new Date(row.planned_date).toLocaleDateString() : "-"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <p className="rounded-lg border border-border/70 bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                This component is not used in any manufacturing BOM.
+              </p>
+            )}
+          </section>
+
+          <section className="space-y-4">
+            <div className="space-y-1">
+              <h2 className="text-lg font-semibold text-foreground">On purchase list or requests</h2>
+              <p className="text-sm text-muted-foreground">
+                Purchase requests or purchase orders that include this component.
+              </p>
+            </div>
+            {purchaseRequestsList.length > 0 ? (
+              <div className="overflow-hidden rounded-lg border border-border/70">
+                <Table>
+                  <TableHeader className="bg-muted/40">
+                    <TableRow className="border-border/50">
+                      <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Quantity
+                      </TableHead>
+                      <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Requested by
+                      </TableHead>
+                      <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Purchase
+                      </TableHead>
+                      <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Created
+                      </TableHead>
+                      <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Action
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {purchaseRequestsList.map((row) => (
+                      <TableRow key={row.id} className="border-border/40">
+                        <TableCell className="h-9 px-3 text-sm font-medium text-foreground">
+                          {row.quantity}
+                        </TableCell>
+                        <TableCell className="h-9 px-3 text-sm text-muted-foreground">
+                          {row.requested_by_name ?? "—"}
+                        </TableCell>
+                        <TableCell className="h-9 px-3 text-sm">
+                          {row.purchase_id ? (
+                            <Link
+                              to={`/store/purchase/${row.purchase_id}`}
+                              className="text-primary hover:underline"
+                            >
+                              View purchase
+                            </Link>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="h-9 px-3 text-sm text-muted-foreground">
+                          {row.created_at
+                            ? new Date(row.created_at).toLocaleDateString()
+                            : "—"}
+                        </TableCell>
+                        <TableCell className="h-9 px-3 text-sm">
+                          <Link
+                            to={`/store/purchase-requests/${row.id}`}
+                            className="text-primary hover:underline"
+                          >
+                            View request
+                          </Link>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <p className="rounded-lg border border-border/70 bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                This component is not on any purchase list or request.
+              </p>
+            )}
+          </section>
+
+          <section className="space-y-4">
+            <div className="space-y-1">
+              <h2 className="text-lg font-semibold text-foreground">On reservation list</h2>
+              <p className="text-sm text-muted-foreground">
+                Reservations that include this component.
+              </p>
+            </div>
+            {reservationsList.length > 0 ? (
+              <div className="overflow-hidden rounded-lg border border-border/70">
+                <Table>
+                  <TableHeader className="bg-muted/40">
+                    <TableRow className="border-border/50">
+                      <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Quantity
+                      </TableHead>
+                      <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Reserved by
+                      </TableHead>
+                      <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Date
+                      </TableHead>
+                      <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Action
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {reservationsList.map((row) => (
+                      <TableRow key={row.id} className="border-border/40">
+                        <TableCell className="h-9 px-3 text-sm font-medium text-foreground">
+                          {row.quantity}
+                        </TableCell>
+                        <TableCell className="h-9 px-3 text-sm text-muted-foreground">
+                          {row.reserved_by ?? "—"}
+                        </TableCell>
+                        <TableCell className="h-9 px-3 text-sm text-muted-foreground">
+                          {row.reservation_date
+                            ? new Date(row.reservation_date).toLocaleDateString()
+                            : "—"}
+                        </TableCell>
+                        <TableCell className="h-9 px-3 text-sm">
+                          <Link
+                            to={`/store/reservations/${row.id}`}
+                            className="text-primary hover:underline"
+                          >
+                            View
+                          </Link>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <p className="rounded-lg border border-border/70 bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                This component is not on any reservation list.
+              </p>
+            )}
+          </section>
+
+          <section className="space-y-4">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <h2 className="text-lg font-semibold text-foreground">External identifiers</h2>
+                <p className="text-sm text-muted-foreground">
+                  EAN, SKU, supplier codes and other barcodes for scanning and search.
+                </p>
+              </div>
+              {canEdit && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setIdentifierSheetOpen(true)}
+                  className="gap-2"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add identifier
+                </Button>
+              )}
+            </div>
+            {(component?.external_identifiers?.length ?? 0) > 0 ? (
+              renderTable({
+                table: identifiersTable,
+                emptyMessage: "No external identifiers.",
+              })
+            ) : (
+              <p className="rounded-lg border border-border/70 bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                No external identifiers.
+              </p>
+            )}
           </section>
 
           <section className="space-y-3">
@@ -2157,7 +2525,6 @@ export function ComponentDetailPage() {
           </section>
           </div>
         </div>
-
       </div>
 
       <Sheet open={packetSheetOpen} onOpenChange={setPacketSheetOpen}>
@@ -2226,6 +2593,62 @@ export function ComponentDetailPage() {
               disabled={!packetFormValid || createPacketMutation.isPending}
             >
               {createPacketMutation.isPending ? "Creating..." : "Create packet"}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={identifierSheetOpen} onOpenChange={setIdentifierSheetOpen}>
+        <SheetContent side="right" className="w-full max-w-lg">
+          <SheetHeader>
+            <SheetTitle>Add external identifier</SheetTitle>
+            <SheetDescription>
+              Add an EAN, SKU, supplier code or other barcode. When this sheet is open, scanner and RFID input are locked to the Code field—scan to fill it.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="mt-6 space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Scheme</label>
+              <Select
+                classNamePrefix="rs"
+                options={IDENTIFIER_SCHEME_OPTIONS}
+                value={IDENTIFIER_SCHEME_OPTIONS.find((o) => o.value === identifierForm.scheme) ?? null}
+                placeholder="Select type"
+                styles={selectStyles}
+                onChange={(option: SingleValue<{ value: string; label: string }> | MultiValue<{ value: string; label: string }>) => {
+                  const single = Array.isArray(option) ? option[0] : option
+                  setIdentifierForm({ ...identifierForm, scheme: single?.value ?? "" })
+                }}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Code</label>
+              <Input
+                ref={identifierInputRef}
+                value={identifierForm.identifier}
+                onChange={(e) =>
+                  setIdentifierForm({ ...identifierForm, identifier: e.target.value.trim() })
+                }
+                placeholder="Scan or type e.g. 8591234567890 or SUP-CODE-001"
+              />
+            </div>
+          </div>
+          <SheetFooter className="mt-6">
+            <Button variant="outline" onClick={() => setIdentifierSheetOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() =>
+                createIdentifierMutation.mutate({
+                  scheme: identifierForm.scheme,
+                  identifier: identifierForm.identifier,
+                })
+              }
+              disabled={
+                !identifierForm.identifier.trim() || createIdentifierMutation.isPending
+              }
+            >
+              {createIdentifierMutation.isPending ? "Adding..." : "Add identifier"}
             </Button>
           </SheetFooter>
         </SheetContent>

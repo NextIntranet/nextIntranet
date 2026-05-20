@@ -11,6 +11,8 @@ import { InventoryCampaignsPage } from './pages/InventoryCampaignsPage';
 import { InventoryPage } from './pages/InventoryPage';
 import { ReservationsPage } from './pages/ReservationsPage';
 import { PurchaseRequestsPage } from './pages/PurchaseRequestsPage';
+import { PurchasesPage } from './pages/PurchasesPage';
+import { PurchaseDetailPage } from './pages/PurchaseDetailPage';
 import { UsersPage } from './pages/UsersPage';
 import { UserDetailPage } from './pages/UserDetailPage';
 import { ProfileRedirectPage } from './pages/MeRedirectPage';
@@ -133,6 +135,22 @@ export function App() {
             element={
               <RequirePermission area="warehouse-operations" minLevel="read">
                 <ReservationsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="store/purchase"
+            element={
+              <RequirePermission area="warehouse-operations" minLevel="read">
+                <PurchasesPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="store/purchase/:id"
+            element={
+              <RequirePermission area="warehouse-operations" minLevel="read">
+                <PurchaseDetailPage />
               </RequirePermission>
             }
           />

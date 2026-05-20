@@ -14,6 +14,12 @@ class ReservationSerializer(serializers.ModelSerializer):
     )
     component_name = serializers.CharField(source='component.name', read_only=True)
     reserved_by = serializers.CharField(read_only=True)
+    sources = serializers.ListField(
+        child=serializers.DictField(allow_empty=True),
+        required=False,
+        default=list,
+        allow_empty=True,
+    )
 
     class Meta:
         model = Reservation
@@ -24,11 +30,22 @@ class ReservationSerializer(serializers.ModelSerializer):
             'quantity',
             'priority',
             'description',
+            'sources',
             'reserved_by',
             'reservation_date',
             'created_at',
         ]
         read_only_fields = ['id', 'component_name', 'reserved_by', 'reservation_date', 'created_at']
+
+    def validate_sources(self, value):
+        if not isinstance(value, list):
+            raise serializers.ValidationError("sources must be a list.")
+        for i, item in enumerate(value):
+            if not isinstance(item, dict):
+                raise serializers.ValidationError(f"sources[{i}] must be an object.")
+            if 'type' not in item:
+                raise serializers.ValidationError(f"sources[{i}] must have a 'type' key.")
+        return value
 
     def create(self, validated_data):
         request = self.context.get('request')
@@ -57,6 +74,8 @@ class ReservationListAPIView(generics.ListCreateAPIView):
         search = self.request.query_params.get('search')
         priority = self.request.query_params.get('priority')
         component = self.request.query_params.get('component')
+        source_type = self.request.query_params.get('source_type')
+        bom_id = self.request.query_params.get('bom_id')
 
         if search:
             queryset = queryset.filter(
@@ -71,6 +90,11 @@ class ReservationListAPIView(generics.ListCreateAPIView):
 
         if component:
             queryset = queryset.filter(component_id=component)
+
+        if source_type == 'production' and bom_id:
+            queryset = queryset.filter(
+                sources__contains=[{'type': 'production', 'bom_id': str(bom_id)}]
+            )
 
         return queryset.order_by('-reservation_date')
 

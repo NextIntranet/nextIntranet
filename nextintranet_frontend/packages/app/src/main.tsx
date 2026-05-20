@@ -17,8 +17,10 @@ initApiClient({
   setToken: (token: string | null) => token && tokenStorage.setToken(token),
   clearToken: () => tokenStorage.clearTokens(),
   onUnauthorized: () => {
+    const next = `${window.location.pathname}${window.location.search}${window.location.hash}` || '/';
+    const loginUrl = `/login?next=${encodeURIComponent(next)}`;
     tokenStorage.clearTokens();
-    window.location.href = '/login';
+    window.location.href = loginUrl;
   },
 });
 

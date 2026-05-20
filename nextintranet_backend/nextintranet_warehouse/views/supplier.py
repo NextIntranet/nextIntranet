@@ -144,6 +144,7 @@ class SupplierForm(forms.ModelForm):
             'api_plugin_instance',
             'api_config',
             'api_mapping',
+            'purchase_export_config',
         ]
         widgets = {
             'name': forms.TextInput(attrs={'class': 'form-control'}),
@@ -154,6 +155,7 @@ class SupplierForm(forms.ModelForm):
             'api_plugin_instance': forms.Select(attrs={'class': 'form-select'}),
             'api_config': forms.Textarea(attrs={'class': 'form-control', 'rows': 6}),
             'api_mapping': forms.Textarea(attrs={'class': 'form-control', 'rows': 6}),
+            'purchase_export_config': forms.Textarea(attrs={'class': 'form-control', 'rows': 6}),
         }
 
 

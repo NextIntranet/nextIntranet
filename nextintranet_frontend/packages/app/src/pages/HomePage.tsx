@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch, useRealtimeMessages, type RealtimeEvent } from '@nextintranet/core';
-import { Activity, PackageSearch, Users, ShieldCheck, Sparkles, AlertTriangle } from 'lucide-react';
+import { Activity, PackageSearch, Users, ShieldCheck, Sparkles, AlertTriangle, ClipboardList, Truck, FileText } from 'lucide-react';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -13,6 +14,13 @@ interface User {
   is_superuser: boolean;
 }
 
+interface RecentPurchase {
+  id: string;
+  supplier_name: string | null;
+  status: string;
+  created_at: string | null;
+}
+
 interface DashboardMetrics {
   total_components: number;
   components_with_stock: number;
@@ -21,6 +29,12 @@ interface DashboardMetrics {
   pending_purchase_requests: number;
   total_users: number;
   low_stock_components: number;
+  purchases_in_progress: number;
+  purchases_completed_this_month: number;
+  locations_count: number;
+  categories_count: number;
+  zero_stock_components: number;
+  recent_purchases: RecentPurchase[];
 }
 
 interface ActivityEvent extends RealtimeEvent {
@@ -130,6 +144,30 @@ export function HomePage() {
     },
   ] : [];
 
+  const secondaryMetricCards = metrics ? [
+    {
+      label: 'Active Reservations',
+      value: (metrics.active_reservations ?? 0).toLocaleString(),
+      hint: 'Reservations without expiration or still valid',
+      icon: ClipboardList,
+    },
+    {
+      label: 'Purchases in Progress',
+      value: (metrics.purchases_in_progress ?? 0).toLocaleString(),
+      hint: `${metrics.purchases_completed_this_month ?? 0} completed this month`,
+      icon: Truck,
+    },
+    {
+      label: 'Pending Requests',
+      value: (metrics.pending_purchase_requests ?? 0).toLocaleString(),
+      hint: 'Purchase requests not yet assigned',
+      icon: FileText,
+    },
+  ] : [];
+
+  const formatStatus = (status: string) =>
+    status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
@@ -229,13 +267,67 @@ export function HomePage() {
         </Card>
       </div>
 
-      <div className="grid auto-rows-min gap-4 md:grid-cols-3">
-        <div className="rounded-xl border border-dashed border-border/70 bg-muted/40 p-4" />
-        <div className="rounded-xl border border-dashed border-border/70 bg-muted/40 p-4" />
-        <div className="rounded-xl border border-dashed border-border/70 bg-muted/40 p-4" />
+      <div className="grid gap-4 md:grid-cols-3">
+        {secondaryMetricCards.map((metric) => (
+          <Card key={metric.label} className="shadow-sm">
+            <CardContent className="flex items-start gap-3 p-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+                <metric.icon className="h-5 w-5 text-muted-foreground" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                  {metric.label}
+                </span>
+                <span className="text-2xl font-semibold leading-tight">
+                  {metric.value}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {metric.hint}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
-      <div className="rounded-xl border border-dashed border-border/70 bg-muted/40 p-6 min-h-[320px]" />
+      <Card className="shadow-sm min-h-[320px]">
+        <CardHeader>
+          <CardTitle>Recent Purchases</CardTitle>
+          <span className="text-sm font-normal text-muted-foreground">
+            Latest purchase orders
+          </span>
+        </CardHeader>
+        <CardContent>
+          {(metrics?.recent_purchases?.length ?? 0) > 0 ? (
+            <ul className="space-y-2">
+              {metrics.recent_purchases.map((p) => (
+                <li key={p.id}>
+                  <Link
+                    to={`/store/purchase/${p.id}`}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border/70 px-4 py-3 text-sm transition-colors hover:bg-muted/50"
+                  >
+                    <span className="font-medium text-foreground">
+                      {p.supplier_name ?? '—'}
+                    </span>
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                      {formatStatus(p.status)}
+                    </span>
+                    <span className="w-full text-xs text-muted-foreground sm:w-auto">
+                      {p.created_at
+                        ? new Date(p.created_at).toLocaleString()
+                        : '—'}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="rounded-xl bg-muted/70 p-4 text-sm text-muted-foreground">
+              No recent purchases.
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

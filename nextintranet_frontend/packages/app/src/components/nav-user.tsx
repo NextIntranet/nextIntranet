@@ -6,7 +6,7 @@ import {
   LogOut,
 } from "lucide-react"
 import { tokenStorage } from "@nextintranet/core"
-import { useNavigate } from "react-router-dom"
+import { useLocation, useNavigate } from "react-router-dom"
 
 import {
   SidebarMenu,
@@ -26,6 +26,7 @@ export function NavUser({
 }) {
   const { setTheme, theme } = useTheme()
   const navigate = useNavigate()
+  const location = useLocation()
 
   const toggleTheme = () => {
     if (theme === 'light') setTheme('dark')
@@ -42,8 +43,9 @@ export function NavUser({
   const themeLabel = theme === 'system' ? 'System' : theme === 'dark' ? 'Dark' : 'Light'
 
   const handleLogout = () => {
+    const next = `${location.pathname}${location.search}${location.hash}` || "/"
     tokenStorage.clearTokens()
-    navigate("/login", { replace: true })
+    navigate(`/login?next=${encodeURIComponent(next)}`, { replace: true })
   }
 
   return (

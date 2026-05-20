@@ -1,7 +1,7 @@
 import { FormEvent, Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { IBOM_EVENT_TYPES, apiFetch, getRealtimeClient, nextIO, tokenStorage, useIbomBridge } from "@nextintranet/core"
-import { ChevronDown, ChevronUp, FilePlus2, FileText, FolderPlus, Link2, Lock, ScanLine } from "lucide-react"
+import { ChevronDown, ChevronUp, FilePlus2, FileText, FolderPlus, Link2, Lock, MapPin, Package, ScanLine } from "lucide-react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { toast } from "sonner"
 
@@ -155,6 +155,8 @@ type AvailabilityRow = {
   linked_component_name?: string | null
   needed_total: number
   in_stock: number
+  total_quantity?: number
+  total_in_home?: number
   locations: Array<{
     packet_id: string
     location: string
@@ -167,6 +169,7 @@ type AvailabilityRow = {
 type AvailabilityResponse = {
   bom_id: string
   qty_planned: number
+  home_location_full_path?: string | null
   rows: AvailabilityRow[]
 }
 
@@ -208,6 +211,26 @@ type PendingNotInBomConfirmation = {
   mode: ScanMode
   barcode: string
   componentName?: string | null
+}
+
+type ReservationSource = {
+  type: string
+  bom_id?: string
+  line_id?: string
+  product_id?: string
+}
+
+type Reservation = {
+  id: string
+  component_id: string
+  component_name: string
+  quantity: number
+  priority?: number | null
+  description?: string | null
+  sources?: ReservationSource[] | null
+  reserved_by?: string | null
+  reservation_date: string
+  created_at: string
 }
 
 const unwrap = <T,>(data: T[] | Paginated<T> | undefined): T[] => {
@@ -486,6 +509,31 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     enabled: isBomView && !!bomId,
   })
 
+  const { data: reservationsData } = useQuery<Reservation[] | { results: Reservation[] }>({
+    queryKey: ["reservations", "bom", bomId],
+    queryFn: () =>
+      apiFetch<Reservation[] | { results: Reservation[] }>(
+        `/api/v1/store/reservations/?page_size=500&source_type=production&bom_id=${bomId}`,
+      ),
+    enabled: isBomView && !!bomId,
+  })
+
+  const allReservations = useMemo(() => {
+    const raw = reservationsData
+    if (!raw) return []
+    return Array.isArray(raw) ? raw : raw.results || []
+  }, [reservationsData])
+
+  const reservationsForBom = useMemo(() => {
+    if (!bomId) return []
+    return allReservations.filter((r) =>
+      (r.sources || []).some(
+        (s) => s && s.type === "production" && s.bom_id === bomId,
+      ),
+    )
+  }, [bomId, allReservations])
+
+
   useEffect(() => {
     if (!selectedBom) {
       setSourceUrlInput("")
@@ -670,6 +718,56 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
       toast.success("BOM line removed.")
     },
     onError: () => toast.error("Failed to remove BOM line."),
+  })
+
+  const invalidateReservations = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["reservations"] })
+    queryClient.invalidateQueries({ queryKey: ["reservations", "bom", bomId] })
+  }, [queryClient, bomId])
+
+  const reserveBomMutation = useMutation({
+    mutationFn: async (items: Array<{ component_id: string; quantity: number; lineId: string }>) => {
+      await Promise.all(
+        items.map(({ component_id, quantity, lineId }) =>
+          apiFetch<Reservation>("/api/v1/store/reservations/", {
+            method: "POST",
+            body: JSON.stringify({
+              component_id,
+              quantity,
+              priority: 3,
+              sources: [
+                {
+                  type: "production",
+                  bom_id: bomId,
+                  line_id: lineId,
+                  product_id: productId || undefined,
+                },
+              ],
+            }),
+          }),
+        ),
+      )
+    },
+    onSuccess: (_, items) => {
+      invalidateReservations()
+      toast.success(`BOM reserved (${items.length} item${items.length === 1 ? "" : "s"}).`)
+    },
+    onError: () => toast.error("Failed to reserve BOM."),
+  })
+
+  const unreserveBomMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      await Promise.all(
+        ids.map((id) =>
+          apiFetch(`/api/v1/store/reservation/${id}/`, { method: "DELETE" }),
+        ),
+      )
+    },
+    onSuccess: (_, ids) => {
+      invalidateReservations()
+      toast.success(`BOM unreserved (${ids.length} item${ids.length === 1 ? "" : "s"} removed).`)
+    },
+    onError: () => toast.error("Failed to unreserve BOM."),
   })
 
   const addLineMutation = useMutation({
@@ -935,6 +1033,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     return map
   }, [availabilityData?.rows])
 
+
   const scannerRows = useMemo<ScannerRow[]>(() => {
     if (!selectedBom) return []
     return selectedBomComponents
@@ -1075,6 +1174,13 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     })
     lastIbomCompletionSyncRef.current = signature
   }, [autoSyncIbomCompletion, ibomConnected, bomId, ibomCompletionRefs])
+
+  const sendIbomHover = useCallback((refs: [string, number][] | null, rowid: string) => {
+    getRealtimeClient().emit({
+      type: IBOM_EVENT_TYPES.HOVER,
+      payload: { refs, rowid, net: null },
+    })
+  }, [])
 
   const refreshScannerData = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["production-bom", bomId] })
@@ -1877,7 +1983,60 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                 onClick={() => setGroupedView((value) => !value)}
                               >
                                 {groupedView ? "Ungrouped" : "Grouped"}
-                              </Button>
+                            </Button>
+                              {(() => {
+                                const linkedLines = selectedBomComponents.filter(
+                                  (line) => line.component && !line.dnp,
+                                )
+                                const reserveItems = linkedLines.map((line) => {
+                                  const neededTotal =
+                                    line.qty_override_total != null
+                                      ? toNumber(line.qty_override_total)
+                                      : toNumber(line.qty_per_board) * toNumber(selectedBom.qty_planned)
+                                  return {
+                                    component_id: line.component!,
+                                    quantity: neededTotal,
+                                    lineId: line.id,
+                                  }
+                                })
+                                const isBomReserved = reservationsForBom.length > 0
+                                return isBomReserved ? (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                      unreserveBomMutation.mutate(
+                                        reservationsForBom.map((r) => r.id),
+                                      )
+                                    }
+                                    disabled={
+                                      unreserveBomMutation.isPending ||
+                                      selectedBom.status === "locked"
+                                    }
+                                  >
+                                    Unreserve BOM ({reservationsForBom.length} item
+                                    {reservationsForBom.length === 1 ? "" : "s"})
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() =>
+                                      reserveBomMutation.mutate(reserveItems)
+                                    }
+                                    disabled={
+                                      reserveBomMutation.isPending ||
+                                      selectedBom.status === "locked" ||
+                                      reserveItems.length === 0
+                                    }
+                                  >
+                                    Reserve BOM
+                                    {reserveItems.length > 0
+                                      ? ` (${reserveItems.length} item${reserveItems.length === 1 ? "" : "s"})`
+                                      : ""}
+                                  </Button>
+                                )
+                              })()}
                             </div>
 
                             <div className="grid gap-2 rounded-md border border-border/60 p-3 sm:grid-cols-[1fr_1fr_120px_auto]">
@@ -1898,7 +2057,6 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                     <TableHead className="h-10 w-[220px] px-3 py-2 align-top">Ref</TableHead>
                                     <TableHead className="h-10 w-[400px] px-3 py-2 align-top">BOM</TableHead>
                                     <TableHead className="h-10 w-[320px] px-3 py-2 align-top">Component</TableHead>
-                                    <TableHead className="h-10 w-[120px] px-3 py-2 align-top">Count</TableHead>
                                     <TableHead className="h-10 px-3 py-2 align-top">Warehouse</TableHead>
                                     <TableHead className="h-10 px-3 py-2 align-top">Actions</TableHead>
                                   </TableRow>
@@ -1909,19 +2067,20 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                     const refsLabel = groupedView
                                       ? line.ref_group || (line.refs.length ? line.refs.join(",") : "-")
                                       : (line as BomRow & { ref_single: string }).ref_single
+                                    const lineRefs = (groupedView ? line.refs || [] : [(line as BomRow & { ref_single: string }).ref_single]).map(
+                                      (r) => [r, toNumber(line.qty_per_board) || 1] as [string, number]
+                                    )
                                     const neededTotal =
                                       line.qty_override_total != null
                                         ? toNumber(line.qty_override_total)
                                         : toNumber(line.qty_per_board) * toNumber(selectedBom.qty_planned)
                                     const availabilityRow = availabilityByLineId.get(lineId)
                                     const inStock = availabilityRow ? toNumber(availabilityRow.in_stock) : 0
-                                    const shortage = availabilityRow ? availabilityRow.shortage : inStock < neededTotal
-                                    const isExact = Math.abs(inStock - neededTotal) < 0.000001
+                                    const totalQty = availabilityRow ? toNumber(availabilityRow.total_quantity ?? 0) : 0
+                                    const shortageFromApi = availabilityRow ? availabilityRow.shortage : inStock < neededTotal
+                                    const shortage = line.dnp ? false : shortageFromApi
+                                    const isExact = !line.dnp && Math.abs(inStock - neededTotal) < 0.000001
                                     const locations = availabilityRow?.locations || []
-                                    const locationsLabel = locations
-                                      .slice(0, 2)
-                                      .map((item) => `${item.location} (${item.quantity})`)
-                                      .join(", ")
                                     return (
                                       <TableRow
                                         key={`${lineId}-${refsLabel}`}
@@ -1930,13 +2089,39 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                           index % 2 === 0 ? "bg-muted/20" : "bg-background",
                                           highlightedLineId === lineId ? "bg-amber-100/40" : undefined,
                                         )}
+                                        onMouseEnter={() => sendIbomHover(lineRefs, lineId)}
+                                        onMouseLeave={() => sendIbomHover(null, lineId)}
                                       >
                                         <TableCell className="px-3 py-2 align-top">
                                           <p className="font-semibold text-foreground">#{index + 1}</p>
                                           <p className="text-[11px] font-semibold text-muted-foreground">{line.qty_per_board}x</p>
+                                          <p className="text-[11px] font-semibold text-foreground">{neededTotal}</p>
                                         </TableCell>
                                         <TableCell className="px-3 py-2 align-top">
-                                          <p className="font-medium text-emerald-700">{refsLabel || "-"}</p>
+                                          {groupedView && line.refs && line.refs.length > 0 ? (
+                                            <p className="font-medium text-emerald-700">
+                                              {line.refs.map((ref, refIndex) => (
+                                                <span key={ref}>
+                                                  {refIndex > 0 ? ", " : null}
+                                                  <span
+                                                    className="cursor-pointer hover:underline"
+                                                    onMouseEnter={(e) => {
+                                                      e.stopPropagation()
+                                                      sendIbomHover([[ref, toNumber(line.qty_per_board) || 1]], lineId)
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                      e.stopPropagation()
+                                                      sendIbomHover(lineRefs, lineId)
+                                                    }}
+                                                  >
+                                                    {ref}
+                                                  </span>
+                                                </span>
+                                              ))}
+                                            </p>
+                                          ) : (
+                                            <p className="font-medium text-emerald-700">{refsLabel || "-"}</p>
+                                          )}
                                           <p className="text-[11px] text-muted-foreground">
                                             {(groupedView ? line.refs.length : 1) || 1} ref{(groupedView ? line.refs.length : 1) === 1 ? "" : "s"}
                                           </p>
@@ -2081,27 +2266,59 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                             <span className="text-[13px] text-muted-foreground">Unlinked</span>
                                           )}
                                         </TableCell>
-                                        <TableCell className="px-3 py-2 align-top">
-                                          <p className="text-[12px] text-muted-foreground">{line.qty_per_board} x {selectedBom.qty_planned}</p>
-                                          <p className="text-base font-semibold text-foreground">{neededTotal}</p>
-                                        </TableCell>
                                         <TableCell
                                           className={cn(
                                             "px-3 py-2 align-top",
-                                            shortage ? "bg-rose-100/70" : isExact ? "bg-amber-100/70" : "bg-emerald-100/70",
+                                            line.dnp
+                                              ? "bg-muted/40"
+                                              : shortage
+                                                ? "bg-rose-100/70"
+                                                : isExact
+                                                  ? "bg-amber-100/70"
+                                                  : "bg-emerald-100/70",
                                           )}
                                         >
-                                          <p className={cn("text-base font-semibold", shortage ? "text-rose-700" : isExact ? "text-amber-800" : "text-emerald-800")}>
-                                            {inStock}/{neededTotal}
-                                          </p>
-                                          <p className="text-[11px] text-muted-foreground">
-                                            {shortage ? "Shortage" : isExact ? "Exact match" : "In stock"}
-                                          </p>
-                                          <p className="text-[11px] text-muted-foreground">
-                                            {locations.length > 0
-                                              ? `${locationsLabel}${locations.length > 2 ? ` +${locations.length - 2} more` : ""}`
-                                              : "No locations"}
-                                          </p>
+                                          <div className="space-y-1.5 text-[12px]">
+                                            <div className="flex items-center gap-1.5">
+                                              <Package className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                                              <span className={cn("font-semibold", line.dnp ? "text-muted-foreground" : shortage ? "text-rose-700" : isExact ? "text-amber-800" : "text-emerald-800")}>
+                                                {inStock} / {neededTotal}
+                                              </span>
+                                              <span className="text-muted-foreground">
+                                                {line.dnp ? "DNP" : shortage ? "Shortage" : isExact ? "Exact" : "In stock"}
+                                              </span>
+                                            </div>
+                                            {availabilityData?.home_location_full_path != null && availabilityRow && availabilityRow.total_in_home != null ? (
+                                              <div className="flex items-start gap-1.5">
+                                                <MapPin className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />
+                                                <span className="text-muted-foreground">
+                                                  In <strong className="text-foreground">{availabilityData.home_location_full_path}</strong>: <strong className="text-foreground">{availabilityRow.total_in_home}</strong> total
+                                                </span>
+                                              </div>
+                                            ) : null}
+                                            <div className="flex items-start gap-1.5">
+                                              <Package className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />
+                                              <span className="text-muted-foreground">
+                                                {totalQty > 0 ? (
+                                                  <>All: <strong className="text-foreground">{totalQty}</strong> total, <strong className="text-foreground">{inStock}</strong> available</>
+                                                ) : (
+                                                  "No stock"
+                                                )}
+                                              </span>
+                                            </div>
+                                            {locations.length > 0 ? (
+                                              <div className="flex items-start gap-1.5">
+                                                <MapPin className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />
+                                                <span className="text-muted-foreground">
+                                                  {locations.map((loc) => (
+                                                    <span key={loc.packet_id} className="block">
+                                                      {loc.location}: <strong className="text-foreground">{loc.quantity}</strong>
+                                                    </span>
+                                                  ))}
+                                                </span>
+                                              </div>
+                                            ) : null}
+                                          </div>
                                         </TableCell>
                                         <TableCell className="px-3 py-2 align-top">
                                           <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
@@ -2182,7 +2399,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                   })}
                                   {(groupedView ? groupedRows.length === 0 : ungroupedRows.length === 0) ? (
                                     <TableRow>
-                                      <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
+                                      <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
                                         No BOM rows.
                                       </TableCell>
                                     </TableRow>
@@ -2362,6 +2579,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                   {scannerRows.length > 0 ? (
                                     scannerRows.map((row) => {
                                       const ibomHighlighted = highlightedRefs && (row.refs || []).some((r: string) => highlightedRefs.includes(r))
+                                      const rowRefs = (row.refs || []).map((r) => [r, toNumber(row.qty_per_board) || 1] as [string, number])
                                       return (
                                       <Fragment key={row.id}>
                                         <TableRow
@@ -2370,6 +2588,8 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                           }}
                                           tabIndex={-1}
                                           className={cn("text-xs", highlightedLineId === row.id ? "bg-amber-100/50" : undefined, ibomHighlighted ? "ring-2 ring-inset ring-blue-400/60" : undefined)}
+                                          onMouseEnter={() => rowRefs.length > 0 && sendIbomHover(rowRefs, row.id)}
+                                          onMouseLeave={() => sendIbomHover(null, row.id)}
                                         >
                                           <TableCell
                                             className={ibomConnected ? "cursor-pointer hover:text-primary" : undefined}
@@ -2377,7 +2597,30 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                               const firstRef = row.refs?.[0]
                                               if (firstRef && ibomConnected) highlightInIbom(firstRef)
                                             }}
-                                          >{row.ref_group || "-"}</TableCell>
+                                          >
+                                            {row.refs && row.refs.length > 0 ? (
+                                              row.refs.map((ref, refIndex) => (
+                                                <span key={ref}>
+                                                  {refIndex > 0 ? ", " : null}
+                                                  <span
+                                                    className="cursor-pointer hover:underline"
+                                                    onMouseEnter={(e) => {
+                                                      e.stopPropagation()
+                                                      sendIbomHover([[ref, toNumber(row.qty_per_board) || 1]], row.id)
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                      e.stopPropagation()
+                                                      sendIbomHover(rowRefs, row.id)
+                                                    }}
+                                                  >
+                                                    {ref}
+                                                  </span>
+                                                </span>
+                                              ))
+                                            ) : (
+                                              row.ref_group || "-"
+                                            )}
+                                          </TableCell>
                                           <TableCell>{row.value || "-"}</TableCell>
                                           <TableCell>
                                             {row.component ? (
@@ -2495,36 +2738,42 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                                     <span className="font-mono text-muted-foreground leading-tight">
                                                       {scan.resolved_packet_id || scan.barcode}
                                                     </span>
-                                                    <span className="leading-tight">Qty: {toNumber(scan.qty)}</span>
+                                                    <span className="leading-tight">
+                                                      {toNumber(row.placed) >= toNumber(row.needed) && scan.mode === "sourced" ? null : `Qty: ${toNumber(scan.qty)}`}
+                                                    </span>
                                                     <span className="text-muted-foreground leading-tight">
                                                       {new Date(scan.created_at).toLocaleString()}
                                                     </span>
                                                     {scan.mode === "sourced" ? (
                                                       <div className="flex items-center gap-1 sm:justify-end">
-                                                        <Input
-                                                          type="number"
-                                                          min="0"
-                                                          step="any"
-                                                          className="h-6 w-20 text-[11px]"
-                                                          value={quickPlaceQtyByScan[scan.id] ?? ""}
-                                                          placeholder={String(Math.max(toNumber(scan.qty), 1))}
-                                                          onChange={(event) =>
-                                                            setQuickPlaceQtyByScan((prev) => ({
-                                                              ...prev,
-                                                              [scan.id]: event.target.value,
-                                                            }))
-                                                          }
-                                                          disabled={selectedBom.status === "locked"}
-                                                        />
-                                                        <Button
-                                                          type="button"
-                                                          size="sm"
-                                                          className="h-6 px-2 text-[11px]"
-                                                          disabled={selectedBom.status === "locked" || manualPacketMutation.isPending}
-                                                          onClick={() => handleQuickPlaceFromScan(row, scan)}
-                                                        >
-                                                          Place
-                                                        </Button>
+                                                        {toNumber(row.placed) >= toNumber(row.needed) ? null : (
+                                                          <>
+                                                            <Input
+                                                              type="number"
+                                                              min="0"
+                                                              step="any"
+                                                              className="h-6 w-20 text-[11px]"
+                                                              value={quickPlaceQtyByScan[scan.id] ?? ""}
+                                                              placeholder={String(Math.max(toNumber(scan.qty), 1))}
+                                                              onChange={(event) =>
+                                                                setQuickPlaceQtyByScan((prev) => ({
+                                                                  ...prev,
+                                                                  [scan.id]: event.target.value,
+                                                                }))
+                                                              }
+                                                              disabled={selectedBom.status === "locked"}
+                                                            />
+                                                            <Button
+                                                              type="button"
+                                                              size="sm"
+                                                              className="h-6 px-2 text-[11px]"
+                                                              disabled={selectedBom.status === "locked" || manualPacketMutation.isPending}
+                                                              onClick={() => handleQuickPlaceFromScan(row, scan)}
+                                                            >
+                                                              Place
+                                                            </Button>
+                                                          </>
+                                                        )}
                                                         <Button
                                                           type="button"
                                                           variant="outline"

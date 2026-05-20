@@ -1,0 +1,5 @@
+# Agent service dependencies
+# Note: pycups is Linux-only and requires system CUPS libs.
+aiohttp>=3.9.5
+pyserial>=3.5
+pycups>=2.0.4; platform_system == "Linux"

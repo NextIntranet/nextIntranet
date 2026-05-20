@@ -102,7 +102,8 @@ export function CategoryParentSelect({
       options={options}
       value={selected}
       placeholder={placeholder}
-      styles={selectStyles}
+      styles={{ ...selectStyles, menuPortal: (base) => ({ ...base, zIndex: 9999 }) }}
+      menuPortalTarget={document.body}
       isDisabled={isDisabled}
       onChange={(option: SingleValue<CategoryOption>) =>
         onChange(option?.value ? option.value : null)

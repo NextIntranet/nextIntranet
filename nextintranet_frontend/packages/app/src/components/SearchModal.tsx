@@ -29,9 +29,9 @@ interface SearchResponse {
 }
 
 const contextFromPath = (path: string) => {
+  if (path.startsWith("/store/purchase")) return "purchases"
   if (path.startsWith("/store")) return "store"
   if (path.startsWith("/production")) return "production"
-  if (path.startsWith("/store/purchase")) return "purchases"
   return undefined
 }
 

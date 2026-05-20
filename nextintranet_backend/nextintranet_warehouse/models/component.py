@@ -99,13 +99,40 @@ class PriceHistory(NIModel):
         return f"{self.component.name} - {self.price_type} - {self.price}"
 
 class Identifier(NIModel):
-    # Model pro uchovávání identifikátorů, které mohou patřit k různým typů objektů
-    identifier = models.CharField(max_length=255, unique=True, verbose_name=_('Identifier'))
+    """External identifiers (EAN, SKU, supplier code, etc.) for objects (Component, Packet, etc.)."""
+    SCHEME_CHOICES = (
+        ('', _('Internal')),
+        ('ean', 'EAN'),
+        ('sku', _('SKU')),
+        ('supplier', _('Supplier code')),
+        ('other', _('Other')),
+    )
+    scheme = models.CharField(
+        max_length=50,
+        blank=True,
+        default='',
+        choices=SCHEME_CHOICES,
+        verbose_name=_('Scheme'),
+        help_text=_('Type of identifier (EAN, SKU, etc.). Empty = internal.'),
+    )
+    identifier = models.CharField(max_length=255, verbose_name=_('Identifier'))
     content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
-    object_id = models.PositiveIntegerField()
+    object_id = models.CharField(max_length=255)  # Supports both UUID and integer PKs
     content_object = GenericForeignKey('content_type', 'object_id')
 
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['scheme', 'identifier'],
+                name='identifier_unique_scheme_value',
+            ),
+        ]
+        verbose_name = _('External identifier')
+        verbose_name_plural = _('External identifiers')
+
     def __str__(self):
+        if self.scheme:
+            return f"{self.scheme}:{self.identifier}"
         return self.identifier
 
 
@@ -241,6 +268,13 @@ class Supplier(NIModel):
     )
     api_config = models.JSONField(blank=True, null=True, default=dict, verbose_name=_('API config'))
     api_mapping = models.JSONField(blank=True, null=True, default=dict, verbose_name=_('API mapping'))
+    purchase_export_config = models.JSONField(
+        blank=True,
+        null=True,
+        default=dict,
+        verbose_name=_('Purchase export config'),
+        help_text=_('Per-supplier configuration for purchase export mapping/CSV format.'),
+    )
     api_last_sync_at = models.DateTimeField(blank=True, null=True, verbose_name=_('API last sync at'))
 
     def __str__(self):
@@ -261,6 +295,21 @@ class SupplierRelation(NIModel):
     api_data_hash = models.CharField(max_length=64, blank=True, null=True, verbose_name=_('API data hash'))
     api_fetched_at = models.DateTimeField(blank=True, null=True, verbose_name=_('API fetched at'))
     api_applied_at = models.DateTimeField(blank=True, null=True, verbose_name=_('API applied at'))
+    api_price = models.DecimalField(
+        max_digits=14,
+        decimal_places=4,
+        blank=True,
+        null=True,
+        verbose_name=_('API price'),
+        help_text=_('Price from supplier API (e.g. unit price at min quantity).'),
+    )
+    api_availability = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name=_('API availability'),
+        help_text=_('Availability or stock info from supplier API (e.g. "In Stock", lead time).'),
+    )
 
     @property
     def url(self):
@@ -325,7 +374,11 @@ class Packet(NIModel):
         super().save(*args, **kwargs)
 
     def calculate(self):
-
+        """
+        Recompute packet.count (and totalValue/itemValue) from StockOperations and save.
+        Called automatically from StockOperation.save(); any code that creates or updates
+        stock operations must use .save() (not bulk_create) so counts stay in sync.
+        """
         # Aktualizace počtu položek v packetu (předpokládáme, že výdej má zápornou quantity)
         self.count = StockOperation.objects.filter(packet=self).aggregate(
             total_quantity=models.Sum('quantity')
@@ -470,7 +523,7 @@ class StockOperation(NIModel):
     #     return last_purchase.unit_price if last_purchase else None
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
-
+        # Keep packet.count in sync: availability and UI use precomputed count.
         if self.packet:
             self.packet.calculate()
 
@@ -489,8 +542,38 @@ class Reservation(NIModel):
         verbose_name=_('Priority'),
     )
     description = models.TextField(blank=True, verbose_name=_('Description'))
+    sources = models.JSONField(
+        default=list,
+        blank=True,
+        verbose_name=_('Sources'),
+        help_text=_('Structured list of reservation origins, e.g. [{"type": "production", "bom_id": "...", "line_id": "..."}].'),
+    )
     reservation_date = models.DateTimeField(auto_now_add=True, verbose_name=_('Reservation date'))
     expiration_date = models.DateTimeField(blank=True, null=True, verbose_name=_('Expiration date'))  # Datum vypršení rezervace
 
     def __str__(self):
         return f"Reservation of {self.quantity} units of {self.component.name}"
+
+
+class ResourceAccessLog(models.Model):
+    """Logs when a user views a component or packet (helps with finding recently accessed items)."""
+    content_type = models.ForeignKey(
+        ContentType,
+        on_delete=models.CASCADE,
+        limit_choices_to=models.Q(app_label="nextintranet_warehouse", model="component")
+        | models.Q(app_label="nextintranet_warehouse", model="packet"),
+    )
+    object_id = models.UUIDField(db_index=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    accessed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-accessed_at"]
+        indexes = [
+            models.Index(fields=["content_type", "object_id", "-accessed_at"]),
+        ]
+        verbose_name = _("Resource access log")
+        verbose_name_plural = _("Resource access logs")
+
+    def __str__(self):
+        return f"{self.user} viewed {self.content_type.model}:{self.object_id} at {self.accessed_at}"

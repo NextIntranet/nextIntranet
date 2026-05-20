@@ -1,5 +1,6 @@
 import hashlib
 import json
+from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, Optional
 
 from django.utils import timezone
@@ -182,7 +183,13 @@ def _apply_documents(component, items, policy: str, item_map: Optional[dict]) ->
     return added
 
 
-def _apply_parameters(component, items, policy: str, item_map: Optional[dict]) -> int:
+def _apply_parameters(
+    component,
+    items,
+    policy: str,
+    item_map: Optional[dict],
+    param_name_map: Optional[dict] = None,
+) -> int:
     existing = set(
         ComponentParameter.objects.filter(component=component)
         .values_list("parameter_type_id", "value")
@@ -203,8 +210,11 @@ def _apply_parameters(component, items, policy: str, item_map: Optional[dict]) -
             unit = item.get("unit")
         if not name or value is None:
             continue
+        display_name = str(name)
+        if param_name_map and display_name in param_name_map:
+            display_name = str(param_name_map[display_name])
         param_type, created = ParameterType.objects.get_or_create(
-            name=str(name),
+            name=display_name,
             defaults={"unit": unit},
         )
         if unit and not created and not param_type.unit:
@@ -227,6 +237,23 @@ def apply_supplier_mapping(
     supplier_relation: SupplierRelation,
     mapping_override: Optional[dict] = None,
 ) -> Dict[str, Any]:
+    """
+    Apply supplier API mapping to component and supplier relation.
+
+    Mapping config (Supplier.api_mapping or override) shape:
+    {
+      "fields": {
+        "<field_key>": {
+          "source": "<dot path or list of keys into payload>",  // e.g. "0.ImagePath" or "ImagePath"
+          "target": "component.name | component.description | component.primary_image | component.documents | component.parameters | supplier_relation.api_price | supplier_relation.api_availability",
+          "policy": "always | if_empty | never",
+          "description_mode": "overwrite | prepend | append",   // only for component.description
+          "item_map": { "name": "...", "value": "...", "url": "...", "doc_type": "..." },  // for documents/parameters
+          "param_name_map": { "API Param Name": "Our Parameter Type Name" },  // only for component.parameters
+        }
+      }
+    }
+    """
     supplier = supplier_relation.supplier
     if not supplier:
         raise ValidationError({"supplier": "Supplier relation has no supplier set."})
@@ -243,6 +270,7 @@ def apply_supplier_mapping(
 
     component = supplier_relation.component
     updated_fields = []
+    updated_sr_fields = set()
     applied = {"documents_added": 0, "parameters_added": 0, "fields_updated": []}
 
     for field_key, config in fields.items():
@@ -266,8 +294,33 @@ def apply_supplier_mapping(
             current_value = getattr(component, field_name, None)
             if not _policy_allows_update(policy, current_value):
                 continue
-            setattr(component, field_name, str(value))
+            if field_name == "description":
+                description_mode = (config.get("description_mode") or "overwrite").lower()
+                if description_mode == "prepend":
+                    new_value = (str(value).strip() + "\n\n" + (current_value or "").strip()).strip()
+                elif description_mode == "append":
+                    new_value = ((current_value or "").strip() + "\n\n" + str(value).strip()).strip()
+                else:
+                    new_value = str(value)
+                setattr(component, field_name, new_value or None)
+            else:
+                setattr(component, field_name, str(value))
             updated_fields.append(field_name)
+            applied["fields_updated"].append(field_key)
+            continue
+
+        if target.startswith("supplier_relation."):
+            field_name = target.split(".", 1)[1]
+            if field_name not in {"api_price", "api_availability"}:
+                continue
+            if field_name == "api_price":
+                try:
+                    setattr(supplier_relation, field_name, Decimal(str(value)))
+                except (InvalidOperation, TypeError, ValueError):
+                    continue
+            else:
+                setattr(supplier_relation, field_name, str(value) if value is not None else None)
+            updated_sr_fields.add(field_name)
             applied["fields_updated"].append(field_key)
             continue
 
@@ -281,7 +334,10 @@ def apply_supplier_mapping(
 
         if target == "component.parameters":
             item_map = config.get("item_map") or {}
-            added = _apply_parameters(component, value, policy, item_map)
+            param_name_map = config.get("param_name_map")
+            added = _apply_parameters(
+                component, value, policy, item_map, param_name_map=param_name_map
+            )
             applied["parameters_added"] += added
             if added:
                 applied["fields_updated"].append(field_key)
@@ -290,6 +346,8 @@ def apply_supplier_mapping(
         component.save(update_fields=list(set(updated_fields)))
 
     supplier_relation.api_applied_at = timezone.now()
-    supplier_relation.save(update_fields=["api_applied_at"])
+    supplier_relation.save(
+        update_fields=["api_applied_at"] + list(updated_sr_fields)
+    )
 
     return applied

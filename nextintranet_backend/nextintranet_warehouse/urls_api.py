@@ -8,10 +8,25 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from .views import warehouse
 
 # from .serializers.components import ComponentSerializer
-from .views.components import ComponentListAPIView, ComponentDetailAPIView, ComponentHistoryAPIView, ComponentParameterListAPIView, ComponentParameterCreateAPIView
+from .views.components import (
+    ComponentListAPIView,
+    ComponentDetailAPIView,
+    ComponentHistoryAPIView,
+    ComponentIdentifierListCreateAPIView,
+    ComponentIdentifierDetailAPIView,
+    ComponentParameterListAPIView,
+    ComponentParameterCreateAPIView,
+)
 from .views.warehouse import WarehousePositionsListAPIView, WarehousePositionsTreeAPIView
 from .views.category import CategoryRouter, CategoryRuleRouter
-from .views.packets import PacketRouter, PacketListCreateAPIView, PDFGeneratorView, PacketOperationsAPIView
+from .views.packets import (
+    PacketRouter,
+    PacketListCreateAPIView,
+    PDFGeneratorView,
+    PacketOperationsAPIView,
+    PacketIdentifierListCreateAPIView,
+    PacketIdentifierDetailAPIView,
+)
 from .views.tags import TagListAPIView
 from .views.supplier import SupplierRouter, SupplierRelationRouter, ComponentSuppliersRelationCreateAPIView, ComponentSuppliersRelationListAPIView, SupplierListCreateAPIView, SupplierDetailAPIView, SupplierRelationViewSet
 # from .views.parameters import ParameterTypeListAPIView, ParameterTypeDetailAPIView, ComponentParameterDetailAPIView
@@ -20,6 +35,13 @@ from .views.parameters import ParameterRouter, ParameterTypeRouter
 from .views.stocktaking_api import StocktakingRouter
 from .views.stockOperation import StockOperationRouter
 from .views.purchase_requests import PurchaseRequestListAPIView, PurchaseRequestDetailAPIView
+from .views.purchases import (
+    PurchaseDetailAPIView,
+    PurchaseExportCSVAPIView,
+    PurchaseListAPIView,
+    PurchaseReceiveAPIView,
+    PurchaseStockAPIView,
+)
 from .views.document_api import ComponentDocumentListCreateAPIView, ComponentDocumentDetailAPIView, DocumentDetailAPIView
 from .views.reservations import ReservationListAPIView, ReservationDetailAPIView
 from .views.supplier_api import SupplierRelationApplyAPIView, SupplierRelationSyncAPIView
@@ -29,6 +51,8 @@ urlpatterns = [
     path('components/', ComponentListAPIView.as_view(), name='api_warehouse_components'),
     path('component/<uuid:pk>/', ComponentDetailAPIView.as_view(), name='api_warehouse_component_detail'),
     path('component/<uuid:pk>/history/', ComponentHistoryAPIView.as_view(), name='api_warehouse_component_history'),
+    path('component/<uuid:pk>/identifiers/', ComponentIdentifierListCreateAPIView.as_view(), name='api_warehouse_component_identifiers'),
+    path('component/<uuid:component_pk>/identifiers/<uuid:identifier_pk>/', ComponentIdentifierDetailAPIView.as_view(), name='api_warehouse_component_identifier_detail'),
     #path('component/<uuid:pk>/parameter/new/', ComponentParameterCreateAPIView.as_view(), name='api_warehouse_component_parameter_create'),
     #path('component/<uuid:pk>/parameter/', ComponentParameterListAPIView.as_view(), name='api_warehouse_component_parameters'),
     #path('parameter/<uuid:pk>/', ComponentParameterDetailAPIView.as_view(), name='api_warehouse_component_parameter_detail'),
@@ -41,6 +65,8 @@ urlpatterns = [
 
 # Packets
     path('packet/operation/', include(StockOperationRouter.urls), name='api_warehouse_operations'),
+    path('packet/<uuid:pk>/identifiers/', PacketIdentifierListCreateAPIView.as_view(), name='api_warehouse_packet_identifiers'),
+    path('packet/<uuid:packet_pk>/identifiers/<uuid:identifier_pk>/', PacketIdentifierDetailAPIView.as_view(), name='api_warehouse_packet_identifier_detail'),
     path('packet/', include(PacketRouter.urls), name='api_warehouse_packet_detail'),
     # path('packet/<uuid:pk>/operations/', PacketOperationsAPIView.as_view(), name='api_warehouse_packet_operations'),
     path('component/<uuid:pk>/packet/', PacketListCreateAPIView.as_view(), name='api_warehouse_component_packets'),
@@ -67,6 +93,11 @@ urlpatterns = [
     path('tags/', TagListAPIView.as_view(), name='api_warehouse_tags'),
     path('purchase-requests/', PurchaseRequestListAPIView.as_view(), name='api_warehouse_purchase_requests'),
     path('purchase-request/<uuid:pk>/', PurchaseRequestDetailAPIView.as_view(), name='api_warehouse_purchase_request_detail'),
+    path('purchases/', PurchaseListAPIView.as_view(), name='api_warehouse_purchases'),
+    path('purchase/<uuid:pk>/', PurchaseDetailAPIView.as_view(), name='api_warehouse_purchase_detail'),
+    path('purchase/<uuid:pk>/receive/', PurchaseReceiveAPIView.as_view(), name='api_warehouse_purchase_receive'),
+    path('purchase/<uuid:pk>/stock/', PurchaseStockAPIView.as_view(), name='api_warehouse_purchase_stock'),
+    path('purchase/<uuid:pk>/export-csv/', PurchaseExportCSVAPIView.as_view(), name='api_warehouse_purchase_export_csv'),
     path('reservations/', ReservationListAPIView.as_view(), name='api_warehouse_reservations'),
     path('reservation/<uuid:pk>/', ReservationDetailAPIView.as_view(), name='api_warehouse_reservation_detail'),
     #path('parameterTypes/', ParameterTypeListAPIView.as_view(), name='api_warehouse_parameter_types'),

@@ -40,3 +40,6 @@ Thumbs.db
 
 # Virtualenv
 venv/
+
+# Backups
+backups/

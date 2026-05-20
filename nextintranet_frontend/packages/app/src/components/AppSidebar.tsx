@@ -126,6 +126,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         ...(canReadWarehouse ? [{ title: "Parameter types", url: "/store/parameter-type" }] : []),
         ...(canReadWarehouse ? [{ title: "Inventory", url: "/store/inventory-campaign" }] : []),
         ...(canAccessOperations ? [{ title: "Reservations", url: "/store/reservations" }] : []),
+        ...(canAccessOperations ? [{ title: "Purchases", url: "/store/purchase" }] : []),
         ...(canAccessOperations ? [{ title: "Requests", url: "/store/purchase-requests" }] : []),
         ...(canAccessOperations ? [{ title: "Print queue", url: "/print/queue" }] : []),
         { title: "Categories", url: "/store/category" },

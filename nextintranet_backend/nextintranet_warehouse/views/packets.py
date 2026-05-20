@@ -31,32 +31,35 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework import serializers
 
-from nextintranet_warehouse.models.component import Packet, StockOperation, Component
+from django.contrib.contenttypes.models import ContentType
+
+from nextintranet_warehouse.models.component import Packet, StockOperation, Component, Identifier
 from nextintranet_warehouse.models.warehouse import Warehouse
 
-from .components import ComponentSerializer
+from .components import ComponentSerializer, ExternalIdentifierSerializer
 from .locations import WarehouseSerializer
 
 
 class PacketSerializer(serializers.ModelSerializer):
 
     component = serializers.PrimaryKeyRelatedField(queryset=Component.objects.all())
-    # component = serializers.StringRelatedField(read_only=True)
-
     location = serializers.PrimaryKeyRelatedField(queryset=Warehouse.objects.all())
-    # location = serializers.StringRelatedField(read_only=True)
+    external_identifiers = serializers.SerializerMethodField()
 
     class Meta:
         model = Packet
         fields = '__all__'
 
+    def get_external_identifiers(self, instance):
+        ct = ContentType.objects.get_for_model(Packet)
+        qs = Identifier.objects.filter(content_type=ct, object_id=str(instance.pk))
+        return ExternalIdentifierSerializer(qs, many=True).data
+
     def to_representation(self, instance):
-        # Disabled: avoid recalculating on read; rely on StockOperation.save() for count updates.
-        # if instance.count == 0 and instance.operations.exists():
-        #     instance.calculate()
         response = super().to_representation(instance)
         response['component'] = ComponentSerializer(instance.component).data
         response['location'] = WarehouseSerializer(instance.location).data
+        response['external_identifiers'] = self.get_external_identifiers(instance)
         return response
 
 
@@ -122,6 +125,40 @@ class PacketListCreateAPIView(generics.ListCreateAPIView):
         serializer.save(component=component)
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class PacketIdentifierListCreateAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        packet = get_object_or_404(Packet, pk=pk)
+        ct = ContentType.objects.get_for_model(Packet)
+        qs = Identifier.objects.filter(content_type=ct, object_id=str(packet.pk))
+        return Response(ExternalIdentifierSerializer(qs, many=True).data)
+
+    def post(self, request, pk):
+        packet = get_object_or_404(Packet, pk=pk)
+        serializer = ExternalIdentifierSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ct = ContentType.objects.get_for_model(Packet)
+        serializer.save(content_type=ct, object_id=str(packet.pk))
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class PacketIdentifierDetailAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, packet_pk, identifier_pk):
+        packet = get_object_or_404(Packet, pk=packet_pk)
+        ct = ContentType.objects.get_for_model(Packet)
+        identifier = get_object_or_404(
+            Identifier,
+            pk=identifier_pk,
+            content_type=ct,
+            object_id=str(packet.pk),
+        )
+        identifier.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 PacketRouter = DefaultRouter(trailing_slash=True)

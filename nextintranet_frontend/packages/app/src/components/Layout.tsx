@@ -6,6 +6,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 import { Toaster } from "@/components/ui/sonner"
 import { HardwareScannerListener } from "@/components/HardwareScannerListener"
+import { QuickActionsFab } from "@/components/QuickActionsFab"
 
 export function Layout() {
   return (
@@ -19,6 +20,7 @@ export function Layout() {
           </div>
         </SidebarInset>
         <HardwareScannerListener />
+        <QuickActionsFab />
         <Toaster richColors />
       </SidebarProvider>
     </ThemeProvider>

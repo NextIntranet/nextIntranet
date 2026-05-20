@@ -39,7 +39,15 @@ class ComponentAdmin(admin.ModelAdmin):
 admin.site.register(component.Component, ComponentAdmin)
 admin.site.register(component.Packet)
 admin.site.register(component.PriceHistory)
-admin.site.register(component.Identifier)
+
+
+class IdentifierAdmin(admin.ModelAdmin):
+    list_display = ("identifier", "scheme", "content_type", "object_id")
+    list_filter = ("scheme", "content_type")
+    search_fields = ("identifier",)
+
+
+admin.site.register(component.Identifier, IdentifierAdmin)
 admin.site.register(component.Supplier)
 admin.site.register(component.SupplierRelation)
 admin.site.register(category.Category)

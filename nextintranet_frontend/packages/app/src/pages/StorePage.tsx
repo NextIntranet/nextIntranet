@@ -9,7 +9,8 @@ import {
   useReactTable,
 } from '@tanstack/react-table';
 import { apiFetch } from '@nextintranet/core';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { CategoryParentSelect } from '@/components/CategoryParentSelect';
 import { LocationParentSelect } from '@/components/LocationParentSelect';
 import { TreeFilter } from '@/components/TreeFilter';
 import { Button } from '@/components/ui/button';
@@ -123,6 +124,7 @@ const collectCategoryIds = (node: Category): string[] => {
 
 export function StorePage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   
   const [search, setSearch] = useState(searchParams.get('search') || '');
@@ -226,15 +228,18 @@ export function StorePage() {
       tags: string[];
       unit_type: string;
     }) =>
-      apiFetch('/api/v1/store/components/', {
+      apiFetch<{ id: string }>('/api/v1/store/components/', {
         method: 'POST',
         body: JSON.stringify(payload),
       }),
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['components'] });
       setCreateOpen(false);
       setCreateForm({ name: '', description: '', category: '', unit_type: 'int' });
       toast.success('Component created.');
+      if (data?.id) {
+        navigate(`/store/component/${data.id}`);
+      }
     },
     onError: () => {
       toast.error('Failed to create component.');
@@ -959,18 +964,13 @@ export function StorePage() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Category</label>
-              <select
-                value={createForm.category}
-                onChange={(e) => setCreateForm({ ...createForm, category: e.target.value })}
-                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <option value="">Select category</option>
-                {categories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
+              <CategoryParentSelect
+                categories={categoryTree}
+                value={createForm.category || null}
+                onChange={(v) => setCreateForm({ ...createForm, category: v ?? '' })}
+                emptyLabel="Select category"
+                placeholder="Select category"
+              />
             </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Unit type</label>

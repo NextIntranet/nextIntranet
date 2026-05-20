@@ -306,3 +306,12 @@ input, textarea, select {
     @apply bg-background text-foreground;
   }
 }
+
+/* React-select dropdown in Add component modal: opaque background + above modal (z-[100]) */
+.rs__menu,
+.rs__menu-list {
+  background-color: var(--background) !important;
+}
+.rs__menu {
+  z-index: 10000 !important;
+}
