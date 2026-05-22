@@ -2,12 +2,15 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
+const repoRoot = path.resolve(__dirname, '../../..');
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
       '@nextintranet/core': path.resolve(__dirname, '../core/src'),
+      '@documentation': path.resolve(repoRoot, 'documentation'),
     },
     preserveSymlinks: false,
   },
@@ -16,6 +19,9 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     strictPort: true,
+    fs: {
+      allow: [repoRoot],
+    },
   },
   build: {
     outDir: 'dist',

@@ -1,0 +1,405 @@
+{
+  "generatedAt": "2026-05-22T14:55:07.332Z",
+  "pages": [
+    {
+      "path": "",
+      "file": "index.md",
+      "title": "NextIntranet",
+      "description": "Warehouse, production, and operations in one intranet platform.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "NextIntranet",
+          "id": "nextintranet"
+        },
+        {
+          "level": 2,
+          "text": "What you can do",
+          "id": "what-you-can-do"
+        },
+        {
+          "level": 2,
+          "text": "Where to go next",
+          "id": "where-to-go-next"
+        }
+      ]
+    },
+    {
+      "path": "developer/plugin-system",
+      "file": "developer/plugin-system.md",
+      "title": "Plugin system",
+      "description": "In-repo plugin architecture and extension points.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "Plugin System Developer Guide",
+          "id": "plugin-system-developer-guide"
+        },
+        {
+          "level": 2,
+          "text": "Overview",
+          "id": "overview"
+        },
+        {
+          "level": 2,
+          "text": "Glossary",
+          "id": "glossary"
+        },
+        {
+          "level": 2,
+          "text": "Extension Points",
+          "id": "extension-points"
+        },
+        {
+          "level": 2,
+          "text": "Backend Architecture",
+          "id": "backend-architecture"
+        },
+        {
+          "level": 3,
+          "text": "Plugin Definition (Registry)",
+          "id": "plugin-definition-registry"
+        },
+        {
+          "level": 3,
+          "text": "Plugin Instance (DB)",
+          "id": "plugin-instance-db"
+        },
+        {
+          "level": 3,
+          "text": "Permissions",
+          "id": "permissions"
+        },
+        {
+          "level": 3,
+          "text": "API Endpoints (Proposed)",
+          "id": "api-endpoints-proposed"
+        },
+        {
+          "level": 2,
+          "text": "Frontend Architecture",
+          "id": "frontend-architecture"
+        },
+        {
+          "level": 3,
+          "text": "Plugin Registry",
+          "id": "plugin-registry"
+        },
+        {
+          "level": 3,
+          "text": "Rendering Flow",
+          "id": "rendering-flow"
+        },
+        {
+          "level": 3,
+          "text": "Action Configuration",
+          "id": "action-configuration"
+        },
+        {
+          "level": 2,
+          "text": "Printing Restrictions",
+          "id": "printing-restrictions"
+        },
+        {
+          "level": 2,
+          "text": "Example Plugin: PrinterDriver (Console Only)",
+          "id": "example-plugin-printerdriver-console-only"
+        },
+        {
+          "level": 3,
+          "text": "Backend",
+          "id": "backend"
+        },
+        {
+          "level": 3,
+          "text": "Frontend",
+          "id": "frontend"
+        },
+        {
+          "level": 2,
+          "text": "File Layout (In-Repo)",
+          "id": "file-layout-in-repo"
+        },
+        {
+          "level": 2,
+          "text": "Extracting Later",
+          "id": "extracting-later"
+        }
+      ]
+    },
+    {
+      "path": "guide/getting-started",
+      "file": "guide/getting-started.md",
+      "title": "Getting started",
+      "description": "Run NextIntranet locally and sign in.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "Getting started",
+          "id": "getting-started"
+        },
+        {
+          "level": 2,
+          "text": "Run with Docker",
+          "id": "run-with-docker"
+        },
+        {
+          "level": 2,
+          "text": "Sign in",
+          "id": "sign-in"
+        },
+        {
+          "level": 2,
+          "text": "Explore the warehouse",
+          "id": "explore-the-warehouse"
+        },
+        {
+          "level": 2,
+          "text": "Configure integrations",
+          "id": "configure-integrations"
+        }
+      ]
+    },
+    {
+      "path": "guide/search",
+      "file": "guide/search.md",
+      "title": "Global search",
+      "description": "Search API and barcode resolution.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "Global search",
+          "id": "global-search"
+        },
+        {
+          "level": 2,
+          "text": "Query parameters",
+          "id": "query-parameters"
+        },
+        {
+          "level": 2,
+          "text": "Source filters",
+          "id": "source-filters"
+        },
+        {
+          "level": 2,
+          "text": "Barcode payloads",
+          "id": "barcode-payloads"
+        },
+        {
+          "level": 2,
+          "text": "Defaults",
+          "id": "defaults"
+        }
+      ]
+    },
+    {
+      "path": "guide/settings/mcp",
+      "file": "guide/settings/mcp.md",
+      "title": "MCP integration",
+      "description": "Connect AI clients to the NextIntranet warehouse MCP server.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "MCP integration",
+          "id": "mcp-integration"
+        },
+        {
+          "level": 2,
+          "text": "Generate token",
+          "id": "generate-token"
+        },
+        {
+          "level": 3,
+          "text": "Client configuration paths",
+          "id": "client-configuration-paths"
+        },
+        {
+          "level": 2,
+          "text": "Available tools",
+          "id": "available-tools"
+        },
+        {
+          "level": 3,
+          "text": "Read-only (`mcp:read` scope)",
+          "id": "read-only-mcpread-scope"
+        },
+        {
+          "level": 3,
+          "text": "Write (`mcp:write` scope, includes all read tools)",
+          "id": "write-mcpwrite-scope-includes-all-read-tools"
+        },
+        {
+          "level": 2,
+          "text": "Architecture",
+          "id": "architecture"
+        }
+      ]
+    },
+    {
+      "path": "guide/settings/service-tokens",
+      "file": "guide/settings/service-tokens.md",
+      "title": "Service tokens",
+      "description": "Long-lived credentials for devices and integrations.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "Service tokens",
+          "id": "service-tokens"
+        },
+        {
+          "level": 2,
+          "text": "Why",
+          "id": "why"
+        },
+        {
+          "level": 2,
+          "text": "How it works",
+          "id": "how-it-works"
+        },
+        {
+          "level": 2,
+          "text": "Headers",
+          "id": "headers"
+        },
+        {
+          "level": 2,
+          "text": "Create a token",
+          "id": "create-a-token"
+        },
+        {
+          "level": 2,
+          "text": "Current usage",
+          "id": "current-usage"
+        },
+        {
+          "level": 2,
+          "text": "Operational notes",
+          "id": "operational-notes"
+        }
+      ]
+    },
+    {
+      "path": "guide/warehouse/components",
+      "file": "guide/warehouse/components.md",
+      "title": "Components",
+      "description": "Manage warehouse components, parameters, and stock.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "Components",
+          "id": "components"
+        },
+        {
+          "level": 2,
+          "text": "Open a component",
+          "id": "open-a-component"
+        },
+        {
+          "level": 2,
+          "text": "Description field",
+          "id": "description-field"
+        },
+        {
+          "level": 2,
+          "text": "Related topics",
+          "id": "related-topics"
+        }
+      ]
+    },
+    {
+      "path": "guide/warehouse/reservations",
+      "file": "guide/warehouse/reservations.md",
+      "title": "Reservations",
+      "description": "Reserve stock for projects and orders.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "Reservations",
+          "id": "reservations"
+        },
+        {
+          "level": 2,
+          "text": "Create reservation",
+          "id": "create-reservation"
+        },
+        {
+          "level": 2,
+          "text": "View and update",
+          "id": "view-and-update"
+        }
+      ]
+    },
+    {
+      "path": "product/features",
+      "file": "product/features.md",
+      "title": "Features",
+      "description": "Capability overview for NextIntranet.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "Features",
+          "id": "features"
+        },
+        {
+          "level": 2,
+          "text": "Warehouse",
+          "id": "warehouse"
+        },
+        {
+          "level": 2,
+          "text": "Production",
+          "id": "production"
+        },
+        {
+          "level": 2,
+          "text": "Printing",
+          "id": "printing"
+        },
+        {
+          "level": 2,
+          "text": "Access control",
+          "id": "access-control"
+        },
+        {
+          "level": 2,
+          "text": "Extensibility",
+          "id": "extensibility"
+        }
+      ]
+    },
+    {
+      "path": "product/overview",
+      "file": "product/overview.md",
+      "title": "Product overview",
+      "description": "What NextIntranet offers for warehouse and operations teams.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "Product overview",
+          "id": "product-overview"
+        },
+        {
+          "level": 2,
+          "text": "Core areas",
+          "id": "core-areas"
+        },
+        {
+          "level": 2,
+          "text": "Integrations",
+          "id": "integrations"
+        }
+      ]
+    }
+  ]
+}

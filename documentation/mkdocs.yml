@@ -1,0 +1,65 @@
+site_name: NextIntranet
+site_description: Warehouse and operations platform documentation
+site_url: https://nextintranet.github.io/nextIntranet/
+repo_url: https://github.com/nextintranet/nextIntranet
+repo_name: nextintranet/nextIntranet
+
+docs_dir: content
+site_dir: site
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - search.suggest
+    - content.code.copy
+    - toc.follow
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+
+nav:
+  - Home: index.md
+  - Product:
+    - Overview: product/overview.md
+    - Features: product/features.md
+  - Documentation:
+    - Getting started: guide/getting-started.md
+    - Global search: guide/search.md
+    - Warehouse:
+      - Components: guide/warehouse/components.md
+      - Reservations: guide/warehouse/reservations.md
+    - Settings:
+      - MCP integration: guide/settings/mcp.md
+      - Service tokens: guide/settings/service-tokens.md
+  - Developer:
+    - Plugin system: developer/plugin-system.md

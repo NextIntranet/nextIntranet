@@ -6,7 +6,8 @@
     "dev": "pnpm --filter @nextintranet/app dev",
     "build": "pnpm --filter @nextintranet/app build",
     "preview": "pnpm --filter @nextintranet/app preview",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "docs:manifest": "npm run build:manifest --prefix ../documentation"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",

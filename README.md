@@ -1,5 +1,14 @@
 # NextIntranet
 
+## Documentation
+
+User and product documentation is maintained as Markdown in [`documentation/content/`](documentation/content/).
+
+- **Intranet** (after login): sidebar **Documentation** or `/docs/…`
+- **Public site**: built with MkDocs to GitHub Pages — see [`documentation/README.md`](documentation/README.md)
+
+Regenerate the intranet page index after edits: `pnpm docs:manifest` from `nextintranet_frontend/`.
+
 ## KiCad Integration - HTTP Library
 
 NextIntranet provides a KiCad HTTP Library integration, allowing you to use components from the warehouse directly in KiCad.

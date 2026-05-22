@@ -1,0 +1,12 @@
+{
+  "name": "@nextintranet/documentation",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:manifest": "node scripts/build-manifest.mjs"
+  },
+  "devDependencies": {
+    "github-slugger": "^2.0.0",
+    "gray-matter": "^4.0.3"
+  }
+}

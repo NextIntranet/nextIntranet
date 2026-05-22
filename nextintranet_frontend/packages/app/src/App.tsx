@@ -25,6 +25,7 @@ import { HardwarePage } from './pages/HardwarePage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ServiceTokensPage } from './pages/ServiceTokensPage';
 import { SoftwareSettingsPage } from './pages/SoftwareSettingsPage';
+import { DocsPage } from './pages/DocsPage';
 import { SupplierRelationPage } from './pages/SupplierRelationPage';
 import { ProductionPage } from './pages/ProductionPage';
 import { ProductionBomPage } from './pages/ProductionBomPage';
@@ -47,6 +48,7 @@ export function App() {
           }
         >
           <Route index element={<HomePage />} />
+          <Route path="docs/*" element={<DocsPage />} />
           <Route path="store" element={<StorePage />} />
           <Route
             path="store/location"

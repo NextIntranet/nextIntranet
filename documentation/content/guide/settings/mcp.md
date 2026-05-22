@@ -68,8 +68,9 @@ The generated JSON looks like:
 - `update_component` — update name, description, category, tags, selling/internal prices
 - `set_component_parameters` — set/update component parameters
 - `create_component` — create a new component (do not put URLs in description; use documents instead)
-- `create_component_document` — attach a URL document to a component (`doc_type` key e.g. `product_page`, or label `Product page`)
-- `update_component_document` — update document name, URL, or type
+- `create_component_document` — attach a URL document (`is_primary` for image thumbnails)
+- `update_component_document` — update name, URL, type, or `is_primary`
+- `set_component_primary_document` — set an existing image as primary
 - `delete_component_document` — remove document from component
 - `create_packet` / `update_packet` / `add_packet_stock_operation` — packets and stock quantity changes
 - `create_parameter_type` / `update_parameter_type` / `delete_parameter_type` — parameter types

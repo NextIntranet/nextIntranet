@@ -4,6 +4,7 @@ import { apiFetch, getApiConfig } from "@nextintranet/core"
 import { toast } from "sonner"
 import { Check, Copy } from "lucide-react"
 
+import { DocLink } from "@/components/DocLink"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -205,7 +206,11 @@ export function SoftwareSettingsPage() {
           <CardDescription>
             Creates a new service token and generates a JSON configuration
             for MCP clients (Claude Code, Claude Desktop, Cursor, etc.).
-            Copy the JSON into your client's MCP settings.
+            Copy the JSON into your client&apos;s MCP settings.{" "}
+            <DocLink page="guide/settings/mcp" hash="generate-token" className="text-primary underline">
+              Read the MCP setup guide
+            </DocLink>
+            .
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
