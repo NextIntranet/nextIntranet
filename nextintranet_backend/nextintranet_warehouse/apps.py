@@ -7,3 +7,4 @@ class NextintranetWarehouseConfig(AppConfig):
 
     def ready(self) -> None:
         from . import signals  # noqa: F401
+        from . import mcp  # noqa: F401 — ensure MCP toolsets load before mcp_server.init()

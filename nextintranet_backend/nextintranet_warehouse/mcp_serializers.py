@@ -36,7 +36,8 @@ class MCPDocumentSerializer(serializers.ModelSerializer):
 
     def get_doc_type_label(self, obj):
         labels = dict(Document.DOCUMENT_TYPE_CHOICES)
-        return labels.get(obj.doc_type, obj.doc_type)
+        label = labels.get(obj.doc_type, obj.doc_type)
+        return str(label)
 
 
 class MCPSupplierRelationSerializer(serializers.ModelSerializer):
@@ -48,9 +49,14 @@ class MCPSupplierRelationSerializer(serializers.ModelSerializer):
 
 
 class MCPPacketSerializer(serializers.ModelSerializer):
-    component_id = serializers.UUIDField(source="component_id", read_only=True)
-    location_id = serializers.UUIDField(source="location_id", read_only=True, allow_null=True)
-    location_name = serializers.CharField(source="location.full_path", read_only=True, default=None)
+    component_id = serializers.UUIDField(read_only=True)
+    location_id = serializers.UUIDField(read_only=True, allow_null=True)
+    location_name = serializers.SerializerMethodField()
+
+    def get_location_name(self, obj):
+        if not obj.location_id:
+            return None
+        return str(obj.location.full_path)
 
     class Meta:
         model = Packet

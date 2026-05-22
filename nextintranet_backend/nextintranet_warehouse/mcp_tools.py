@@ -42,6 +42,13 @@ def _mcp_doc_append_description_guidance(doc: str, *, on_new_line: bool = False)
 DOCUMENT_TYPE_KEYS = {choice[0] for choice in Document.DOCUMENT_TYPE_CHOICES}
 
 
+def _serialize_mcp_document(document: Document, *, component_id=None) -> dict:
+    """JSON-safe document payload for MCP (no lazy translation objects)."""
+    payload = dict(MCPDocumentSerializer(document).data)
+    payload["component_id"] = str(component_id if component_id is not None else document.component_id)
+    return payload
+
+
 def _normalize_doc_type(raw: str, *, default: str = "product_page") -> str:
     """Accept type keys (product_page) or labels (Product page)."""
     value = (raw or default).strip() or default
@@ -58,6 +65,17 @@ def _normalize_doc_type(raw: str, *, default: str = "product_page") -> str:
         f"Invalid doc_type '{raw}'. Use a type key (e.g. product_page), not the display label. "
         f"Allowed keys: {allowed}. Call list_document_types for keys and labels."
     )
+
+
+def _set_document_primary(document: Document) -> None:
+    if document.doc_type != "image":
+        raise ValueError("Only image documents can be set as the primary image.")
+    Document.objects.filter(component_id=document.component_id, is_primary=True).exclude(
+        pk=document.pk
+    ).update(is_primary=False)
+    if not document.is_primary:
+        document.is_primary = True
+        document.save(update_fields=["is_primary"])
 
 
 MCP_LIST_DEFAULT_LIMIT = 500
@@ -480,7 +498,7 @@ class WarehouseReadToolset(MCPToolset):
         _require_read(self.request)
         row_limit = _clamp_list_limit(limit, default=100, maximum=500)
         qs = Document.objects.filter(component_id=component_id).order_by("-created_at")
-        return MCPDocumentSerializer(qs[:row_limit], many=True).data
+        return [_serialize_mcp_document(doc, component_id=component_id) for doc in qs[:row_limit]]
 
     def get_component_document(self, document_id: str) -> dict:
         """Get a single component document by ID.
@@ -490,9 +508,7 @@ class WarehouseReadToolset(MCPToolset):
         """
         _require_read(self.request)
         document = Document.objects.select_related("component").get(id=document_id)
-        payload = MCPDocumentSerializer(document).data
-        payload["component_id"] = str(document.component_id)
-        return payload
+        return _serialize_mcp_document(document)
 
 
 class WarehouseWriteToolset(MCPToolset):
@@ -735,6 +751,7 @@ class WarehouseWriteToolset(MCPToolset):
         url: str,
         name: str = "",
         doc_type: str = "product_page",
+        is_primary: bool = False,
     ) -> dict:
         """Create a URL document and attach it to a component (no file upload).
 
@@ -743,7 +760,8 @@ class WarehouseWriteToolset(MCPToolset):
             url: External document URL (required).
             name: Optional display name (defaults from URL path if omitted).
             doc_type: Type key (product_page) or label (Product page). Default product_page.
-                Call list_document_types for allowed values.
+            is_primary: Default false. For doc_type image only: true sets primary; the first image
+                on a component is always made primary automatically.
         """
         _require_write(self.request)
 
@@ -752,11 +770,22 @@ class WarehouseWriteToolset(MCPToolset):
             raise ValueError("url is required.")
 
         doc_type = _normalize_doc_type(doc_type)
+        if is_primary and doc_type != "image":
+            raise ValueError("is_primary can only be true when doc_type is image.")
 
         component = Component.objects.get(id=component_id)
         display_name = (name or "").strip()
         if not display_name:
             display_name = url.rstrip("/").split("/")[-1] or "Document"
+
+        make_primary = False
+        if doc_type == "image":
+            has_other_images = Document.objects.filter(
+                component_id=component.id,
+                doc_type="image",
+            ).exists()
+            if is_primary or not has_other_images:
+                make_primary = True
 
         document = Document.objects.create(
             component=component,
@@ -764,10 +793,11 @@ class WarehouseWriteToolset(MCPToolset):
             url=url,
             doc_type=doc_type,
             access_level="public",
+            is_primary=make_primary,
         )
-        payload = MCPDocumentSerializer(document).data
-        payload["component_id"] = str(component.id)
-        return payload
+        if make_primary:
+            _set_document_primary(document)
+        return _serialize_mcp_document(document)
 
     def update_component_document(
         self,
@@ -775,6 +805,7 @@ class WarehouseWriteToolset(MCPToolset):
         name: str = "",
         url: str = "",
         doc_type: str = "",
+        is_primary: bool = False,
     ) -> dict:
         """Update a component document. Only provided fields are changed.
 
@@ -783,6 +814,7 @@ class WarehouseWriteToolset(MCPToolset):
             name: New display name (leave empty to keep current).
             url: New URL (leave empty to keep current; URL-only documents).
             doc_type: New type key or label (leave empty to keep current).
+            is_primary: Set true to make this document the primary image (doc_type must be image).
         """
         _require_write(self.request)
 
@@ -799,13 +831,32 @@ class WarehouseWriteToolset(MCPToolset):
             document.doc_type = _normalize_doc_type(doc_type)
             update_fields.append("doc_type")
 
-        if not update_fields:
-            raise ValueError("Provide at least one of name, url, or doc_type to update.")
+        if not update_fields and not is_primary:
+            raise ValueError(
+                "Provide at least one of name, url, doc_type, or set is_primary true."
+            )
 
-        document.save(update_fields=update_fields)
-        payload = MCPDocumentSerializer(document).data
-        payload["component_id"] = str(document.component_id)
-        return payload
+        if update_fields:
+            document.save(update_fields=update_fields)
+
+        if is_primary:
+            _set_document_primary(document)
+
+        document.refresh_from_db()
+        return _serialize_mcp_document(document)
+
+    def set_component_primary_document(self, document_id: str) -> dict:
+        """Set an image document as the component primary image.
+
+        Args:
+            document_id: UUID of the document (must be doc_type image).
+        """
+        _require_write(self.request)
+
+        document = Document.objects.select_related("component").get(id=document_id)
+        _set_document_primary(document)
+        document.refresh_from_db()
+        return _serialize_mcp_document(document)
 
     def delete_component_document(
         self,

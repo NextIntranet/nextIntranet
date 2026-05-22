@@ -8,6 +8,7 @@ from django.contrib.postgres.fields import JSONField
 from django.db.models import UUIDField
 from colorfield.fields import ColorField
 import uuid
+from decimal import Decimal
 
 from nextintranet_backend.models import NIModel
 from nextintranet_backend.models.plugin import PluginInstance
@@ -52,15 +53,33 @@ class Component(NIModel):
     @property
     def count(self):
         # Calculate current quantity of the component across all batches, excluding reservations
-        total_quantity = sum(packet.count for packet in self.packets.all())
-        reserved_quantity = self.reservations.aggregate(total_reserved=models.Sum('quantity'))['total_reserved'] or 0
+        total_quantity = sum(
+            (packet.count for packet in self.packets.all()),
+            Decimal(0),
+        )
+        reserved_quantity = self.reservations.aggregate(total_reserved=models.Sum('quantity'))[
+            'total_reserved'
+        ]
+        if reserved_quantity is None:
+            reserved_quantity = Decimal(0)
+        else:
+            reserved_quantity = Decimal(reserved_quantity)
         return total_quantity - reserved_quantity
 
     def count_warehouse(self, include_reservations=True):
         # Calculate current quantity of the component across all batches with option to include reservations
-        total_quantity = sum(packet.count for packet in self.packets.all())
+        total_quantity = sum(
+            (packet.count for packet in self.packets.all()),
+            Decimal(0),
+        )
         if not include_reservations:
-            reserved_quantity = self.reservations.aggregate(total_reserved=models.Sum('quantity'))['total_reserved'] or 0
+            reserved_quantity = self.reservations.aggregate(total_reserved=models.Sum('quantity'))[
+                'total_reserved'
+            ]
+            if reserved_quantity is None:
+                reserved_quantity = Decimal(0)
+            else:
+                reserved_quantity = Decimal(reserved_quantity)
             return total_quantity - reserved_quantity
         return total_quantity
 
