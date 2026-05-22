@@ -71,6 +71,12 @@ class ServiceTokenCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 {"scopes": "You need warehouse-operations read access for print render tokens."}
             )
+        if ServiceToken.SCOPE_MCP_WRITE in scopes and not self._user_has_area_access(
+            user, "warehouse", {"write", "admin"}
+        ):
+            raise serializers.ValidationError(
+                {"scopes": "You need warehouse write access to create MCP read-write tokens."}
+            )
         return attrs
 
     def create(self, validated_data):

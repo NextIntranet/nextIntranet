@@ -12,7 +12,7 @@ import { apiFetch } from '@nextintranet/core';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { CategoryParentSelect } from '@/components/CategoryParentSelect';
 import { LocationParentSelect } from '@/components/LocationParentSelect';
-import { TreeFilter } from '@/components/TreeFilter';
+import { TreeFilter, type TreeExpandCommand } from '@/components/TreeFilter';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -149,6 +149,7 @@ export function StorePage() {
     searchParams.get('locations') || searchParams.get('location') || null
   );
   const [locationsRequested, setLocationsRequested] = useState(Boolean(searchParams.get('locations') || searchParams.get('location')));
+  const [categoryTreeExpandCommand, setCategoryTreeExpandCommand] = useState<TreeExpandCommand | undefined>();
 
   const [createForm, setCreateForm] = useState({
     name: '',
@@ -291,6 +292,13 @@ export function StorePage() {
     [locations]
   );
 
+  const bumpCategoryTreeExpand = (action: 'expand' | 'collapse') => {
+    setCategoryTreeExpandCommand((prev) => ({
+      action,
+      nonce: (prev?.nonce ?? 0) + 1,
+    }))
+  }
+
   const toggleCategory = (categoryId: string) => {
     const targetNode = findCategoryNode(categoryTree, categoryId);
     const affectedIds = targetNode ? collectCategoryIds(targetNode) : [categoryId];
@@ -371,19 +379,37 @@ export function StorePage() {
           <p className="mb-0 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
             Categories
           </p>
-          {selectedCategories.length > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-8 px-2 text-xs"
-              onClick={() => {
-                setSelectedCategories([])
-                setPage(1)
-              }}
-            >
-              Clear ({selectedCategories.length})
-            </Button>
-          )}
+          {categories && categories.length > 0 ? (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                onClick={() => bumpCategoryTreeExpand('expand')}
+              >
+                Expand
+              </button>
+              <button
+                type="button"
+                className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                onClick={() => bumpCategoryTreeExpand('collapse')}
+              >
+                Collapse
+              </button>
+              {selectedCategories.length > 0 ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 px-1.5 text-xs"
+                  onClick={() => {
+                    setSelectedCategories([])
+                    setPage(1)
+                  }}
+                >
+                  Clear ({selectedCategories.length})
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
         <div className="rounded-md">
           {categories && categories.length > 0 ? (
@@ -393,6 +419,7 @@ export function StorePage() {
               selectedIds={selectedCategories}
               onToggle={toggleCategory}
               showCheckbox
+              expandCommand={categoryTreeExpandCommand}
             />
           ) : (
             <div className="text-sm text-muted-foreground">No categories</div>

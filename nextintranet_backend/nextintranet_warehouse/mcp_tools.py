@@ -6,7 +6,7 @@ from django.db.models import Q, Sum
 from nextintranet_backend.models.serviceToken import ServiceToken
 from nextintranet_warehouse.models.component import (
     Component, ComponentParameter, ParameterType, Packet, StockOperation, Tag,
-    Supplier, SupplierRelation, Reservation,
+    Supplier, SupplierRelation, Reservation, Document,
 )
 from nextintranet_warehouse.models.category import Category
 from nextintranet_warehouse.models.warehouse import Warehouse
@@ -23,8 +23,23 @@ from nextintranet_warehouse.mcp_serializers import (
     MCPSupplierRelationSerializer,
     MCPReservationSerializer,
     MCPPacketSerializer,
+    MCPDocumentSerializer,
 )
 from nextintranet_warehouse.services.parameter_values import coerce_decimal_for_storage
+
+MCP_DESCRIPTION_LINK_GUIDANCE = (
+    "Do not put URLs in the component description. Add external links as component "
+    "documents (use create_component_document) with an appropriate doc_type such as "
+    "product_page, datasheet, or manual."
+)
+
+
+def _mcp_doc_append_description_guidance(doc: str, *, on_new_line: bool = False) -> str:
+    if on_new_line:
+        return doc.rstrip() + "\n                " + MCP_DESCRIPTION_LINK_GUIDANCE
+    return doc.rstrip() + " " + MCP_DESCRIPTION_LINK_GUIDANCE
+
+DOCUMENT_TYPE_KEYS = {choice[0] for choice in Document.DOCUMENT_TYPE_CHOICES}
 
 MCP_LIST_DEFAULT_LIMIT = 500
 MCP_LIST_MAX_LIMIT = 2000
@@ -434,7 +449,7 @@ class WarehouseWriteToolset(MCPToolset):
 
         Args:
             component_id: UUID of the component to update.
-            description: New description text (markdown supported).
+            description: New description text (plain line breaks preserved, no URLs).
         """
         _require_write(self.request)
 
@@ -631,7 +646,7 @@ class WarehouseWriteToolset(MCPToolset):
 
         Args:
             name: Name of the component.
-            description: Optional description (markdown).
+            description: Optional description (line breaks preserved).
             category_id: Optional UUID of the category.
             unit_type: Unit type - 'int' (integer) or 'float'. Default 'int'.
         """
@@ -649,6 +664,55 @@ class WarehouseWriteToolset(MCPToolset):
         component = Component.objects.create(**kwargs)
 
         return _component_summary(component)
+
+    update_component_description.__doc__ = _mcp_doc_append_description_guidance(
+        update_component_description.__doc__, on_new_line=True
+    )
+    update_component.__doc__ = _mcp_doc_append_description_guidance(update_component.__doc__)
+    create_component.__doc__ = _mcp_doc_append_description_guidance(create_component.__doc__)
+
+    def create_component_document(
+        self,
+        component_id: str,
+        url: str,
+        name: str = "",
+        doc_type: str = "product_page",
+    ) -> dict:
+        """Create a URL document and attach it to a component (no file upload).
+
+        Args:
+            component_id: UUID of the component.
+            url: External document URL (required).
+            name: Optional display name (defaults from URL path if omitted).
+            doc_type: Document type - e.g. product_page, datasheet, manual, specification,
+                application_note, other. Default product_page.
+        """
+        _require_write(self.request)
+
+        url = (url or "").strip()
+        if not url:
+            raise ValueError("url is required.")
+
+        doc_type = (doc_type or "product_page").strip()
+        if doc_type not in DOCUMENT_TYPE_KEYS:
+            raise ValueError(
+                f"Invalid doc_type '{doc_type}'. "
+                f"Allowed: {', '.join(sorted(DOCUMENT_TYPE_KEYS))}."
+            )
+
+        component = Component.objects.get(id=component_id)
+        display_name = (name or "").strip()
+        if not display_name:
+            display_name = url.rstrip("/").split("/")[-1] or "Document"
+
+        document = Document.objects.create(
+            component=component,
+            name=display_name,
+            url=url,
+            doc_type=doc_type,
+            access_level="public",
+        )
+        return MCPDocumentSerializer(document).data
 
     def create_packet(
         self,

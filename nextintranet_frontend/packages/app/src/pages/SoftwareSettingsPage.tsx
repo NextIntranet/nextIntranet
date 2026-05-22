@@ -1,6 +1,6 @@
-import { useState } from "react"
-import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { getApiConfig } from "@nextintranet/core"
+import { useEffect, useMemo, useState } from "react"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { apiFetch, getApiConfig } from "@nextintranet/core"
 import { toast } from "sonner"
 import { Check, Copy } from "lucide-react"
 
@@ -20,6 +20,25 @@ const downloadBlob = (blob: Blob, filename: string) => {
   URL.revokeObjectURL(url)
 }
 
+const DEFAULT_MCP_SERVER_NAME = "nextintranet-warehouse"
+
+interface UserMe {
+  is_superuser: boolean
+  access_permissions: Array<{
+    area: string
+    level: string
+  }>
+}
+
+const hasWarehouseWrite = (user: UserMe | undefined) =>
+  Boolean(
+    user?.is_superuser ||
+      user?.access_permissions?.some(
+        (permission) =>
+          permission.area === "warehouse" && ["write", "admin"].includes(permission.level),
+      ),
+  )
+
 const buildKicadFilename = (tokenName: string) => {
   const normalized = tokenName
     .trim()
@@ -32,11 +51,23 @@ const buildKicadFilename = (tokenName: string) => {
 
 export function SoftwareSettingsPage() {
   const queryClient = useQueryClient()
+  const { data: me } = useQuery({
+    queryKey: ["me"],
+    queryFn: () => apiFetch<UserMe>("/api/v1/me/"),
+  })
+  const canMcpWrite = useMemo(() => hasWarehouseWrite(me), [me])
   const [kicadTokenName, setKicadTokenName] = useState("")
   const [mcpTokenName, setMcpTokenName] = useState("")
+  const [mcpServerName, setMcpServerName] = useState(DEFAULT_MCP_SERVER_NAME)
   const [mcpScope, setMcpScope] = useState<"read" | "write">("read")
   const [mcpConfigJson, setMcpConfigJson] = useState("")
   const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (!canMcpWrite && mcpScope === "write") {
+      setMcpScope("read")
+    }
+  }, [canMcpWrite, mcpScope])
 
   const generateKicadConfigMutation = useMutation({
     mutationFn: async (name: string) => {
@@ -72,7 +103,15 @@ export function SoftwareSettingsPage() {
   })
 
   const generateMcpConfigMutation = useMutation({
-    mutationFn: async ({ name, scope }: { name: string; scope: string }) => {
+    mutationFn: async ({
+      name,
+      serverName,
+      scope,
+    }: {
+      name: string
+      serverName: string
+      scope: string
+    }) => {
       const cfg = getApiConfig()
       const accessToken = cfg.getToken()
       const response = await fetch(`${cfg.baseUrl}/api/v1/service-token/generate-mcp-config/`, {
@@ -81,7 +120,11 @@ export function SoftwareSettingsPage() {
           ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ name, scope }),
+        body: JSON.stringify({
+          name,
+          server_name: serverName.trim() || DEFAULT_MCP_SERVER_NAME,
+          scope,
+        }),
       })
 
       if (response.status === 401) {
@@ -89,19 +132,23 @@ export function SoftwareSettingsPage() {
         throw new Error("Unauthorized")
       }
       if (!response.ok) {
-        throw new Error(`Failed to generate MCP config (${response.status})`)
+        const payload = (await response.json().catch(() => null)) as { detail?: string; error?: string } | null
+        throw new Error(
+          payload?.detail || payload?.error || `Failed to generate MCP config (${response.status})`,
+        )
       }
       return response.json()
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["service-tokens"] })
       setMcpTokenName("")
+      setMcpServerName(DEFAULT_MCP_SERVER_NAME)
       setMcpConfigJson(JSON.stringify(data.config, null, 2))
       setCopied(false)
       toast.success("MCP config generated. Copy the JSON below.")
     },
-    onError: () => {
-      toast.error("Failed to generate MCP config.")
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to generate MCP config.")
     },
   })
 
@@ -162,14 +209,32 @@ export function SoftwareSettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-2">
-            <Label htmlFor="mcp-token-name">Token name</Label>
-            <Input
-              id="mcp-token-name"
-              placeholder="MCP warehouse token"
-              value={mcpTokenName}
-              onChange={(event) => setMcpTokenName(event.target.value)}
-            />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-2">
+              <Label htmlFor="mcp-token-name">Token name</Label>
+              <Input
+                id="mcp-token-name"
+                placeholder="MCP warehouse token"
+                value={mcpTokenName}
+                onChange={(event) => setMcpTokenName(event.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Label for this token inside NextIntranet (shown in service token lists).
+              </p>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="mcp-server-name">MCP server name</Label>
+              <Input
+                id="mcp-server-name"
+                placeholder={DEFAULT_MCP_SERVER_NAME}
+                value={mcpServerName}
+                onChange={(event) => setMcpServerName(event.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Key under <code className="text-foreground">mcpServers</code> in the generated JSON.
+                Use a unique name if you connect multiple NextIntranet instances.
+              </p>
+            </div>
           </div>
           <div className="grid gap-2">
             <Label>Access level</Label>
@@ -181,22 +246,31 @@ export function SoftwareSettingsPage() {
               >
                 Read-only
               </Button>
-              <Button
-                variant={mcpScope === "write" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setMcpScope("write")}
-              >
-                Read &amp; Write
-              </Button>
+              {canMcpWrite ? (
+                <Button
+                  variant={mcpScope === "write" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setMcpScope("write")}
+                >
+                  Read &amp; Write
+                </Button>
+              ) : null}
             </div>
             <p className="text-xs text-muted-foreground">
-              {mcpScope === "read"
-                ? "Search components, view inventory, categories, locations, suppliers, reservations, and parameter types."
-                : "All read tools plus create/update/delete for components, categories, locations, suppliers, reservations, and parameter types."}
+              {mcpScope === "write"
+                ? "All read tools plus create/update/delete for components, categories, locations, suppliers, reservations, and parameter types."
+                : "Search components, view inventory, categories, locations, suppliers, reservations, and parameter types."}
+              {!canMcpWrite ? " Read-write tokens require warehouse write access in NextIntranet." : null}
             </p>
           </div>
           <Button
-            onClick={() => generateMcpConfigMutation.mutate({ name: mcpTokenName.trim(), scope: mcpScope })}
+            onClick={() =>
+              generateMcpConfigMutation.mutate({
+                name: mcpTokenName.trim(),
+                serverName: mcpServerName,
+                scope: mcpScope,
+              })
+            }
             disabled={generateMcpConfigMutation.isPending}
           >
             {generateMcpConfigMutation.isPending ? "Generating..." : "Generate config"}

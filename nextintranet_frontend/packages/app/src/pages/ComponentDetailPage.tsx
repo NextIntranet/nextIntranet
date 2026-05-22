@@ -1106,6 +1106,7 @@ export function ComponentDetailPage() {
     { value: "drawing", label: "Drawing" },
     { value: "certificate", label: "Certificate" },
     { value: "image", label: "Image" },
+    { value: "product_page", label: "Product page" },
     { value: "other", label: "Other" },
     { value: "undefined", label: "Undefined" },
   ]
@@ -2196,7 +2197,7 @@ export function ComponentDetailPage() {
                       className="min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                   ) : (
-                    <p className="text-sm text-foreground">
+                    <p className="whitespace-pre-wrap break-words text-sm text-foreground">
                       {component.description || "No description provided."}
                     </p>
                   )}
