@@ -2,13 +2,14 @@ import * as React from "react"
 import { useEffect, useState } from "react"
 import {
   BookOpen,
-  Box,
   Command,
+  Factory,
+  LayoutDashboard,
   Search,
   Settings2,
-  SquareTerminal,
   UserCog,
   Users,
+  Warehouse,
 } from "lucide-react"
 import { Link } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
@@ -111,13 +112,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     {
       title: "Dashboard",
       url: "/",
-      icon: SquareTerminal,
+      icon: LayoutDashboard,
       items: [{ title: "Overview", url: "/" }],
     },
     {
       title: "Warehouse",
       url: "/store",
-      icon: Box,
+      icon: Warehouse,
       items: [
         { title: "Catalog", url: "/store" },
         ...(canReadWarehouse ? [{ title: "Locations", url: "/store/location" }] : []),
@@ -134,7 +135,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     {
       title: "Productions",
       url: "/production",
-      icon: Command,
+      icon: Factory,
       items: [
         { title: "Products", url: "/production" },
       ],

@@ -239,6 +239,16 @@ class Document(NIModel):
     def __str__(self):
         return self.name
 
+    def save(self, *args, **kwargs):
+        if self.is_primary and self.doc_type != 'image':
+            self.is_primary = False
+        if self.is_primary and self.component_id:
+            Document.objects.filter(
+                component_id=self.component_id,
+                is_primary=True,
+            ).exclude(pk=self.pk).update(is_primary=False)
+        super().save(*args, **kwargs)
+
     @property
     def get_url(self) -> str:
         return str(self.file.url if self.file else self.url)

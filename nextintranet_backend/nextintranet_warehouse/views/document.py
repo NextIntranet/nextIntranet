@@ -38,6 +38,16 @@ class DocumentSerializer(serializers.ModelSerializer):
         model = Document
         fields = '__all__'
 
+    def validate(self, attrs):
+        instance = getattr(self, 'instance', None)
+        is_primary = attrs.get('is_primary', getattr(instance, 'is_primary', False) if instance else False)
+        doc_type = attrs.get('doc_type', getattr(instance, 'doc_type', 'undefined') if instance else 'undefined')
+        if is_primary and doc_type != 'image':
+            raise serializers.ValidationError(
+                {'is_primary': 'Only image documents can be set as the default image.'}
+            )
+        return attrs
+
     def _with_public_endpoint(self, url):
         if not url:
             return None

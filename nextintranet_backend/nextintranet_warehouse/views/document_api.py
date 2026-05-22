@@ -22,7 +22,11 @@ class ComponentDocumentListCreateAPIView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         component = get_object_or_404(Component, pk=self.kwargs.get('pk'))
-        if serializer.validated_data.get('is_primary'):
+        is_primary = serializer.validated_data.get('is_primary')
+        if is_primary is None and 'is_primary' in getattr(self.request, 'data', {}):
+            raw = self.request.data.get('is_primary')
+            is_primary = raw in (True, 'true', 'True', '1', 1)
+        if is_primary:
             Document.objects.filter(component=component, is_primary=True).update(is_primary=False)
         serializer.save(component=component)
 
@@ -35,10 +39,25 @@ class DocumentDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Document.objects.all()
 
     def perform_update(self, serializer):
-        if serializer.validated_data.get('is_primary'):
-            Document.objects.filter(component=serializer.instance.component, is_primary=True).exclude(id=serializer.instance.id).update(is_primary=False)
+        is_primary = serializer.validated_data.get('is_primary')
+        if is_primary is None and 'is_primary' in getattr(self.request, 'data', {}):
+            raw = self.request.data.get('is_primary')
+            is_primary = raw in (True, 'true', 'True', '1', 1)
+        if is_primary:
+            Document.objects.filter(
+                component=serializer.instance.component,
+                is_primary=True,
+            ).exclude(id=serializer.instance.id).update(is_primary=False)
             serializer.validated_data['access_level'] = 'public'
         serializer.save()
+
+    def perform_destroy(self, instance):
+        purge_file = self.request.query_params.get('purge_file', '').lower() in ('1', 'true', 'yes')
+        if purge_file:
+            instance.delete()
+        else:
+            # Drop the document record but keep any uploaded file in storage.
+            Document.objects.filter(pk=instance.pk).delete()
 
 
 class ComponentDocumentDetailAPIView(DocumentDetailAPIView):
