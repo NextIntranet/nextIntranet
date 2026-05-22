@@ -28,9 +28,15 @@ class MCPComponentParameterSerializer(serializers.ModelSerializer):
 
 
 class MCPDocumentSerializer(serializers.ModelSerializer):
+    doc_type_label = serializers.SerializerMethodField()
+
     class Meta:
         model = Document
-        fields = ["id", "name", "doc_type", "url", "is_primary"]
+        fields = ["id", "name", "doc_type", "doc_type_label", "url", "is_primary", "access_level"]
+
+    def get_doc_type_label(self, obj):
+        labels = dict(Document.DOCUMENT_TYPE_CHOICES)
+        return labels.get(obj.doc_type, obj.doc_type)
 
 
 class MCPSupplierRelationSerializer(serializers.ModelSerializer):

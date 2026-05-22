@@ -116,13 +116,18 @@ The generated JSON looks like:
 - `get_reservation` — single reservation
 - `get_packet` — single packet (stock batch)
 - `list_component_packets` — packets for a component (`limit` default 100, max 500)
+- `list_document_types` — allowed document type keys and labels (use keys in `doc_type`)
+- `list_component_documents` — documents for a component
+- `get_component_document` — single document by ID
 
 **Write** (`mcp:write` scope, includes all read tools):
 - `update_component_description` — update a component's description (alias for description-only updates)
 - `update_component` — update name, description, category, tags, selling/internal prices
 - `set_component_parameters` — set/update component parameters
 - `create_component` — create a new component (do not put URLs in description; use documents instead)
-- `create_component_document` — attach a URL document to a component (e.g. product_page, datasheet)
+- `create_component_document` — attach a URL document to a component (`doc_type` key e.g. product_page, or label Product page)
+- `update_component_document` — update document name, URL, or type
+- `delete_component_document` — remove document from component
 - `create_packet` / `update_packet` / `add_packet_stock_operation` — packets and stock quantity changes
 - `create_parameter_type` / `update_parameter_type` / `delete_parameter_type` — parameter types
 - `create_category` / `update_category` / `delete_category` — categories

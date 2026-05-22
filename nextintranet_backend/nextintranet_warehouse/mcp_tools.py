@@ -41,6 +41,25 @@ def _mcp_doc_append_description_guidance(doc: str, *, on_new_line: bool = False)
 
 DOCUMENT_TYPE_KEYS = {choice[0] for choice in Document.DOCUMENT_TYPE_CHOICES}
 
+
+def _normalize_doc_type(raw: str, *, default: str = "product_page") -> str:
+    """Accept type keys (product_page) or labels (Product page)."""
+    value = (raw or default).strip() or default
+    if value in DOCUMENT_TYPE_KEYS:
+        return value
+    slug = value.lower().replace(" ", "_").replace("-", "_")
+    if slug in DOCUMENT_TYPE_KEYS:
+        return slug
+    for key, label in Document.DOCUMENT_TYPE_CHOICES:
+        if value.lower() == str(label).lower():
+            return key
+    allowed = ", ".join(sorted(DOCUMENT_TYPE_KEYS))
+    raise ValueError(
+        f"Invalid doc_type '{raw}'. Use a type key (e.g. product_page), not the display label. "
+        f"Allowed keys: {allowed}. Call list_document_types for keys and labels."
+    )
+
+
 MCP_LIST_DEFAULT_LIMIT = 500
 MCP_LIST_MAX_LIMIT = 2000
 
@@ -436,6 +455,45 @@ class WarehouseReadToolset(MCPToolset):
         row_limit = _clamp_list_limit(limit, default=100, maximum=500)
         return MCPPacketSerializer(qs.order_by("-date_added")[:row_limit], many=True).data
 
+    def list_document_types(self) -> list[dict]:
+        """List allowed component document types (keys and human-readable labels).
+
+        Use the key (e.g. product_page) as doc_type when creating or updating documents.
+        """
+        _require_read(self.request)
+        return [
+            {"key": key, "label": str(label)}
+            for key, label in Document.DOCUMENT_TYPE_CHOICES
+        ]
+
+    def list_component_documents(
+        self,
+        component_id: str,
+        limit: int = 100,
+    ) -> list[dict]:
+        """List documents attached to a component.
+
+        Args:
+            component_id: UUID of the component.
+            limit: Maximum number of results (default 100, max 500).
+        """
+        _require_read(self.request)
+        row_limit = _clamp_list_limit(limit, default=100, maximum=500)
+        qs = Document.objects.filter(component_id=component_id).order_by("-created_at")
+        return MCPDocumentSerializer(qs[:row_limit], many=True).data
+
+    def get_component_document(self, document_id: str) -> dict:
+        """Get a single component document by ID.
+
+        Args:
+            document_id: UUID of the document.
+        """
+        _require_read(self.request)
+        document = Document.objects.select_related("component").get(id=document_id)
+        payload = MCPDocumentSerializer(document).data
+        payload["component_id"] = str(document.component_id)
+        return payload
+
 
 class WarehouseWriteToolset(MCPToolset):
     """Write tools for warehouse data modification."""
@@ -681,11 +739,11 @@ class WarehouseWriteToolset(MCPToolset):
         """Create a URL document and attach it to a component (no file upload).
 
         Args:
-            component_id: UUID of the component.
+            component_id: UUID of the component to attach the document to.
             url: External document URL (required).
             name: Optional display name (defaults from URL path if omitted).
-            doc_type: Document type - e.g. product_page, datasheet, manual, specification,
-                application_note, other. Default product_page.
+            doc_type: Type key (product_page) or label (Product page). Default product_page.
+                Call list_document_types for allowed values.
         """
         _require_write(self.request)
 
@@ -693,12 +751,7 @@ class WarehouseWriteToolset(MCPToolset):
         if not url:
             raise ValueError("url is required.")
 
-        doc_type = (doc_type or "product_page").strip()
-        if doc_type not in DOCUMENT_TYPE_KEYS:
-            raise ValueError(
-                f"Invalid doc_type '{doc_type}'. "
-                f"Allowed: {', '.join(sorted(DOCUMENT_TYPE_KEYS))}."
-            )
+        doc_type = _normalize_doc_type(doc_type)
 
         component = Component.objects.get(id=component_id)
         display_name = (name or "").strip()
@@ -712,7 +765,77 @@ class WarehouseWriteToolset(MCPToolset):
             doc_type=doc_type,
             access_level="public",
         )
-        return MCPDocumentSerializer(document).data
+        payload = MCPDocumentSerializer(document).data
+        payload["component_id"] = str(component.id)
+        return payload
+
+    def update_component_document(
+        self,
+        document_id: str,
+        name: str = "",
+        url: str = "",
+        doc_type: str = "",
+    ) -> dict:
+        """Update a component document. Only provided fields are changed.
+
+        Args:
+            document_id: UUID of the document.
+            name: New display name (leave empty to keep current).
+            url: New URL (leave empty to keep current; URL-only documents).
+            doc_type: New type key or label (leave empty to keep current).
+        """
+        _require_write(self.request)
+
+        document = Document.objects.select_related("component").get(id=document_id)
+        update_fields = []
+
+        if name.strip():
+            document.name = name.strip()
+            update_fields.append("name")
+        if url.strip():
+            document.url = url.strip()
+            update_fields.append("url")
+        if doc_type.strip():
+            document.doc_type = _normalize_doc_type(doc_type)
+            update_fields.append("doc_type")
+
+        if not update_fields:
+            raise ValueError("Provide at least one of name, url, or doc_type to update.")
+
+        document.save(update_fields=update_fields)
+        payload = MCPDocumentSerializer(document).data
+        payload["component_id"] = str(document.component_id)
+        return payload
+
+    def delete_component_document(
+        self,
+        document_id: str,
+        purge_file: bool = False,
+    ) -> dict:
+        """Remove a document from a component.
+
+        Args:
+            document_id: UUID of the document.
+            purge_file: If true, delete uploaded file from storage as well (URL-only docs unaffected).
+        """
+        _require_write(self.request)
+
+        document = Document.objects.select_related("component").get(id=document_id)
+        component_id = str(document.component_id)
+        document_id_str = str(document.id)
+        name = document.name
+
+        if purge_file:
+            document.delete()
+        else:
+            Document.objects.filter(pk=document.pk).delete()
+
+        return {
+            "deleted": True,
+            "document_id": document_id_str,
+            "component_id": component_id,
+            "name": name,
+        }
 
     def create_packet(
         self,
