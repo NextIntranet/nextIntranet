@@ -32,16 +32,19 @@ ALLOWED_HOSTS = ['localhost', '127.0.0.1', '*']
 SITE_URL = os.getenv('SITE_URL', 'http://localhost:8000')
 
 CORS_ORIGIN_WHITELIST = [
+    SITE_URL,
     "http://localhost:9000",
     "http://localhost:9000",
 ]
 
 CSRF_TRUSTED_ORIGINS = [
+    SITE_URL,
     "http://localhost:9000",
     "http://localhost:9000",
 ]
 
 CORS_ALLOWED_ORIGINS = [
+    SITE_URL,
     "http://localhost:9000",
     "http://localhost:9000",
 ]

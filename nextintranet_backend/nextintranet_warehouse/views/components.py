@@ -17,7 +17,7 @@ from nextintranet_backend.models.userSettings import UserSetting
 from django.views.generic import DetailView, ListView
 
 from ..models.warehouse import Warehouse
-from ..models.component import Component, Supplier, SupplierRelation, Packet, StockOperation
+from ..models.component import Component, Supplier, SupplierRelation, Packet, StockOperation, Reservation
 from rest_framework.response import Response
 
 from django.views.generic.edit import CreateView
@@ -27,7 +27,7 @@ from django.contrib import messages
 from django import forms
 
 from django.db import models
-from django.db.models import Q, Sum, Value, Case, When, F, DecimalField
+from django.db.models import Q, Sum, Value, Case, When, F, DecimalField, Subquery, OuterRef
 from django.db.models.functions import Coalesce
 
 from ..models.component import Component, Identifier
@@ -431,37 +431,44 @@ class ComponentListAPIView(generics.ListCreateAPIView):
                 .values_list('id', flat=True)
             )
 
+        # Subquery-based annotations to avoid cartesian product from multiple JOINs
         annotations = {
             '_total_quantity': Coalesce(
-                Sum('packets__count'), Value(0), output_field=DecimalField()
+                Subquery(
+                    Packet.objects.filter(component=OuterRef('pk'))
+                    .values('component')
+                    .annotate(s=Sum('count'))
+                    .values('s')[:1]
+                ),
+                Value(0),
+                output_field=DecimalField(),
             ),
             '_reserved_quantity': Coalesce(
-                Sum('reservations__quantity'), Value(0), output_field=DecimalField()
+                Subquery(
+                    Reservation.objects.filter(component=OuterRef('pk'))
+                    .values('component')
+                    .annotate(s=Sum('quantity'))
+                    .values('s')[:1]
+                ),
+                Value(0),
+                output_field=DecimalField(),
             ),
             '_purchase_requested_quantity': Coalesce(
-                Sum(
-                    Case(
-                        When(
-                            purchase_requests__purchase__isnull=True,
-                            then=F('purchase_requests__quantity'),
-                        ),
-                        default=Value(0),
-                        output_field=DecimalField(),
-                    )
+                Subquery(
+                    PurchaseRequest.objects.filter(component=OuterRef('pk'), purchase__isnull=True)
+                    .values('component')
+                    .annotate(s=Sum('quantity'))
+                    .values('s')[:1]
                 ),
                 Value(0),
                 output_field=DecimalField(),
             ),
             '_purchase_ordered_quantity': Coalesce(
-                Sum(
-                    Case(
-                        When(
-                            purchase_requests__purchase__isnull=False,
-                            then=F('purchase_requests__quantity'),
-                        ),
-                        default=Value(0),
-                        output_field=DecimalField(),
-                    )
+                Subquery(
+                    PurchaseRequest.objects.filter(component=OuterRef('pk'), purchase__isnull=False)
+                    .values('component')
+                    .annotate(s=Sum('quantity'))
+                    .values('s')[:1]
                 ),
                 Value(0),
                 output_field=DecimalField(),
@@ -470,15 +477,11 @@ class ComponentListAPIView(generics.ListCreateAPIView):
 
         if home_location_ids:
             annotations['_home_quantity'] = Coalesce(
-                Sum(
-                    Case(
-                        When(
-                            packets__location_id__in=home_location_ids,
-                            then=F('packets__count'),
-                        ),
-                        default=Value(0),
-                        output_field=DecimalField(),
-                    )
+                Subquery(
+                    Packet.objects.filter(component=OuterRef('pk'), location_id__in=home_location_ids)
+                    .values('component')
+                    .annotate(s=Sum('count'))
+                    .values('s')[:1]
                 ),
                 Value(0),
                 output_field=DecimalField(),
