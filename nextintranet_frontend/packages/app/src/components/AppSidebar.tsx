@@ -4,7 +4,6 @@ import {
   BookOpen,
   Box,
   Command,
-  Send,
   Search,
   Settings2,
   SquareTerminal,
@@ -171,11 +170,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       title: "Documentation",
       url: "/docs",
       icon: BookOpen,
-    },
-    {
-      title: "Feedback",
-      url: "/feedback",
-      icon: Send,
     },
   ]
 

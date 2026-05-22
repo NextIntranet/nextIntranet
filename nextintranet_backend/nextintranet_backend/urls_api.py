@@ -59,6 +59,7 @@ urlpatterns = [
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('kicad/', include(kicad_urlpatterns)),
     path('v1/me/', user.UserApiDetailedView.as_view(), name='api-user-detail'),
+    path('v1/me/change-password/', user.UserChangePasswordView.as_view(), name='api-user-change-password'),
     path('v1/dashboard/', DashboardMetricsAPIView.as_view(), name='api-dashboard'),
     path('v1/search/', SearchApiView.as_view(), name='api-search'),
     path('v1/core/identifier/', identifier.IdentifierApiView.as_view(), name='identifier'),
