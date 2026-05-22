@@ -1,4 +1,5 @@
 import json
+import re
 from datetime import timedelta
 
 from django.conf import settings
@@ -17,6 +18,16 @@ from nextintranet_backend.serializers.serviceToken import (
     ServiceTokenCreateSerializer,
     ServiceTokenListSerializer,
 )
+
+DEFAULT_MCP_SERVER_NAME = "nextintranet-warehouse"
+_MCP_SERVER_NAME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]*$")
+
+
+def _normalize_mcp_server_name(value) -> str | None:
+    name = (value or "").strip() or DEFAULT_MCP_SERVER_NAME
+    if not _MCP_SERVER_NAME_RE.match(name):
+        return None
+    return name
 
 
 class ServiceTokenViewSet(viewsets.GenericViewSet):
@@ -123,8 +134,24 @@ class ServiceTokenViewSet(viewsets.GenericViewSet):
         if not name:
             name = f"MCP token {timezone.now().strftime('%Y-%m-%d %H:%M')}"
 
+        server_name = _normalize_mcp_server_name(request.data.get("server_name"))
+        if server_name is None:
+            return Response(
+                {
+                    "error": (
+                        "server_name must start with a letter and contain only "
+                        "letters, numbers, hyphens, and underscores."
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         scope = request.data.get("scope", "read")
         if scope == "write":
+            if not self._user_has_area_access(request.user, "warehouse", {"write", "admin"}):
+                raise PermissionDenied(
+                    "You need warehouse write access to create MCP read-write tokens."
+                )
             scopes = [ServiceToken.SCOPE_MCP_READ, ServiceToken.SCOPE_MCP_WRITE]
         else:
             scopes = [ServiceToken.SCOPE_MCP_READ]
@@ -149,7 +176,7 @@ class ServiceTokenViewSet(viewsets.GenericViewSet):
 
         mcp_config = {
             "mcpServers": {
-                "nextintranet-warehouse": {
+                server_name: {
                     "url": mcp_url,
                     "headers": {
                         "X-Service-Token": raw_token,

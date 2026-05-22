@@ -216,6 +216,7 @@ class Document(NIModel):
         ('drawing', _('Drawing')),
         ('certificate', _('Certificate')),
         ('image', _('Image')),
+        ('product_page', _('Product page')),
         ('other', _('Other')),
         ('undefined', _('Undefined')),
     )

@@ -78,7 +78,7 @@ NextIntranet exposes a warehouse MCP server at `/mcp` so AI agents (Claude Code,
 ### Setup
 
 1. Go to **Settings > Software** in the web UI (`/settings/software`).
-2. In the **Generate MCP config** card, enter a token name, choose **Read-only** or **Read & Write** access, and click **Generate config**.
+2. In the **Generate MCP config** card, enter a token name, optionally customize the **MCP server name** (default `nextintranet-warehouse`, the `mcpServers` key in JSON), choose **Read-only** or **Read & Write** access, and click **Generate config**.
 3. Copy the generated JSON and paste it into your MCP client configuration:
    - **Claude Code**: `~/.claude/claude_code_config.json` under `"mcpServers"`
    - **Claude Desktop**: `~/.claude/claude_desktop_config.json` under `"mcpServers"`
@@ -121,7 +121,8 @@ The generated JSON looks like:
 - `update_component_description` — update a component's description (alias for description-only updates)
 - `update_component` — update name, description, category, tags, selling/internal prices
 - `set_component_parameters` — set/update component parameters
-- `create_component` — create a new component
+- `create_component` — create a new component (do not put URLs in description; use documents instead)
+- `create_component_document` — attach a URL document to a component (e.g. product_page, datasheet)
 - `create_packet` / `update_packet` / `add_packet_stock_operation` — packets and stock quantity changes
 - `create_parameter_type` / `update_parameter_type` / `delete_parameter_type` — parameter types
 - `create_category` / `update_category` / `delete_category` — categories
