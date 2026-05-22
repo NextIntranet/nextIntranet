@@ -191,8 +191,8 @@ export function SoftwareSettingsPage() {
             </div>
             <p className="text-xs text-muted-foreground">
               {mcpScope === "read"
-                ? "Search components, view inventory, list categories and locations."
-                : "All read permissions plus creating components, updating descriptions and parameters."}
+                ? "Search components, view inventory, categories, locations, suppliers, reservations, and parameter types."
+                : "All read tools plus create/update/delete for components, categories, locations, suppliers, reservations, and parameter types."}
             </p>
           </div>
           <Button
