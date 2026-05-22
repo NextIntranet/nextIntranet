@@ -97,9 +97,16 @@ class ComponentForm(forms.ModelForm):
 
 class PacketSerializer(serializers.ModelSerializer):
     location = WarehouseSerializer()
+    last_used_at = serializers.SerializerMethodField()
+
     class Meta:
         model = Packet
         fields = '__all__'
+
+    def get_last_used_at(self, instance):
+        if instance.last_operation_id and instance.last_operation:
+            return instance.last_operation.timestamp
+        return None
 
     def to_representation(self, instance):
         if instance.count == 0 and instance.operations.exists():
@@ -269,6 +276,7 @@ class ComponentSerializer(serializers.ModelSerializer):
     primary_image_url = serializers.SerializerMethodField()
     inventory_summary = serializers.SerializerMethodField()
     external_identifiers = serializers.SerializerMethodField()
+    last_modified_at = serializers.SerializerMethodField()
 
     category = serializers.PrimaryKeyRelatedField(
         queryset=Category.objects.all()
@@ -317,6 +325,18 @@ class ComponentSerializer(serializers.ModelSerializer):
         ct = ContentType.objects.get_for_model(Component)
         qs = Identifier.objects.filter(content_type=ct, object_id=str(instance.pk))
         return ExternalIdentifierSerializer(qs, many=True).data
+
+    def get_last_modified_at(self, instance):
+        timestamps = [instance.created_at]
+        for packet in instance.packets.all():
+            timestamps.append(packet.created_at)
+            if packet.date_added:
+                timestamps.append(packet.date_added)
+            if packet.last_operation_id and packet.last_operation:
+                timestamps.append(packet.last_operation.timestamp)
+        for document in instance.documents.all():
+            timestamps.append(document.created_at)
+        return max(timestamps)
 
     def get_inventory_summary(self, instance):
         total_quantity = 0
@@ -503,6 +523,17 @@ class ComponentDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Component.objects.all()
     serializer_class = ComponentSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        from django.db.models import Prefetch
+
+        return Component.objects.prefetch_related(
+            Prefetch(
+                'packets',
+                queryset=Packet.objects.select_related('location', 'last_operation'),
+            ),
+            'documents',
+        )
 
     def get_serializer_context(self):
         context = super().get_serializer_context()

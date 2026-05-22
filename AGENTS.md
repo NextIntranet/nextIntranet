@@ -9,7 +9,8 @@
 - The repo may include legacy or unused code; confirm a module is active before refactors or deletion.
 
 ## Build, Test, and Development Commands
-- Backend (Django): `python manage.py runserver` from `nextintranet_backend/` to run API locally.
+- **Run backend and frontend commands inside Docker Compose** when the stack is containerized: use `docker compose run <service> <command>` from repo root (e.g. `docker compose run web python manage.py makemigrations`, `docker compose run web python manage.py migrate`, `docker compose run frontend_react_v2 pnpm build`). This keeps the same environment as production and avoids “works on my machine” issues.
+- Backend (Django): `python manage.py runserver` from `nextintranet_backend/` to run API locally; or via Docker: `docker compose up web` and run management commands with `docker compose run --rm --entrypoint "" web python manage.py <command>` (empty `--entrypoint` overrides the image’s default `runserver` so the given command runs instead).
 - Frontend (React, `nextintranet_frontend/`, pnpm): `pnpm dev` for Vite dev server; `pnpm build` for production; `pnpm preview` to serve a build locally.
 - Legacy Angular (reference only): `npm run start` (alias for `ng serve`) from `../nextintranet_frontend_old/` to run on `:4200`; `npm run build` to produce `dist/`.
 - Electron app: `npm run start` from `NextIntranet_browser/` to launch Electron; `npm run make` for distributables.
@@ -60,3 +61,76 @@
 - Keep secrets in `.env` (used by `docker-compose.yml`); do not commit credentials.
 - Backend expects Postgres and Redis when running via Docker.
 - Store uploaded data in S3-compatible storage; when using Docker locally, use MinIO as the S3 backend.
+
+## Plugin System (In-Repo, Separatable Later)
+- Keep plugins isolated under dedicated modules; avoid cross-imports between core app and plugin internals.
+- Register plugins by `definition_key` and expose only stable API contracts; do not depend on internal module paths.
+- Support multiple instances per plugin with a user-facing name, `enabled` flag, and per-instance config.
+- Enforce access via role mappings; superadmin bypasses role checks.
+- Extension points in scope: `page.status`, `packets.actions`, `locations.actions`, `component.actions`, `printqueue.actions`, `documents.actions`.
+- Printing plugins must declare supported document/label types and enforce restrictions both in UI and backend.
+- Plugin actions may require runtime configuration; drive these forms from a schema to keep UI generic.
+
+## MCP Server (Model Context Protocol)
+
+NextIntranet exposes a warehouse MCP server at `/mcp` so AI agents (Claude Code, Claude Desktop, Cursor, etc.) can query and modify warehouse data.
+
+### Setup
+
+1. Go to **Settings > Software** in the web UI (`/settings/software`).
+2. In the **Generate MCP config** card, enter a token name, choose **Read-only** or **Read & Write** access, and click **Generate config**.
+3. Copy the generated JSON and paste it into your MCP client configuration:
+   - **Claude Code**: `~/.claude/claude_code_config.json` under `"mcpServers"`
+   - **Claude Desktop**: `~/.claude/claude_desktop_config.json` under `"mcpServers"`
+   - **Cursor**: Settings > MCP Servers
+
+The generated JSON looks like:
+```json
+{
+  "mcpServers": {
+    "nextintranet-warehouse": {
+      "url": "https://your-instance/mcp",
+      "headers": {
+        "X-Service-Token": "<generated-token>"
+      }
+    }
+  }
+}
+```
+
+### Available tools
+
+**Read-only** (`mcp:read` scope):
+- `search_components` — search by name, description, category, tag, location
+- `get_component_detail` — full component detail with parameters, documents, packets, suppliers
+- `get_inventory_summary` — stock overview with quantities, reservations, locations
+- `list_categories` — category tree
+- `get_category` — single category
+- `list_locations` — warehouse location tree
+- `get_location` — single location (by id or legacy uuid)
+- `list_parameter_types` — parameter type catalog
+- `list_suppliers` — supplier list
+- `get_supplier` — single supplier
+- `list_component_suppliers` — supplier links for a component
+- `list_reservations` — reservation list (filter by component or search)
+- `get_reservation` — single reservation
+- `get_packet` — single packet (stock batch)
+- `list_component_packets` — packets for a component
+
+**Write** (`mcp:write` scope, includes all read tools):
+- `update_component_description` — update a component's description (alias for description-only updates)
+- `update_component` — update name, description, category, tags, selling/internal prices
+- `set_component_parameters` — set/update component parameters
+- `create_component` — create a new component
+- `create_packet` / `update_packet` / `add_packet_stock_operation` — packets and stock quantity changes
+- `create_parameter_type` / `update_parameter_type` / `delete_parameter_type` — parameter types
+- `create_category` / `update_category` / `delete_category` — categories
+- `create_location` / `update_location` / `delete_location` — warehouse locations
+- `create_supplier` / `update_supplier` / `delete_supplier` — suppliers
+- `link_component_supplier` / `update_supplier_relation` / `delete_supplier_relation` — component–supplier links
+- `create_reservation` / `update_reservation` / `delete_reservation` — reservations
+
+### Architecture
+- Backend: `django-mcp-server` library, toolsets in `nextintranet_warehouse/mcp_tools.py`
+- Auth: ServiceToken with `mcp:read` / `mcp:write` scopes via `X-Service-Token` header
+- Nginx proxies `/mcp` to the Django container with SSE buffering disabled

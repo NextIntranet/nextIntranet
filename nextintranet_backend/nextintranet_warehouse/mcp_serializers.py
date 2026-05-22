@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from nextintranet_warehouse.models.component import (
     Component, ComponentParameter, ParameterType, Tag, Document,
-    Packet, Supplier, SupplierRelation,
+    Packet, Supplier, SupplierRelation, Reservation,
 )
 from nextintranet_warehouse.models.warehouse import Warehouse
 from nextintranet_warehouse.models.category import Category
@@ -42,11 +42,16 @@ class MCPSupplierRelationSerializer(serializers.ModelSerializer):
 
 
 class MCPPacketSerializer(serializers.ModelSerializer):
+    component_id = serializers.UUIDField(source="component_id", read_only=True)
+    location_id = serializers.UUIDField(source="location_id", read_only=True, allow_null=True)
     location_name = serializers.CharField(source="location.full_path", read_only=True, default=None)
 
     class Meta:
         model = Packet
-        fields = ["id", "location_name", "count", "is_active"]
+        fields = [
+            "id", "component_id", "location_id", "location_name",
+            "count", "description", "is_trackable", "is_active",
+        ]
 
 
 class MCPComponentListSerializer(serializers.ModelSerializer):
@@ -103,13 +108,50 @@ class MCPInventoryItemSerializer(serializers.ModelSerializer):
         ]
 
 
+class MCPSupplierSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Supplier
+        fields = [
+            "id", "name", "contact_info", "website", "link_template", "min_order_quantity",
+        ]
+
+
+class MCPSupplierRelationSerializer(serializers.ModelSerializer):
+    supplier_name = serializers.CharField(source="supplier.name", read_only=True, default=None)
+    component_name = serializers.CharField(source="component.name", read_only=True)
+    component_id = serializers.UUIDField(source="component.id", read_only=True)
+    supplier_id = serializers.UUIDField(source="supplier.id", read_only=True, allow_null=True)
+
+    class Meta:
+        model = SupplierRelation
+        fields = [
+            "id", "component_id", "component_name", "supplier_id", "supplier_name",
+            "symbol", "description", "custom_url",
+        ]
+
+
+class MCPReservationSerializer(serializers.ModelSerializer):
+    component_id = serializers.UUIDField(source="component.id", read_only=True)
+    component_name = serializers.CharField(source="component.name", read_only=True)
+
+    class Meta:
+        model = Reservation
+        fields = [
+            "id", "component_id", "component_name", "quantity", "priority",
+            "description", "sources", "reserved_by", "reservation_date", "expiration_date",
+        ]
+
+
 class MCPCategorySerializer(serializers.ModelSerializer):
     full_path = serializers.CharField(read_only=True)
+    parent_id = serializers.UUIDField(read_only=True, allow_null=True)
     children = serializers.SerializerMethodField()
 
     class Meta:
         model = Category
-        fields = ["id", "name", "abbreviation", "description", "full_path", "children"]
+        fields = [
+            "id", "name", "abbreviation", "description", "parent_id", "full_path", "children",
+        ]
 
     def get_children(self, obj):
         children = obj.get_children()
@@ -118,11 +160,15 @@ class MCPCategorySerializer(serializers.ModelSerializer):
 
 class MCPLocationSerializer(serializers.ModelSerializer):
     full_path = serializers.CharField(read_only=True)
+    parent_id = serializers.UUIDField(read_only=True, allow_null=True)
     children = serializers.SerializerMethodField()
 
     class Meta:
         model = Warehouse
-        fields = ["id", "name", "location", "full_path", "can_store_items", "children"]
+        fields = [
+            "id", "uuid", "name", "location", "description", "parent_id",
+            "full_path", "can_store_items", "children",
+        ]
 
     def get_children(self, obj):
         children = obj.get_children()

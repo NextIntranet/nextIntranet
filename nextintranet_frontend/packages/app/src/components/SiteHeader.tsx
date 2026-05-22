@@ -48,7 +48,6 @@ const segmentTitleMap: Record<string, string> = {
   sales: "Sales & Marketing",
   travel: "Travel",
   support: "Support",
-  feedback: "Feedback",
 }
 
 const formatSegment = (segment: string) => {

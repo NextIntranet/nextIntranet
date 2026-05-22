@@ -20,7 +20,12 @@ import django_tables2 as tables
 
 
 from nextintranet_backend.permissions import AreaAccessPermission
-from nextintranet_backend.serializers.user import UserSerializer, UserAdminSerializer, UserSettingSerializer
+from nextintranet_backend.serializers.user import (
+    ChangePasswordSerializer,
+    UserSerializer,
+    UserAdminSerializer,
+    UserSettingSerializer,
+)
 from nextintranet_backend.models.userSettings import UserSetting
 
 class UserDetailView(APIView):
@@ -60,10 +65,11 @@ class UserAdminPermission(AreaAccessPermission):
     def has_permission(self, request, view):
         if request.user and request.user.is_authenticated and request.user.is_superuser:
             return True
-        if request.user and request.user.is_authenticated and view.action == 'retrieve':
+        if request.user and request.user.is_authenticated:
             user_id = view.kwargs.get('pk')
             if user_id is not None and str(request.user.id) == str(user_id):
-                return True
+                if view.action in ('retrieve', 'partial_update', 'update'):
+                    return True
         return super().has_permission(request, view)
 
 
@@ -72,12 +78,31 @@ class UserAdminPagination(PageNumberPagination):
     page_size_query_param = 'page_size'
 
 
+class UserChangePasswordView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        serializer = ChangePasswordSerializer(
+            data=request.data,
+            context={'request': request},
+        )
+        serializer.is_valid(raise_exception=True)
+        request.user.set_password(serializer.validated_data['new_password'])
+        request.user.save(update_fields=['password'])
+        return Response({'detail': 'Password updated.'})
+
+
 class UserAdminViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all().order_by('id')
     serializer_class = UserAdminSerializer
     permission_classes = [IsAuthenticated, UserAdminPermission]
     required_permission_area = 'user'
     pagination_class = UserAdminPagination
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
 
 
 class UserTableView(NIT_Table):

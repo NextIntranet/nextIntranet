@@ -61,6 +61,37 @@ const permissionRank: Record<string, number> = {
   admin: 4,
 }
 
+const MIN_PASSWORD_LENGTH = 8
+
+const formatApiError = (error: unknown, fallback: string) => {
+  if (!error || typeof error !== "object" || !("data" in error)) {
+    return fallback
+  }
+  const data = (error as { data?: unknown }).data
+  if (!data) {
+    return fallback
+  }
+  if (typeof data === "string") {
+    return data
+  }
+  if (typeof data === "object" && data !== null) {
+    const parts: string[] = []
+    for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
+      if (Array.isArray(value)) {
+        value.forEach((item) => {
+          parts.push(typeof item === "string" ? item : `${key}: ${String(item)}`)
+        })
+      } else if (typeof value === "string") {
+        parts.push(key === "detail" ? value : `${key}: ${value}`)
+      }
+    }
+    if (parts.length > 0) {
+      return parts.join(" ")
+    }
+  }
+  return fallback
+}
+
 export function UserDetailPage() {
   const { id } = useParams<{ id: string }>()
   const queryClient = useQueryClient()
@@ -76,6 +107,11 @@ export function UserDetailPage() {
     access_permissions: [] as Array<{ area: string; level: string }>,
   })
   const [homeLocationId, setHomeLocationId] = useState<string | null>(null)
+  const [passwordForm, setPasswordForm] = useState({
+    current_password: "",
+    new_password: "",
+    new_password_confirm: "",
+  })
 
   const { data: user, isLoading, error } = useQuery<UserAdmin>({
     queryKey: ["user", id],
@@ -129,12 +165,15 @@ export function UserDetailPage() {
   const permissionLevel = userPermission?.level
   const hasUserRead =
     permissionLevel && permissionRank[permissionLevel] >= permissionRank.read
-  const canEdit =
-    me?.is_superuser ||
-    me?.access_permissions?.some(
-      (permission) =>
-        permission.area === "user" && ["write", "admin"].includes(permission.level),
-    )
+  const canEditAdmin =
+    !isSelf &&
+    (me?.is_superuser ||
+      me?.access_permissions?.some(
+        (permission) =>
+          permission.area === "user" && ["write", "admin"].includes(permission.level),
+      ))
+  const canEditSelf = isSelf
+  const canEditProfile = canEditAdmin || canEditSelf
   const homeLocationDirty =
     (homeLocationId ?? null) !== (me?.settings?.home_location ?? null)
 
@@ -177,7 +216,39 @@ export function UserDetailPage() {
     },
   })
 
+  const changePasswordMutation = useMutation({
+    mutationFn: (payload: {
+      current_password: string
+      new_password: string
+      new_password_confirm: string
+    }) =>
+      apiFetch("/api/v1/me/change-password/", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      setPasswordForm({
+        current_password: "",
+        new_password: "",
+        new_password_confirm: "",
+      })
+      toast.success("Password updated.")
+    },
+    onError: (error) => {
+      toast.error(formatApiError(error, "Failed to update password."))
+    },
+  })
+
   const handleSave = () => {
+    if (isSelf) {
+      updateMutation.mutate({
+        first_name: formState.first_name.trim() || null,
+        last_name: formState.last_name.trim() || null,
+        email: formState.email.trim() || null,
+      })
+      return
+    }
+
     const cleanedPermissions = formState.access_permissions
       .map((permission) => ({
         area: permission.area.trim(),
@@ -195,6 +266,18 @@ export function UserDetailPage() {
       is_superuser: formState.is_superuser,
       access_permissions: cleanedPermissions as UserAccessPermission[],
     })
+  }
+
+  const handleChangePassword = () => {
+    if (passwordForm.new_password.length < MIN_PASSWORD_LENGTH) {
+      toast.error(`New password must be at least ${MIN_PASSWORD_LENGTH} characters.`)
+      return
+    }
+    if (passwordForm.new_password !== passwordForm.new_password_confirm) {
+      toast.error("New passwords do not match.")
+      return
+    }
+    changePasswordMutation.mutate(passwordForm)
   }
 
   if (isLoading || !me) {
@@ -233,7 +316,7 @@ export function UserDetailPage() {
           <h1 className="text-2xl font-semibold text-foreground">{user.username}</h1>
           <p className="text-sm text-muted-foreground">User details and permissions.</p>
         </div>
-        {canEdit && (
+        {canEditProfile && (
           <Button onClick={() => setEditOpen(true)} className="w-full sm:w-auto">
             Edit profile
           </Button>
@@ -290,6 +373,65 @@ export function UserDetailPage() {
         {isSelf && (
           <Card>
             <CardHeader>
+              <CardTitle>Change password</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Current password</label>
+                <Input
+                  type="password"
+                  autoComplete="current-password"
+                  value={passwordForm.current_password}
+                  onChange={(e) =>
+                    setPasswordForm({ ...passwordForm, current_password: e.target.value })
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">New password</label>
+                <Input
+                  type="password"
+                  autoComplete="new-password"
+                  value={passwordForm.new_password}
+                  onChange={(e) =>
+                    setPasswordForm({ ...passwordForm, new_password: e.target.value })
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  At least {MIN_PASSWORD_LENGTH} characters. Avoid common or numeric-only passwords.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Confirm new password</label>
+                <Input
+                  type="password"
+                  autoComplete="new-password"
+                  value={passwordForm.new_password_confirm}
+                  onChange={(e) =>
+                    setPasswordForm({
+                      ...passwordForm,
+                      new_password_confirm: e.target.value,
+                    })
+                  }
+                />
+              </div>
+              <Button
+                onClick={handleChangePassword}
+                disabled={
+                  changePasswordMutation.isPending ||
+                  !passwordForm.current_password ||
+                  !passwordForm.new_password ||
+                  !passwordForm.new_password_confirm
+                }
+              >
+                {changePasswordMutation.isPending ? "Updating..." : "Update password"}
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+        {isSelf && (
+          <Card>
+            <CardHeader>
               <CardTitle>Home location</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
@@ -324,14 +466,56 @@ export function UserDetailPage() {
         )}
       </div>
 
-      {canEdit && (
+      {canEditProfile && (
         <Sheet open={editOpen} onOpenChange={setEditOpen}>
           <SheetContent side="right" className="w-full max-w-lg">
             <SheetHeader>
-              <SheetTitle>Edit user</SheetTitle>
+              <SheetTitle>{isSelf ? "Edit profile" : "Edit user"}</SheetTitle>
             </SheetHeader>
 
             <div className="mt-6 space-y-4">
+              {isSelf ? (
+                <>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Username</label>
+                    <Input value={formState.username} disabled />
+                    <p className="text-xs text-muted-foreground">
+                      Username cannot be changed. Contact an administrator if you need a new one.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Email</label>
+                    <Input
+                      type="email"
+                      value={formState.email}
+                      onChange={(e) =>
+                        setFormState({ ...formState, email: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">First name</label>
+                      <Input
+                        value={formState.first_name}
+                        onChange={(e) =>
+                          setFormState({ ...formState, first_name: e.target.value })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">Last name</label>
+                      <Input
+                        value={formState.last_name}
+                        onChange={(e) =>
+                          setFormState({ ...formState, last_name: e.target.value })
+                        }
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">Username</label>
@@ -481,6 +665,8 @@ export function UserDetailPage() {
                   )}
                 </div>
               </div>
+                </>
+              )}
             </div>
 
             <div className="mt-6 flex gap-2">

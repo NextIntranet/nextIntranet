@@ -1,3 +1,4 @@
+from django.contrib.auth.password_validation import validate_password
 from rest_framework import serializers
 
 from nextintranet_backend.models.user import User
@@ -37,6 +38,32 @@ class UserSerializer(serializers.ModelSerializer):
             'access_permissions',
             'settings',
         ]
+
+
+SELF_PROFILE_FIELDS = frozenset({'first_name', 'last_name', 'email'})
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    current_password = serializers.CharField(write_only=True, required=True)
+    new_password = serializers.CharField(
+        write_only=True,
+        required=True,
+        validators=[validate_password],
+    )
+    new_password_confirm = serializers.CharField(write_only=True, required=True)
+
+    def validate_current_password(self, value):
+        user = self.context['request'].user
+        if not user.check_password(value):
+            raise serializers.ValidationError('Current password is incorrect.')
+        return value
+
+    def validate(self, attrs):
+        if attrs['new_password'] != attrs['new_password_confirm']:
+            raise serializers.ValidationError(
+                {'new_password_confirm': 'Passwords do not match.'},
+            )
+        return attrs
 
 
 class UserAdminSerializer(serializers.ModelSerializer):
@@ -83,9 +110,28 @@ class UserAdminSerializer(serializers.ModelSerializer):
         self._sync_access_permissions(user, permissions)
         return user
 
+    def _is_self_edit(self, instance):
+        request = self.context.get('request')
+        return (
+            request is not None
+            and getattr(request, 'user', None)
+            and request.user.is_authenticated
+            and request.user.pk == instance.pk
+        )
+
     def update(self, instance, validated_data):
         permissions = validated_data.pop('access_permissions', None)
         password = validated_data.pop('password', None)
+
+        if self._is_self_edit(instance):
+            validated_data = {
+                key: value
+                for key, value in validated_data.items()
+                if key in SELF_PROFILE_FIELDS
+            }
+            permissions = None
+            password = None
+
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         if password:

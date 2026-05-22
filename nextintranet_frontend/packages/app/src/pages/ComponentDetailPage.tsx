@@ -23,6 +23,8 @@ import { setScannerCapture } from "@/lib/scannerCapture"
 import { IDENTIFIER_SCHEME_OPTIONS } from "@/lib/identifierSchemes"
 import {
   Image as ImageIcon,
+  Building2,
+  Home,
   Layers,
   Link2,
   Copy,
@@ -64,6 +66,8 @@ import {
 } from "@/components/ui/sheet"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { ExtensionPoint } from "@/plugins/ExtensionPoint"
+import { ActionButtonGroup, ActionIconButton } from "@/components/ActionButtonGroup"
+import { DocumentActionsMenu } from "@/components/DocumentActionsMenu"
 import { PrintActions } from "@/components/PrintActions"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -93,6 +97,7 @@ interface ComponentPacket {
   count: number
   description: string
   created_at: string
+  last_used_at?: string | null
   is_active?: boolean
   location?: {
     id: string
@@ -179,6 +184,7 @@ interface Component {
   selling_price?: number
   currency?: string
   created_at: string
+  last_modified_at?: string
   packets?: ComponentPacket[]
   documents?: Document[]
   suppliers?: SupplierRelation[]
@@ -612,6 +618,18 @@ export function ComponentDetailPage() {
     },
   })
 
+  const deleteSupplierRelationMutation = useMutation({
+    mutationFn: (relationId: string) =>
+      apiFetch(`/api/v1/store/supplier/relation/${relationId}/`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["component", id] })
+      toast.success("Supplier removed from component.")
+    },
+    onError: () => {
+      toast.error("Failed to remove supplier.")
+    },
+  })
+
   const createIdentifierMutation = useMutation({
     mutationFn: (payload: { scheme: string; identifier: string }) =>
       apiFetch<ExternalIdentifier>(`/api/v1/store/component/${id}/identifiers/`, {
@@ -695,6 +713,34 @@ export function ComponentDetailPage() {
     },
     onError: () => {
       toast.error("Failed to update document.")
+    },
+  })
+
+  const removeDocumentMutation = useMutation({
+    mutationFn: (documentId: string) =>
+      apiFetch(`/api/v1/store/component/${id}/documents/${documentId}/`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["component", id] })
+      toast.success("Document removed from component.")
+    },
+    onError: () => {
+      toast.error("Failed to remove document from component.")
+    },
+  })
+
+  const deleteDocumentCompletelyMutation = useMutation({
+    mutationFn: (documentId: string) =>
+      apiFetch(`/api/v1/store/component/${id}/documents/${documentId}/?purge_file=1`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["component", id] })
+      toast.success("Document deleted completely.")
+    },
+    onError: () => {
+      toast.error("Failed to delete document completely.")
     },
   })
 
@@ -832,6 +878,14 @@ export function ComponentDetailPage() {
     })
   }
 
+  const handleRemoveSupplierRelation = (relation: SupplierRelation) => {
+    const supplierName = relation.supplier?.name || "this supplier"
+    if (!window.confirm(`Remove ${supplierName} from this component?`)) {
+      return
+    }
+    deleteSupplierRelationMutation.mutate(relation.id)
+  }
+
   const handleCreateDocument = () => {
     const hasFile = documentForm.sourceType === "file" && documentForm.file
     const hasUrl = documentForm.sourceType === "url" && documentForm.url.trim()
@@ -844,7 +898,11 @@ export function ComponentDetailPage() {
     }
     payload.append("doc_type", documentForm.docType)
     payload.append("access_level", documentForm.accessLevel)
-    if (documentForm.isPrimary) {
+    const isPrimaryImage =
+      documentForm.docType === "image" && documentForm.isPrimary
+    if (documentEditId) {
+      payload.append("is_primary", isPrimaryImage ? "true" : "false")
+    } else if (isPrimaryImage) {
       payload.append("is_primary", "true")
     }
     if (component?.id) {
@@ -875,6 +933,29 @@ export function ComponentDetailPage() {
       url: doc.url || "",
     })
     setDocumentSheetOpen(true)
+  }
+
+  const documentActionsPending =
+    removeDocumentMutation.isPending || deleteDocumentCompletelyMutation.isPending
+
+  const handleRemoveDocument = (doc: Document) => {
+    const label = doc.name || "this document"
+    if (!window.confirm(`Remove "${label}" from this component?`)) {
+      return
+    }
+    removeDocumentMutation.mutate(doc.id)
+  }
+
+  const handleDeleteDocumentCompletely = (doc: Document) => {
+    const label = doc.name || "this document"
+    if (
+      !window.confirm(
+        `Delete "${label}" completely? This removes the document and any stored file.`,
+      )
+    ) {
+      return
+    }
+    deleteDocumentCompletelyMutation.mutate(doc.id)
   }
 
   const handleCreateParameter = () => {
@@ -1045,13 +1126,17 @@ export function ComponentDetailPage() {
     }
   }
 
-  const handleCopyLink = async (value: string) => {
+  const handleCopyText = async (value: string, successMessage: string) => {
     try {
       await navigator.clipboard.writeText(value)
-      toast.success("Link copied.")
+      toast.success(successMessage)
     } catch {
-      toast.error("Unable to copy link.")
+      toast.error("Unable to copy to clipboard.")
     }
+  }
+
+  const handleCopyLink = async (value: string) => {
+    await handleCopyText(value, "Link copied.")
   }
 
   const renderTruncatedText = (text: string) => (
@@ -1131,18 +1216,27 @@ export function ComponentDetailPage() {
       },
       {
         accessorKey: "created_at",
-        header: "Created",
-        cell: ({ row }) => new Date(row.original.created_at).toLocaleDateString(),
+        header: "Created / Last used",
+        cell: ({ row }) => {
+          const created = new Date(row.original.created_at).toLocaleDateString()
+          const lastUsed = row.original.last_used_at
+            ? new Date(row.original.last_used_at).toLocaleDateString()
+            : "—"
+          return (
+            <span className="whitespace-nowrap text-muted-foreground">
+              {created}
+              <span className="text-foreground/40"> / </span>
+              {lastUsed}
+            </span>
+          )
+        },
       },
       {
         id: "actions",
         header: "Actions",
         cell: ({ row }) => (
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="text-muted-foreground hover:text-foreground"
+          <ActionButtonGroup>
+            <ActionIconButton
               onClick={() => {
                 setOperationPacketId(row.original.id)
                 setOperationSheetOpen(true)
@@ -1150,14 +1244,14 @@ export function ComponentDetailPage() {
               aria-label="Packet actions"
             >
               <Settings className="h-4 w-4" />
-            </Button>
+            </ActionIconButton>
             <PrintActions
               targetType="packet"
               targetId={row.original.id}
               label={row.original.location?.full_path || row.original.id}
               compact
             />
-          </div>
+          </ActionButtonGroup>
         ),
       },
     ]
@@ -1246,24 +1340,8 @@ export function ComponentDetailPage() {
           ),
       },
       {
-        id: "relation",
-        header: "Relation",
-        cell: ({ row }) => (
-          <Link
-            to={`/store/supplier-relation/${row.original.id}`}
-            className="text-primary hover:underline"
-            aria-label="Open relation"
-          >
-            <Link2 className="h-4 w-4" />
-          </Link>
-        ),
-      },
-    ]
-
-    if (canEdit) {
-      columns.push({
-        id: "api",
-        header: "API",
+        id: "actions",
+        header: "Actions",
         cell: ({ row }) => {
           const hasPlugin = Boolean(row.original.supplier?.api_plugin_instance)
           const hasSymbol = Boolean(row.original.symbol)
@@ -1279,52 +1357,59 @@ export function ComponentDetailPage() {
               ? `Last apply: ${new Date(row.original.api_applied_at).toLocaleString()}`
               : "Apply supplier data"
           return (
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => syncSupplierRelationMutation.mutate({ id: row.original.id })}
-                disabled={!canSync || syncSupplierRelationMutation.isPending}
-                aria-label="Sync supplier data"
-                title={syncTitle}
-              >
-                <RefreshCcw className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => applySupplierRelationMutation.mutate({ id: row.original.id })}
-                disabled={!canSync || applySupplierRelationMutation.isPending}
-                aria-label="Apply supplier data"
-                title={applyTitle}
-              >
-                <Check className="h-4 w-4" />
-              </Button>
-            </div>
+            <ActionButtonGroup>
+              <ActionIconButton asChild aria-label="Open relation">
+                <Link to={`/store/supplier-relation/${row.original.id}`}>
+                  <Link2 className="h-4 w-4" />
+                </Link>
+              </ActionIconButton>
+              {canEdit ? (
+                <>
+                  <ActionIconButton
+                    onClick={() => syncSupplierRelationMutation.mutate({ id: row.original.id })}
+                    disabled={!canSync || syncSupplierRelationMutation.isPending}
+                    aria-label="Sync supplier data"
+                    title={syncTitle}
+                  >
+                    <RefreshCcw className="h-4 w-4" />
+                  </ActionIconButton>
+                  <ActionIconButton
+                    onClick={() => applySupplierRelationMutation.mutate({ id: row.original.id })}
+                    disabled={!canSync || applySupplierRelationMutation.isPending}
+                    aria-label="Apply supplier data"
+                    title={applyTitle}
+                  >
+                    <Check className="h-4 w-4" />
+                  </ActionIconButton>
+                  <ActionIconButton
+                    onClick={() => handleSupplierEdit(row.original)}
+                    aria-label="Edit supplier relation"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </ActionIconButton>
+                  <ActionIconButton
+                    onClick={() => handleRemoveSupplierRelation(row.original)}
+                    disabled={deleteSupplierRelationMutation.isPending}
+                    aria-label="Remove supplier from component"
+                    className="text-destructive hover:text-destructive"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </ActionIconButton>
+                </>
+              ) : null}
+            </ActionButtonGroup>
           )
         },
-      })
-      columns.push({
-        id: "edit",
-        header: "",
-        cell: ({ row }) => (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => handleSupplierEdit(row.original)}
-            aria-label="Edit supplier relation"
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
-        ),
-      })
-    }
+      },
+    ]
 
     return columns
   }, [
     applySupplierRelationMutation,
     canEdit,
+    deleteSupplierRelationMutation,
     handleCopyLink,
+    handleRemoveSupplierRelation,
     handleSupplierEdit,
     shortenUrl,
     syncSupplierRelationMutation,
@@ -1404,37 +1489,46 @@ export function ComponentDetailPage() {
         id: "actions",
         header: "Actions",
         cell: ({ row }) => (
-          <PrintActions
-            targetType="component"
-            targetId={component?.id ?? row.original.id}
-            kind="document"
-            fileUrl={row.original.file_url || row.original.url || null}
-            label={row.original.name || row.original.doc_type || "Document"}
-            compact
-          />
+          <ActionButtonGroup>
+            {canEdit ? (
+              <ActionIconButton
+                onClick={() => handleDocumentEdit(row.original)}
+                aria-label="Edit document"
+              >
+                <Pencil className="h-4 w-4" />
+              </ActionIconButton>
+            ) : null}
+            <PrintActions
+              targetType="component"
+              targetId={component?.id ?? row.original.id}
+              kind="document"
+              fileUrl={row.original.file_url || row.original.url || null}
+              label={row.original.name || row.original.doc_type || "Document"}
+              compact
+            />
+            {canEdit ? (
+              <DocumentActionsMenu
+                compact
+                pending={documentActionsPending}
+                onRemove={() => handleRemoveDocument(row.original)}
+                onDeleteCompletely={() => handleDeleteDocumentCompletely(row.original)}
+              />
+            ) : null}
+          </ActionButtonGroup>
         ),
       },
     ]
 
-    if (canEdit) {
-      columns.push({
-        id: "edit",
-        header: "",
-        cell: ({ row }) => (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => handleDocumentEdit(row.original)}
-            aria-label="Edit document"
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
-        ),
-      })
-    }
-
     return columns
-  }, [canEdit, component?.id, handleCopyLink, handleDocumentEdit])
+  }, [
+    canEdit,
+    component?.id,
+    documentActionsPending,
+    handleCopyLink,
+    handleDeleteDocumentCompletely,
+    handleDocumentEdit,
+    handleRemoveDocument,
+  ])
 
   const packetsTable = useReactTable({
     data: component?.packets ?? [],
@@ -1491,46 +1585,37 @@ export function ComponentDetailPage() {
     ]
 
     if (canEdit) {
-      columns.push(
-        {
-          id: "edit",
-          header: "",
-          cell: ({ row }) => (
-            <Button
-              variant="ghost"
-              size="icon"
+      columns.push({
+        id: "actions",
+        header: "Actions",
+        cell: ({ row }) => (
+          <ActionButtonGroup>
+            <ActionIconButton
               onClick={() => handleParameterEdit(row.original)}
               aria-label="Edit parameter"
             >
               <Pencil className="h-4 w-4" />
-            </Button>
-          ),
-        },
-        {
-          id: "delete",
-          header: "",
-          cell: ({ row }) =>
-            row.original.is_inherited ? (
+            </ActionIconButton>
+            {row.original.is_inherited ? (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <span className="inline-flex h-8 w-8 items-center justify-center text-xs text-muted-foreground">
+                  <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center text-xs text-muted-foreground">
                     auto
                   </span>
                 </TooltipTrigger>
                 <TooltipContent>Inherited from category rule</TooltipContent>
               </Tooltip>
             ) : (
-              <Button
-                variant="ghost"
-                size="icon"
+              <ActionIconButton
                 onClick={() => handleDeleteParameter(row.original)}
                 aria-label="Remove parameter"
               >
                 <Trash2 className="h-4 w-4" />
-              </Button>
-            ),
-        },
-      )
+              </ActionIconButton>
+            )}
+          </ActionButtonGroup>
+        ),
+      })
     }
 
     return columns
@@ -1563,17 +1648,17 @@ export function ComponentDetailPage() {
     ]
     if (canEdit) {
       columns.push({
-        id: "delete",
-        header: "",
+        id: "actions",
+        header: "Actions",
         cell: ({ row }) => (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => deleteIdentifierMutation.mutate(row.original.id)}
-            aria-label="Remove external identifier"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          <ActionButtonGroup>
+            <ActionIconButton
+              onClick={() => deleteIdentifierMutation.mutate(row.original.id)}
+              aria-label="Remove external identifier"
+            >
+              <Trash2 className="h-4 w-4" />
+            </ActionIconButton>
+          </ActionButtonGroup>
         ),
       })
     }
@@ -1754,17 +1839,53 @@ export function ComponentDetailPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           {editMode ? (
-            <Input
-              value={editedData.name || ""}
-              onChange={(e) => setEditedData({ ...editedData, name: e.target.value })}
-              className="h-11 text-xl font-semibold"
-              placeholder="Component name"
-            />
+            <div className="flex items-center gap-1">
+              <Input
+                value={editedData.name || ""}
+                onChange={(e) => setEditedData({ ...editedData, name: e.target.value })}
+                className="h-11 text-xl font-semibold"
+                placeholder="Component name"
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+                onClick={() =>
+                  handleCopyText(editedData.name || component.name, "Name copied.")
+                }
+                aria-label="Copy component name"
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
           ) : (
-            <h1 className="text-2xl font-semibold text-foreground">{component.name}</h1>
+            <div className="flex items-center gap-1">
+              <h1 className="text-2xl font-semibold text-foreground">{component.name}</h1>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
+                onClick={() => handleCopyText(component.name, "Name copied.")}
+                aria-label="Copy component name"
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
           )}
           <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-            <span>ID: {component.id}</span>
+            <span className="inline-flex items-center gap-1">
+              <span>ID:</span>
+              <span className="select-all font-mono text-foreground">{component.id}</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                onClick={() => handleCopyText(component.id, "ID copied.")}
+                aria-label="Copy component ID"
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </Button>
+            </span>
             <span className="hidden sm:inline">•</span>
             <span>Created {new Date(component.created_at).toLocaleDateString()}</span>
             {!editMode && component.category && (
@@ -1921,7 +2042,26 @@ export function ComponentDetailPage() {
                             <dt className="text-muted-foreground">Total</dt>
                             <dd className="font-semibold text-foreground">
                               {component.inventory_summary?.home_quantity != null ? (
-                                <span>{component.inventory_summary.home_quantity} / {component.inventory_summary?.total_quantity ?? 0} <span className="font-normal text-muted-foreground">(home / all)</span></span>
+                                <div className="flex flex-wrap items-center justify-end gap-1.5">
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background px-2 py-0.5 text-xs font-semibold text-foreground">
+                                        <Home className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                                        {component.inventory_summary.home_quantity}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent>Home location</TooltipContent>
+                                  </Tooltip>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background px-2 py-0.5 text-xs font-semibold text-foreground">
+                                        <Building2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                                        {component.inventory_summary?.total_quantity ?? 0}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent>All locations (company)</TooltipContent>
+                                  </Tooltip>
+                                </div>
                               ) : (
                                 component.inventory_summary?.total_quantity ?? 0
                               )}
@@ -2015,13 +2155,17 @@ export function ComponentDetailPage() {
                     <div className="rounded-lg border border-border/70 bg-card p-3 shadow-sm">
                       <div className="grid gap-2 text-sm text-foreground sm:grid-cols-2">
                         <div className="flex items-center justify-between text-muted-foreground">
-                          <span>ID</span>
-                          <span className="font-medium text-foreground">{component.id}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-muted-foreground">
                           <span>Created</span>
                           <span className="font-medium text-foreground">
                             {new Date(component.created_at).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-muted-foreground">
+                          <span>Last modified</span>
+                          <span className="font-medium text-foreground">
+                            {component.last_modified_at
+                              ? new Date(component.last_modified_at).toLocaleDateString()
+                              : new Date(component.created_at).toLocaleDateString()}
                           </span>
                         </div>
                         <div className="flex items-center justify-between text-muted-foreground">
@@ -2299,7 +2443,7 @@ export function ComponentDetailPage() {
                         Created
                       </TableHead>
                       <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Action
+                        Actions
                       </TableHead>
                     </TableRow>
                   </TableHeader>
@@ -2330,12 +2474,11 @@ export function ComponentDetailPage() {
                             : "—"}
                         </TableCell>
                         <TableCell className="h-9 px-3 text-sm">
-                          <Link
-                            to={`/store/purchase-requests/${row.id}`}
-                            className="text-primary hover:underline"
-                          >
-                            View request
-                          </Link>
+                          <ActionButtonGroup>
+                            <Button variant="ghost" size="sm" className="h-7 px-2" asChild>
+                              <Link to={`/store/purchase-requests/${row.id}`}>View request</Link>
+                            </Button>
+                          </ActionButtonGroup>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -2371,7 +2514,7 @@ export function ComponentDetailPage() {
                         Date
                       </TableHead>
                       <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Action
+                        Actions
                       </TableHead>
                     </TableRow>
                   </TableHeader>
@@ -2390,12 +2533,11 @@ export function ComponentDetailPage() {
                             : "—"}
                         </TableCell>
                         <TableCell className="h-9 px-3 text-sm">
-                          <Link
-                            to={`/store/reservations/${row.id}`}
-                            className="text-primary hover:underline"
-                          >
-                            View
-                          </Link>
+                          <ActionButtonGroup>
+                            <Button variant="ghost" size="sm" className="h-7 px-2" asChild>
+                              <Link to={`/store/reservations/${row.id}`}>View</Link>
+                            </Button>
+                          </ActionButtonGroup>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -2898,7 +3040,14 @@ export function ComponentDetailPage() {
                 <label className="text-sm font-medium text-foreground">Type</label>
                 <select
                   value={documentForm.docType}
-                  onChange={(e) => setDocumentForm({ ...documentForm, docType: e.target.value })}
+                  onChange={(e) => {
+                    const docType = e.target.value
+                    setDocumentForm({
+                      ...documentForm,
+                      docType,
+                      isPrimary: docType === "image" ? documentForm.isPrimary : false,
+                    })
+                  }}
                   className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {documentTypeOptions.map((option) => (
@@ -2925,17 +3074,23 @@ export function ComponentDetailPage() {
                 </select>
               </div>
             </div>
-            <label className="flex items-center gap-2 text-sm font-medium text-foreground">
-              <input
-                type="checkbox"
-                checked={documentForm.isPrimary}
-                onChange={(e) =>
-                  setDocumentForm({ ...documentForm, isPrimary: e.target.checked })
-                }
-                className="h-4 w-4 rounded border border-input"
-              />
-              Set as default image
-            </label>
+            {documentForm.docType === "image" ? (
+              <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <input
+                  type="checkbox"
+                  checked={documentForm.isPrimary}
+                  onChange={(e) =>
+                    setDocumentForm({ ...documentForm, isPrimary: e.target.checked })
+                  }
+                  className="h-4 w-4 rounded border border-input"
+                />
+                Set as default image
+              </label>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Only image documents can be set as the default image.
+              </p>
+            )}
             <div className="flex items-center gap-4 text-sm font-medium text-foreground">
               <label className="flex items-center gap-2">
                 <input
