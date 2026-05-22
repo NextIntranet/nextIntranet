@@ -6,7 +6,7 @@
       "@/*": ["./src/*"],
       "@nextintranet/core": ["../core/src"],
       "@nextintranet/core/*": ["../core/src/*"],
-      "@documentation/*": ["../../../documentation/*"]
+      "@documentation/*": ["../../documentation/*", "../../../documentation/*"]
     }
   },
   "include": ["src", "vite-env.d.ts"]

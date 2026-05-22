@@ -24,10 +24,18 @@ export type DocumentationManifest = {
 
 export const documentationManifest = manifest as DocumentationManifest
 
-const markdownModules = import.meta.glob(
-  "../../../../documentation/content/**/*.md",
-  { query: "?raw", import: "default", eager: true },
-) as Record<string, string>
+const markdownModules = {
+  ...import.meta.glob("../../../../documentation/content/**/*.md", {
+    query: "?raw",
+    import: "default",
+    eager: true,
+  }),
+  ...import.meta.glob("../../../../../documentation/content/**/*.md", {
+    query: "?raw",
+    import: "default",
+    eager: true,
+  }),
+} as Record<string, string>
 
 function filePathFromDocPath(docPath: string) {
   if (!docPath) {
