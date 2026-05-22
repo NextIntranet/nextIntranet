@@ -43,3 +43,10 @@ venv/
 
 # Backups
 backups/
+
+# Django collectstatic output
+nextintranet_backend/static/
+
+# Docker runtime data & mounts
+data/
+dev/
