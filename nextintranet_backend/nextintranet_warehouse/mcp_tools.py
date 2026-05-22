@@ -15,7 +15,9 @@ from nextintranet_warehouse.mcp_serializers import (
     MCPComponentDetailSerializer,
     MCPInventoryItemSerializer,
     MCPCategorySerializer,
+    MCPCategoryFlatSerializer,
     MCPLocationSerializer,
+    MCPLocationFlatSerializer,
     MCPParameterTypeSerializer,
     MCPSupplierSerializer,
     MCPSupplierRelationSerializer,
@@ -23,6 +25,15 @@ from nextintranet_warehouse.mcp_serializers import (
     MCPPacketSerializer,
 )
 from nextintranet_warehouse.services.parameter_values import coerce_decimal_for_storage
+
+MCP_LIST_DEFAULT_LIMIT = 500
+MCP_LIST_MAX_LIMIT = 2000
+
+
+def _clamp_list_limit(limit: int, default: int = MCP_LIST_DEFAULT_LIMIT, maximum: int = MCP_LIST_MAX_LIMIT) -> int:
+    if limit <= 0:
+        return default
+    return min(max(limit, 1), maximum)
 
 
 def _has_scope(request, *scopes):
@@ -191,12 +202,14 @@ class WarehouseReadToolset(MCPToolset):
         self,
         category: str = "",
         low_stock_only: bool = False,
+        limit: int = 200,
     ) -> list[dict]:
         """Get inventory summary with quantities, reservations, and locations.
 
         Args:
             category: Optional category slug to filter by.
             low_stock_only: If true, only return components with quantity <= 0.
+            limit: Maximum number of results (default 200, max 500).
         """
         _require_read(self.request)
 
@@ -207,59 +220,100 @@ class WarehouseReadToolset(MCPToolset):
         if category:
             qs = qs.filter(category__abbreviation=category)
 
-        results = MCPInventoryItemSerializer(qs[:200], many=True).data
+        row_limit = _clamp_list_limit(limit, default=200, maximum=500)
+        results = MCPInventoryItemSerializer(qs[:row_limit], many=True).data
 
         if low_stock_only:
             results = [r for r in results if r["quantity"] <= 0]
 
         return results
 
-    def list_categories(self) -> list[dict]:
-        """List all component categories in a tree structure."""
+    def list_categories(
+        self,
+        include_nested: bool = True,
+        limit: int = MCP_LIST_DEFAULT_LIMIT,
+    ) -> list[dict]:
+        """List component categories.
+
+        Args:
+            include_nested: If true (default), return every category including nested ones
+                as a flat list ordered by tree hierarchy. If false, return only root categories.
+            limit: Maximum number of results (default 500, max 2000).
+        """
         _require_read(self.request)
 
-        root_nodes = Category.objects.root_nodes()
-        return MCPCategorySerializer(root_nodes, many=True).data
+        row_limit = _clamp_list_limit(limit)
+        if include_nested:
+            categories = Category.objects.all().order_by("tree_id", "lft")[:row_limit]
+            return MCPCategoryFlatSerializer(categories, many=True).data
 
-    def list_locations(self) -> list[dict]:
-        """List all warehouse locations in a tree structure."""
+        root_nodes = Category.objects.root_nodes()[:row_limit]
+        return MCPCategoryFlatSerializer(root_nodes, many=True).data
+
+    def list_locations(
+        self,
+        include_nested: bool = True,
+        limit: int = MCP_LIST_DEFAULT_LIMIT,
+    ) -> list[dict]:
+        """List warehouse locations.
+
+        Args:
+            include_nested: If true (default), return every location including nested ones
+                as a flat list ordered by tree hierarchy. If false, return only root locations.
+            limit: Maximum number of results (default 500, max 2000).
+        """
         _require_read(self.request)
 
-        root_nodes = Warehouse.objects.root_nodes()
-        return MCPLocationSerializer(root_nodes, many=True).data
+        row_limit = _clamp_list_limit(limit)
+        if include_nested:
+            locations = Warehouse.objects.all().order_by("tree_id", "lft")[:row_limit]
+            return MCPLocationFlatSerializer(locations, many=True).data
 
-    def list_parameter_types(self, query: str = "") -> list[dict]:
-        """List all available parameter types. Optionally filter by name.
+        root_nodes = Warehouse.objects.root_nodes()[:row_limit]
+        return MCPLocationFlatSerializer(root_nodes, many=True).data
+
+    def list_parameter_types(self, query: str = "", limit: int = MCP_LIST_DEFAULT_LIMIT) -> list[dict]:
+        """List available parameter types. Optionally filter by name.
 
         Args:
             query: Optional text to filter parameter types by name.
+            limit: Maximum number of results (default 500, max 2000).
         """
         _require_read(self.request)
 
         qs = ParameterType.objects.all().order_by("name")
         if query:
             qs = qs.filter(name__icontains=query)
-        return MCPParameterTypeSerializer(qs, many=True).data
+        row_limit = _clamp_list_limit(limit)
+        return MCPParameterTypeSerializer(qs[:row_limit], many=True).data
 
-    def get_category(self, category_id: str) -> dict:
-        """Get a single category with its direct metadata (not the full subtree).
+    def get_category(self, category_id: str, include_nested: bool = True) -> dict:
+        """Get a single category.
 
         Args:
             category_id: UUID of the category.
+            include_nested: If true (default), include nested subcategories in a tree under
+                ``children``. If false, return only the category itself.
         """
         _require_read(self.request)
         category = Category.objects.get(id=category_id)
-        return MCPCategorySerializer(category).data
+        if include_nested:
+            return MCPCategorySerializer(category).data
+        return MCPCategoryFlatSerializer(category).data
 
-    def get_location(self, location_id: str) -> dict:
+    def get_location(self, location_id: str, include_nested: bool = True) -> dict:
         """Get a single warehouse location.
 
         Args:
             location_id: UUID primary key or legacy location uuid field.
+            include_nested: If true (default), include nested sub-locations in a tree under
+                ``children``. If false, return only the location itself.
         """
         _require_read(self.request)
         location = _resolve_location(location_id)
-        return MCPLocationSerializer(location).data
+        if include_nested:
+            return MCPLocationSerializer(location).data
+        return MCPLocationFlatSerializer(location).data
 
     def list_suppliers(self, query: str = "", limit: int = 50) -> list[dict]:
         """List suppliers. Optionally filter by name.
@@ -286,16 +340,18 @@ class WarehouseReadToolset(MCPToolset):
         supplier = Supplier.objects.get(id=supplier_id)
         return MCPSupplierSerializer(supplier).data
 
-    def list_component_suppliers(self, component_id: str) -> list[dict]:
+    def list_component_suppliers(self, component_id: str, limit: int = 50) -> list[dict]:
         """List supplier relations for a component.
 
         Args:
             component_id: UUID of the component.
+            limit: Maximum number of results (default 50, max 200).
         """
         _require_read(self.request)
+        row_limit = _clamp_list_limit(limit, default=50, maximum=200)
         relations = SupplierRelation.objects.filter(
             component_id=component_id,
-        ).select_related("supplier", "component")
+        ).select_related("supplier", "component").order_by("supplier__name")[:row_limit]
         return MCPSupplierRelationSerializer(relations, many=True).data
 
     def list_reservations(
@@ -345,18 +401,25 @@ class WarehouseReadToolset(MCPToolset):
         packet = Packet.objects.select_related("location", "component").get(id=packet_id)
         return MCPPacketSerializer(packet).data
 
-    def list_component_packets(self, component_id: str, active_only: bool = False) -> list[dict]:
+    def list_component_packets(
+        self,
+        component_id: str,
+        active_only: bool = False,
+        limit: int = 100,
+    ) -> list[dict]:
         """List packets for a component.
 
         Args:
             component_id: UUID of the component.
             active_only: If true, only return active packets.
+            limit: Maximum number of results (default 100, max 500).
         """
         _require_read(self.request)
         qs = Packet.objects.filter(component_id=component_id).select_related("location")
         if active_only:
             qs = qs.filter(is_active=True)
-        return MCPPacketSerializer(qs.order_by("-date_added"), many=True).data
+        row_limit = _clamp_list_limit(limit, default=100, maximum=500)
+        return MCPPacketSerializer(qs.order_by("-date_added")[:row_limit], many=True).data
 
 
 class WarehouseWriteToolset(MCPToolset):

@@ -103,19 +103,19 @@ The generated JSON looks like:
 **Read-only** (`mcp:read` scope):
 - `search_components` — search by name, description, category, tag, location
 - `get_component_detail` — full component detail with parameters, documents, packets, suppliers
-- `get_inventory_summary` — stock overview with quantities, reservations, locations
-- `list_categories` — category tree
-- `get_category` — single category
-- `list_locations` — warehouse location tree
-- `get_location` — single location (by id or legacy uuid)
-- `list_parameter_types` — parameter type catalog
+- `get_inventory_summary` — stock overview (`limit` default 200, max 500)
+- `list_categories` — categories (`include_nested` default true, `limit` default 500, max 2000)
+- `get_category` — single category (`include_nested` default true: subcategory tree)
+- `list_locations` — locations (`include_nested` default true, `limit` default 500, max 2000)
+- `get_location` — single location (`include_nested` default true; by id or legacy uuid)
+- `list_parameter_types` — parameter types (`limit` default 500, max 2000)
 - `list_suppliers` — supplier list
 - `get_supplier` — single supplier
-- `list_component_suppliers` — supplier links for a component
+- `list_component_suppliers` — supplier links for a component (`limit` default 50, max 200)
 - `list_reservations` — reservation list (filter by component or search)
 - `get_reservation` — single reservation
 - `get_packet` — single packet (stock batch)
-- `list_component_packets` — packets for a component
+- `list_component_packets` — packets for a component (`limit` default 100, max 500)
 
 **Write** (`mcp:write` scope, includes all read tools):
 - `update_component_description` — update a component's description (alias for description-only updates)
