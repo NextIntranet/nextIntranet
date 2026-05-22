@@ -142,33 +142,45 @@ class MCPReservationSerializer(serializers.ModelSerializer):
         ]
 
 
-class MCPCategorySerializer(serializers.ModelSerializer):
+class MCPCategoryFlatSerializer(serializers.ModelSerializer):
     full_path = serializers.CharField(read_only=True)
     parent_id = serializers.UUIDField(read_only=True, allow_null=True)
-    children = serializers.SerializerMethodField()
 
     class Meta:
         model = Category
         fields = [
-            "id", "name", "abbreviation", "description", "parent_id", "full_path", "children",
+            "id", "name", "abbreviation", "description", "parent_id", "full_path",
         ]
+
+
+class MCPCategorySerializer(MCPCategoryFlatSerializer):
+    children = serializers.SerializerMethodField()
+
+    class Meta(MCPCategoryFlatSerializer.Meta):
+        fields = MCPCategoryFlatSerializer.Meta.fields + ["children"]
 
     def get_children(self, obj):
         children = obj.get_children()
         return MCPCategorySerializer(children, many=True).data
 
 
-class MCPLocationSerializer(serializers.ModelSerializer):
+class MCPLocationFlatSerializer(serializers.ModelSerializer):
     full_path = serializers.CharField(read_only=True)
     parent_id = serializers.UUIDField(read_only=True, allow_null=True)
-    children = serializers.SerializerMethodField()
 
     class Meta:
         model = Warehouse
         fields = [
             "id", "uuid", "name", "location", "description", "parent_id",
-            "full_path", "can_store_items", "children",
+            "full_path", "can_store_items",
         ]
+
+
+class MCPLocationSerializer(MCPLocationFlatSerializer):
+    children = serializers.SerializerMethodField()
+
+    class Meta(MCPLocationFlatSerializer.Meta):
+        fields = MCPLocationFlatSerializer.Meta.fields + ["children"]
 
     def get_children(self, obj):
         children = obj.get_children()
