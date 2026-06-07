@@ -124,6 +124,7 @@ class Identifier(NIModel):
         ('ean', 'EAN'),
         ('sku', _('SKU')),
         ('supplier', _('Supplier code')),
+        ('legacy', _('Legacy barcode')),
         ('other', _('Other')),
     )
     scheme = models.CharField(

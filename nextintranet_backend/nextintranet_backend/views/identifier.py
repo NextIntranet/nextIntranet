@@ -4,7 +4,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework import status
 
-from nextintranet_warehouse.models.component import Component, Identifier, Packet
+from nextintranet_backend.iso15434 import parse_iso15434
+from nextintranet_backend.identifier_lookup import resolve_identifier_objects
+from nextintranet_warehouse.models.component import Component, Packet
 from nextintranet_warehouse.models.warehouse import Warehouse
 from nextintranet_warehouse.models.purchase import Purchase
 from nextintranet_production.models.production import Production
@@ -57,6 +59,14 @@ def _build_result_for_object(obj):
     return None
 
 
+def _lookup_by_identifier_value(value: str) -> list[dict]:
+    return [
+        item
+        for obj in resolve_identifier_objects(value)
+        if (item := _build_result_for_object(obj))
+    ]
+
+
 class IdentifierApiView(APIView):
     def post(self, request, *args, **kwargs):
         data = request.data
@@ -71,6 +81,20 @@ class IdentifierApiView(APIView):
 
         raw_scan = (data.get("data") or "").strip()
         decoded_data = validate_code(raw_scan)
+        iso_scan = parse_iso15434(raw_scan)
+
+        parsed: dict = {}
+        if decoded_data:
+            parsed["query"] = decoded_data
+        if iso_scan:
+            parsed["iso15434"] = iso_scan.to_dict()
+        if parsed:
+            response_data["parsed"] = parsed
+
+        def _set_action(link: str | None) -> None:
+            if link and not response_data["action"]["value"]:
+                response_data["action"]["type"] = "link"
+                response_data["action"]["value"] = link
 
         # 1) Internal match: QR/content with ?component=uuid or ?packet=uuid
         if decoded_data:
@@ -83,8 +107,7 @@ class IdentifierApiView(APIView):
                         "name": packet.component.name,
                         "link": packet.get_absolute_url(),
                     })
-                    response_data["action"]["type"] = "link"
-                    response_data["action"]["value"] = packet.get_absolute_url()
+                    _set_action(packet.get_absolute_url())
             if decoded_data.get("component"):
                 component = Component.objects.filter(id=decoded_data.get("component")).first()
                 if component:
@@ -95,24 +118,19 @@ class IdentifierApiView(APIView):
                         "link": component.get_absolute_url(),
                     })
                     if not response_data["action"]["value"]:
-                        response_data["action"]["type"] = "link"
-                        response_data["action"]["value"] = component.get_absolute_url()
+                        _set_action(component.get_absolute_url())
 
-        # 2) Last resort: external identifier (EAN, SKU, etc.) – only if no internal match
+        # 2) ISO 15434: resolve serial number (S / 3S) via native IDs and external identifiers
+        if not results and iso_scan and iso_scan.serial_number:
+            for item in _lookup_by_identifier_value(iso_scan.serial_number):
+                results.append(item)
+                _set_action(item["link"])
+
+        # 3) Fallback: treat full scan text as identifier value (native + external)
         if not results and raw_scan:
-            identifier = (
-                Identifier.objects.filter(identifier__iexact=raw_scan)
-                .select_related("content_type")
-                .first()
-            )
-            if identifier:
-                obj = identifier.content_object
-                item = _build_result_for_object(obj)
-                if item:
-                    results.append(item)
-                    response_data["action"]["type"] = "link"
-                    response_data["action"]["value"] = item["link"]
+            for item in _lookup_by_identifier_value(raw_scan):
+                results.append(item)
+                _set_action(item["link"])
 
         response_data["result"] = results
-        response_data["parsed"] = decoded_data
         return Response(response_data, status=status.HTTP_200_OK)

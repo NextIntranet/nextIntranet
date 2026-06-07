@@ -18,7 +18,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Switch } from "@/components/ui/switch"
 import {
   Table,
   TableBody,
@@ -28,6 +30,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { getOperationLabel } from "@/lib/stockOperations"
+import { resolvePacketIdFromScan } from "@/lib/resolvePacketIdFromScan"
 
 interface LocationNode {
   id: string
@@ -115,40 +118,6 @@ const playAlertTone = () => {
   } catch {}
 }
 
-const packetIdRegex =
-  /\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b/
-
-const extractPacketId = (raw: string) => {
-  const trimmed = raw.trim()
-  if (!trimmed) {
-    return null
-  }
-  const cleaned = trimmed.replace(/;$/, "")
-
-  if (cleaned.includes("packet=")) {
-    const query = cleaned.startsWith("?") ? cleaned : cleaned.split("?")[1] || cleaned
-    const params = new URLSearchParams(query)
-    const packetId = params.get("packet")
-    if (packetId) {
-      return packetId
-    }
-  }
-
-  if (cleaned.includes("/store/packet/")) {
-    const match = cleaned.match(/\/store\/packet\/([^/?#]+)/)
-    if (match?.[1]) {
-      return match[1]
-    }
-  }
-
-  const directMatch = cleaned.match(packetIdRegex)
-  if (directMatch?.[0]) {
-    return directMatch[0]
-  }
-
-  return null
-}
-
 const flattenLocations = (nodes: LocationNode[]) => {
   const map = new Map<string, LocationNode>()
   const walk = (items: LocationNode[]) => {
@@ -177,6 +146,7 @@ export function InventoryPage() {
     null,
   )
   const [movePromptPacket, setMovePromptPacket] = useState<Packet | null>(null)
+  const [locationCheckEnabled, setLocationCheckEnabled] = useState(true)
   const [newCount, setNewCount] = useState("")
   const [description, setDescription] = useState("")
 
@@ -341,7 +311,14 @@ export function InventoryPage() {
       }
       lastScanRef.current = { text, ts: now }
 
-      const packetId = extractPacketId(text)
+      let packetId: string | null
+      try {
+        packetId = await resolvePacketIdFromScan(text)
+      } catch {
+        playAlertTone()
+        toast.error("Scanner lookup failed.")
+        return
+      }
       if (!packetId) {
         playAlertTone()
         toast.error("Scanned code is not a packet.")
@@ -354,17 +331,21 @@ export function InventoryPage() {
         setSelectedPacketOverride(packet)
         setPacketScanValue("")
         setNewCount("")
-        if (selectedLocationId && packet.location?.id !== selectedLocationId) {
+        if (
+          locationCheckEnabled &&
+          selectedLocationId &&
+          packet.location?.id !== selectedLocationId
+        ) {
           playAlertTone()
           setMovePromptPacket(packet)
           return
         }
-        if (packet.location?.id && !selectedLocationId) {
+        if (locationCheckEnabled && packet.location?.id && !selectedLocationId) {
           setSelectedLocationId(packet.location.id)
         }
-        if (inventoriedPacketIds.has(packet.id)) {
+        if (activeCampaign && inventoriedPacketIds.has(packet.id)) {
           playAlertTone()
-          toast("Inventory already recorded for this packet.")
+          toast("Inventory already recorded for this packet in the campaign.")
         }
       } catch {
         playAlertTone()
@@ -373,7 +354,7 @@ export function InventoryPage() {
     })
 
     return unsubscribe
-  }, [inventoriedPacketIds, selectedLocationId])
+  }, [activeCampaign, inventoriedPacketIds, locationCheckEnabled, selectedLocationId])
 
   const inventoryMutation = useMutation({
     mutationFn: (payload: {
@@ -439,6 +420,15 @@ export function InventoryPage() {
     },
   })
 
+  const handleUnsetLocation = () => {
+    setSelectedLocationId("")
+    setLocationScanValue("")
+    setSelectedPacketId("")
+    setSelectedPacketOverride(null)
+    setNewCount("")
+    setMovePromptPacket(null)
+  }
+
   const handleLocationScan = () => {
     const value = locationScanValue.trim()
     if (!value) {
@@ -463,35 +453,52 @@ export function InventoryPage() {
     if (!value) {
       return
     }
-    const match = packets.find((packet) => packet.id === value)
+
+    let packetId: string | null
+    try {
+      packetId = await resolvePacketIdFromScan(value)
+    } catch {
+      toast.error("Scanner lookup failed.")
+      return
+    }
+    if (!packetId) {
+      toast.error("Scanned code is not a packet.")
+      return
+    }
+
+    const match = packets.find((packet) => packet.id === packetId)
     if (match) {
       setSelectedPacketId(match.id)
       setSelectedPacketOverride(null)
       setPacketScanValue("")
       setNewCount("")
-      if (inventoriedPacketIds.has(match.id)) {
+      if (activeCampaign && inventoriedPacketIds.has(match.id)) {
         playAlertTone()
-        toast("Inventory already recorded for this packet.")
+        toast("Inventory already recorded for this packet in the campaign.")
       }
       return
     }
 
     try {
-      const packet = await apiFetch<Packet>(`/api/v1/store/packet/${value}/`)
+      const packet = await apiFetch<Packet>(`/api/v1/store/packet/${packetId}/`)
       setSelectedPacketId(packet.id)
       setSelectedPacketOverride(packet)
       setPacketScanValue("")
       setNewCount("")
-      if (inventoriedPacketIds.has(packet.id)) {
+      if (activeCampaign && inventoriedPacketIds.has(packet.id)) {
         playAlertTone()
-        toast("Inventory already recorded for this packet.")
+        toast("Inventory already recorded for this packet in the campaign.")
       }
-      if (selectedLocationId && packet.location?.id !== selectedLocationId) {
+      if (
+        locationCheckEnabled &&
+        selectedLocationId &&
+        packet.location?.id !== selectedLocationId
+      ) {
         playAlertTone()
         setMovePromptPacket(packet)
         return
       }
-      if (packet.location?.id && !selectedLocationId) {
+      if (locationCheckEnabled && packet.location?.id && !selectedLocationId) {
         setSelectedLocationId(packet.location.id)
       }
     } catch {
@@ -500,14 +507,14 @@ export function InventoryPage() {
   }
 
   const handleSubmit = () => {
-    if (!selectedPacket || diff === null || !activeCampaign) {
+    if (!selectedPacket || diff === null) {
       return
     }
     inventoryMutation.mutate({
       packet: selectedPacket.id,
       quantity: diff,
       description: description.trim() || null,
-      reference: activeCampaign.id,
+      reference: activeCampaign?.id ?? null,
     })
   }
 
@@ -525,7 +532,6 @@ export function InventoryPage() {
     !!selectedPacket &&
     diff !== null &&
     !Number.isNaN(diff) &&
-    !!activeCampaign &&
     !inventoryMutation.isPending
 
   const allInventoried =
@@ -540,7 +546,8 @@ export function InventoryPage() {
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold text-foreground">Inventory</h1>
         <p className="text-sm text-muted-foreground">
-          Record the actual counts per packet and location.
+          Record actual counts per packet and location. With an active campaign, progress is
+          tracked per campaign; without one, counts are saved as ad-hoc inventory.
         </p>
       </div>
 
@@ -593,7 +600,7 @@ export function InventoryPage() {
                       {diff === null || Number.isNaN(diff) ? "-" : diff}
                     </span>
                   </div>
-                  {isSelectedInventoried && (
+                  {activeCampaign && isSelectedInventoried && (
                     <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-700">
                       Inventory already recorded for this packet in this campaign. You
                       can record it again if needed.
@@ -614,11 +621,6 @@ export function InventoryPage() {
                   <Button onClick={handleSubmit} disabled={!canSubmit}>
                     {inventoryMutation.isPending ? "Saving..." : "Record inventory"}
                   </Button>
-                  {!activeCampaign && (
-                    <p className="text-xs text-muted-foreground">
-                      Open an inventory campaign to record counts.
-                    </p>
-                  )}
                 </>
               ) : (
                 <p className="text-sm text-muted-foreground">
@@ -763,9 +765,17 @@ export function InventoryPage() {
                   </p>
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">
-                  No active inventory campaign. Open a campaign to start counting.
-                </p>
+                <div className="space-y-2">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">Mode</p>
+                  <p className="text-lg font-semibold text-foreground">Ad-hoc inventory</p>
+                  <p className="text-sm text-muted-foreground">
+                    No active campaign. You can count packets now; records are saved without
+                    campaign tracking.
+                  </p>
+                  <Button variant="outline" size="sm" asChild>
+                    <Link to="/store/inventory-campaign">Manage campaigns</Link>
+                  </Button>
+                </div>
               )}
             </CardContent>
           </Card>
@@ -775,6 +785,21 @@ export function InventoryPage() {
               <CardTitle>Location</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border/70 px-3 py-2">
+                <div className="space-y-0.5">
+                  <Label htmlFor="location-check" className="text-sm font-medium">
+                    Check location on scan
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    When enabled, scanned packets must match the selected location.
+                  </p>
+                </div>
+                <Switch
+                  id="location-check"
+                  checked={locationCheckEnabled}
+                  onCheckedChange={setLocationCheckEnabled}
+                />
+              </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium text-foreground">Scan location</label>
                 <div className="flex gap-2">
@@ -815,6 +840,16 @@ export function InventoryPage() {
                   />
                 )}
               </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleUnsetLocation}
+                  disabled={!selectedLocationId}
+                >
+                  Unset location
+                </Button>
+              </div>
             </CardContent>
           </Card>
 
@@ -823,6 +858,11 @@ export function InventoryPage() {
               <CardTitle>Packets in location</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              {!locationCheckEnabled && (
+                <p className="text-xs text-muted-foreground">
+                  Location check is off — you can scan any packet regardless of location.
+                </p>
+              )}
               {activeCampaign && (
                 <p className="text-xs text-muted-foreground">
                   Showing only packets without inventory for this campaign.
@@ -840,7 +880,7 @@ export function InventoryPage() {
                         void handlePacketScan()
                       }
                     }}
-                    placeholder="Scan or paste packet ID"
+                    placeholder="Scan or paste packet ID / barcode"
                   />
                   <Button variant="secondary" onClick={() => void handlePacketScan()}>
                     Apply

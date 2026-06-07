@@ -1,6 +1,7 @@
 from decimal import Decimal
 import hashlib
 import re
+import uuid
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
@@ -41,6 +42,8 @@ from nextintranet_production.serializers import (
     RealizationListSerializer,
     RealizationComponentSerializer,
 )
+from nextintranet_backend.identifier_lookup import resolve_identifier_objects
+from nextintranet_backend.iso15434 import parse_iso15434
 from nextintranet_backend.models.printList import PrintFile, PrintItem, PrintList
 from nextintranet_backend.models.userSettings import UserSetting
 from nextintranet_warehouse.models.component import Component, Packet, StockOperation
@@ -307,6 +310,13 @@ def _extract_packet_id_from_barcode(barcode: str) -> str | None:
     if not cleaned:
         return None
 
+    iso_scan = parse_iso15434(cleaned)
+    if iso_scan and iso_scan.serial_number:
+        try:
+            return str(uuid.UUID(iso_scan.serial_number))
+        except (TypeError, ValueError):
+            pass
+
     if "packet=" in cleaned:
         query = cleaned
         if "?" in query:
@@ -328,7 +338,9 @@ def _extract_packet_id_from_barcode(barcode: str) -> str | None:
 
 
 def _resolve_barcode(barcode: str) -> dict[str, Any] | None:
-    packet_id = _extract_packet_id_from_barcode(barcode)
+    cleaned = (barcode or "").strip().rstrip(";")
+
+    packet_id = _extract_packet_id_from_barcode(cleaned)
     if packet_id:
         packet = Packet.objects.filter(id=packet_id).select_related("component").first()
         if packet:
@@ -338,7 +350,29 @@ def _resolve_barcode(barcode: str) -> dict[str, Any] | None:
                 "component": packet.component,
             }
 
-    component_direct = Component.objects.filter(id=barcode).first()
+    iso_scan = parse_iso15434(cleaned)
+    lookup_values = []
+    if iso_scan and iso_scan.serial_number:
+        lookup_values.append(iso_scan.serial_number)
+    if cleaned and cleaned not in lookup_values:
+        lookup_values.append(cleaned)
+
+    for value in lookup_values:
+        for obj in resolve_identifier_objects(value):
+            if isinstance(obj, Packet):
+                return {
+                    "barcode": barcode,
+                    "packet": obj,
+                    "component": obj.component,
+                }
+            if isinstance(obj, Component):
+                return {
+                    "barcode": barcode,
+                    "packet": None,
+                    "component": obj,
+                }
+
+    component_direct = Component.objects.filter(id=cleaned).first()
     if component_direct:
         return {
             "barcode": barcode,
