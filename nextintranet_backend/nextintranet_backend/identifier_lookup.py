@@ -1,10 +1,25 @@
 import uuid
 
-from nextintranet_warehouse.models.component import Component, Identifier, Packet
+from django.db.models import Q
+
+from nextintranet_warehouse.models.component import (
+    Component,
+    ComponentParameter,
+    Identifier,
+    Packet,
+)
+
+MFPN_PARAM_NAMES = frozenset({
+    "mfpn",
+    "mpn",
+    "manufacturer part number",
+    "symbol/mfpn",
+    "symbol mfpn",
+})
 
 
 def resolve_identifier_objects(value: str) -> list[object]:
-    """Resolve a scanned value against native object IDs and external Identifier records."""
+    """Resolve a scanned value against native IDs, external identifiers, name, and MFPN."""
     value = (value or "").strip()
     if not value:
         return []
@@ -41,5 +56,21 @@ def resolve_identifier_objects(value: str) -> list[object]:
     )
     if identifier:
         _add(identifier.content_object)
+
+    for component in Component.objects.filter(name__iexact=value):
+        _add(component)
+
+    for component in Component.objects.filter(suppliers__symbol__iexact=value).distinct():
+        _add(component)
+
+    mfpn_type_filter = Q()
+    for param_name in MFPN_PARAM_NAMES:
+        mfpn_type_filter |= Q(parameter_type__name__iexact=param_name)
+    for param in (
+        ComponentParameter.objects.filter(value__iexact=value)
+        .filter(mfpn_type_filter)
+        .select_related("component")
+    ):
+        _add(param.component)
 
     return results

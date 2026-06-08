@@ -68,7 +68,7 @@ The generated JSON looks like:
 - `update_component` — update name, description, category, tags, selling/internal prices
 - `set_component_parameters` — set/update component parameters
 - `create_component` — create a new component (do not put URLs in description; use documents instead)
-- `create_component_document` — attach a URL document (`is_primary` for image thumbnails)
+- `create_component_document` — attach a URL document (`is_primary` for image thumbnails; image URLs must be direct file links)
 - `update_component_document` — update name, URL, type, or `is_primary`
 - `set_component_primary_document` — set an existing image as primary
 - `delete_component_document` — remove document from component
@@ -79,6 +79,24 @@ The generated JSON looks like:
 - `create_supplier` / `update_supplier` / `delete_supplier` — suppliers
 - `link_component_supplier` / `update_supplier_relation` / `delete_supplier_relation` — component–supplier links
 - `create_reservation` / `update_reservation` / `delete_reservation` — reservations
+
+## Component documents
+
+Use `create_component_document` (or `update_component_document`) to attach links to a component.
+Do not put URLs in the component `description` field.
+
+| `doc_type` | Typical `url` |
+|------------|----------------|
+| `product_page`, `datasheet`, `manual`, … | Link to a web page (HTML) |
+| `image` | **Direct link to the image file** (e.g. `https://cdn.example.com/part.jpg`) |
+
+For **`doc_type` `image`** (including primary / thumbnail via `is_primary`):
+
+- The `url` must point at the **image file itself** (`.jpg`, `.png`, `.webp`, etc.), not at an HTML product page or gallery.
+- Wrong: product detail page where the image is embedded in HTML.
+- Right: CDN or supplier URL that returns `Content-Type: image/*` when opened.
+
+The first `image` document on a component is set as primary automatically; use `is_primary=true` or `set_component_primary_document` for later images.
 
 ## Architecture
 

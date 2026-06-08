@@ -19,7 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { toast } from 'sonner';
-import { Filter, LayoutGrid, List, Table as TableIcon } from 'lucide-react';
+import { Copy, Filter, LayoutGrid, List, Table as TableIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PriceLabel } from '@/components/PriceLabel';
 
@@ -220,6 +220,21 @@ export function StorePage() {
     user?.access_permissions?.some(
       (permission) => permission.area === 'warehouse' && ['write', 'admin'].includes(permission.level)
     );
+
+  const copyComponentField = async (
+    event: React.MouseEvent,
+    value: string,
+    successMessage: string,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success(successMessage);
+    } catch {
+      toast.error('Unable to copy to clipboard.');
+    }
+  };
 
   const createMutation = useMutation({
     mutationFn: (payload: {
@@ -730,9 +745,24 @@ export function StorePage() {
                           <CardContent className="flex flex-1 flex-col gap-3 p-3">
                             <div className="space-y-2">
                               <div className="flex items-start justify-between gap-2">
-                                <h3 className="line-clamp-2 text-base font-semibold text-foreground group-hover:line-clamp-none">
-                                  {component.name}
-                                </h3>
+                                <div className="flex min-w-0 flex-1 items-start gap-0.5">
+                                  <h3 className="line-clamp-2 text-base font-semibold text-foreground group-hover:line-clamp-none">
+                                    {component.name}
+                                  </h3>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                                    onClick={(event) =>
+                                      copyComponentField(event, component.name, 'Name copied.')
+                                    }
+                                    aria-label="Copy component name"
+                                    title="Copy name"
+                                  >
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
                                 <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
                                   {component.category?.name ?? 'Uncategorized'}
                                 </span>
@@ -758,13 +788,32 @@ export function StorePage() {
                                     0}
                                 </span>
                               </div>
-                              {component.selling_price && (
-                                <PriceLabel
-                                  value={component.selling_price}
-                                  currency={component.currency || 'CZK'}
-                                  className="text-sm font-semibold text-primary"
-                                />
-                              )}
+                              <div className="flex shrink-0 items-center gap-1">
+                                {component.selling_price && (
+                                  <PriceLabel
+                                    value={component.selling_price}
+                                    currency={component.currency || 'CZK'}
+                                    className="text-sm font-semibold text-primary"
+                                  />
+                                )}
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                                  onClick={(event) =>
+                                    copyComponentField(
+                                      event,
+                                      String(component.id),
+                                      'ID copied.',
+                                    )
+                                  }
+                                  aria-label="Copy component ID"
+                                  title="Copy ID"
+                                >
+                                  <Copy className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
                             </div>
                           </CardContent>
                         </Card>
@@ -796,9 +845,24 @@ export function StorePage() {
                             )}
                             <div className="flex flex-1 flex-col gap-2">
                               <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                                <h3 className="text-base font-semibold text-foreground">
-                                  {component.name}
-                                </h3>
+                                <div className="flex min-w-0 items-center gap-0.5">
+                                  <h3 className="text-base font-semibold text-foreground">
+                                    {component.name}
+                                  </h3>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                                    onClick={(event) =>
+                                      copyComponentField(event, component.name, 'Name copied.')
+                                    }
+                                    aria-label="Copy component name"
+                                    title="Copy name"
+                                  >
+                                    <Copy className="h-3.5 w-3.5" />
+                                  </Button>
+                                </div>
                                 {component.selling_price && (
                                   <PriceLabel
                                     value={component.selling_price}
@@ -810,21 +874,40 @@ export function StorePage() {
                               <p className="line-clamp-2 text-sm text-muted-foreground">
                                 {component.description}
                               </p>
-                              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                                <span className="flex items-center gap-1">
-                                  🏠 {component.inventory_summary?.home_quantity ?? "—"}
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  🌐 {component.inventory_summary?.total_quantity ?? 0}
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  🔒 {component.inventory_summary?.reserved_quantity ?? 0}
-                                </span>
-                                <span className="flex items-center gap-1">
-                                  🛒 {component.inventory_summary?.purchase_requested_quantity ??
-                                    component.inventory_summary?.purchase_quantity ??
-                                    0}
-                                </span>
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                  <span className="flex items-center gap-1">
+                                    🏠 {component.inventory_summary?.home_quantity ?? "—"}
+                                  </span>
+                                  <span className="flex items-center gap-1">
+                                    🌐 {component.inventory_summary?.total_quantity ?? 0}
+                                  </span>
+                                  <span className="flex items-center gap-1">
+                                    🔒 {component.inventory_summary?.reserved_quantity ?? 0}
+                                  </span>
+                                  <span className="flex items-center gap-1">
+                                    🛒 {component.inventory_summary?.purchase_requested_quantity ??
+                                      component.inventory_summary?.purchase_quantity ??
+                                      0}
+                                  </span>
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 shrink-0 text-muted-foreground hover:text-foreground"
+                                  onClick={(event) =>
+                                    copyComponentField(
+                                      event,
+                                      String(component.id),
+                                      'ID copied.',
+                                    )
+                                  }
+                                  aria-label="Copy component ID"
+                                  title="Copy ID"
+                                >
+                                  <Copy className="h-3.5 w-3.5" />
+                                </Button>
                               </div>
                             </div>
                           </CardContent>

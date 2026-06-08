@@ -370,5 +370,10 @@ DJANGO_MCP_AUTHENTICATION_CLASSES = [
 
 DJANGO_MCP_GLOBAL_SERVER_CONFIG = {
     "name": "nextintranet-warehouse",
-    "instructions": "NextIntranet Warehouse MCP Server. Provides tools for searching components, viewing inventory, and managing warehouse data.",
+    "instructions": (
+        "NextIntranet Warehouse MCP Server. Provides tools for searching components, viewing "
+        "inventory, and managing warehouse data. For component documents: use create_component_document; "
+        "do not put URLs in descriptions. For doc_type image (including primary thumbnails), the url "
+        "must be a direct link to the image file (image/*), not an HTML product page."
+    ),
 }

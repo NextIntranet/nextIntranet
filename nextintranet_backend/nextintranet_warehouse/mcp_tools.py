@@ -757,7 +757,8 @@ class WarehouseWriteToolset(MCPToolset):
 
         Args:
             component_id: UUID of the component to attach the document to.
-            url: External document URL (required).
+            url: External document URL (required). For doc_type image, use a direct image file URL
+                (e.g. ending in .jpg or a CDN link that serves image/*), not an HTML product page.
             name: Optional display name (defaults from URL path if omitted).
             doc_type: Type key (product_page) or label (Product page). Default product_page.
             is_primary: Default false. For doc_type image only: true sets primary; the first image
@@ -812,7 +813,8 @@ class WarehouseWriteToolset(MCPToolset):
         Args:
             document_id: UUID of the document.
             name: New display name (leave empty to keep current).
-            url: New URL (leave empty to keep current; URL-only documents).
+            url: New URL (leave empty to keep current). For image documents, use a direct image
+                file URL, not an HTML page.
             doc_type: New type key or label (leave empty to keep current).
             is_primary: Set true to make this document the primary image (doc_type must be image).
         """
