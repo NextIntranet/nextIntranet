@@ -105,6 +105,7 @@ class TemplateSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'production', 'production_name', 'name', 'description', 
             'version',
+            'series_kind', 'source_template',
             'status', 'qty_planned', 'planned_date',
             'source_url', 'source_hash', 'source_file', 'source_file_url', 'source_imported_at',
             'ibom_url', 'ibom_file', 'ibom_file_url', 'ibom_updated_at',
@@ -138,6 +139,7 @@ class TemplateListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'production', 'production_name', 'name', 
             'version',
+            'series_kind', 'source_template',
             'status', 'qty_planned', 'planned_date',
             'source_url', 'source_hash', 'source_file_url', 'source_imported_at',
             'ibom_url', 'ibom_file_url', 'ibom_updated_at',

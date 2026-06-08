@@ -1,12 +1,18 @@
 import { FormEvent, Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { IBOM_EVENT_TYPES, apiFetch, getRealtimeClient, nextIO, tokenStorage, useIbomBridge } from "@nextintranet/core"
-import { ChevronDown, ChevronUp, FilePlus2, FileText, FolderPlus, Link2, Lock, MapPin, Package, ScanLine } from "lucide-react"
+import { ChevronDown, ChevronUp, CornerDownRight, FilePlus2, FileText, FolderPlus, Link2, Lock, MapPin, Package, ScanLine } from "lucide-react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { ComponentInfoPopover } from "@/components/ComponentInfoPopover"
 import { ComponentSearchSheet, type SearchComponentItem } from "@/components/ComponentSearchSheet"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -122,6 +128,8 @@ type BomItem = {
   production: string
   name: string
   description?: string | null
+  series_kind?: "template" | "working"
+  source_template?: string | null
   status: "draft" | "in_progress" | "locked"
   qty_planned: number
   planned_date?: string | null
@@ -182,11 +190,13 @@ type LinkSheetTarget = {
 }
 
 type PacketSheetTarget = {
-  lineId: string
+  lineId?: string
   mode: "SOURCED" | "PLACED"
-  componentId: string
-  componentName: string
-  lineProgress: PacketLineProgress
+  componentId?: string
+  componentName?: string
+  lineProgress?: PacketLineProgress | null
+  browseMode?: boolean
+  initialSearch?: string
 }
 
 type ScannerRow = BomRow & {
@@ -242,6 +252,48 @@ const statusBadgeClass = (status: string) => {
   if (status === "locked") return "bg-rose-100 text-rose-800"
   if (status === "in_progress") return "bg-amber-100 text-amber-800"
   return "bg-emerald-100 text-emerald-800"
+}
+
+const seriesKindBadgeClass = (seriesKind?: BomItem["series_kind"]) => {
+  if (seriesKind === "template") return "bg-sky-100 text-sky-800"
+  return "bg-violet-100 text-violet-800"
+}
+
+type SeriesTreeNode = {
+  bom: BomItem
+  children: SeriesTreeNode[]
+}
+
+const sortSeriesBoms = (items: BomItem[]) =>
+  items.slice().sort((a, b) => {
+    const kindOrder = (bom: BomItem) => (bom.series_kind === "template" ? 0 : 1)
+    const kindDiff = kindOrder(a) - kindOrder(b)
+    if (kindDiff !== 0) return kindDiff
+    return (b.planned_date || b.created_at || "").localeCompare(a.planned_date || a.created_at || "")
+  })
+
+const buildSeriesTree = (templates: BomItem[]): SeriesTreeNode[] => {
+  const byId = new Map(templates.map((item) => [item.id, item]))
+  const childrenByParent = new Map<string, BomItem[]>()
+  const roots: BomItem[] = []
+
+  for (const bom of templates) {
+    const parentId = bom.source_template
+    if (parentId && byId.has(parentId)) {
+      const siblings = childrenByParent.get(parentId) || []
+      siblings.push(bom)
+      childrenByParent.set(parentId, siblings)
+      continue
+    }
+    roots.push(bom)
+  }
+
+  const toNode = (bom: BomItem): SeriesTreeNode => ({
+    bom,
+    children: sortSeriesBoms(childrenByParent.get(bom.id) || []).map(toNode),
+  })
+
+  return sortSeriesBoms(roots).map(toNode)
 }
 
 const lineBadge = (line: BomRow) => {
@@ -438,6 +490,8 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     enabled: !!productId,
   })
 
+  const seriesTree = useMemo(() => buildSeriesTree(productDetail?.templates || []), [productDetail?.templates])
+
   const selectedBomFromProduct = useMemo(() => {
     if (!bomId || !productDetail) return null
     return productDetail.templates.find((item) => item.id === bomId) || null
@@ -450,14 +504,20 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
   })
 
   const selectedBom = bomDetail || selectedBomFromProduct
+  const isTemplateSeries = selectedBom?.series_kind === "template"
   const selectedBomComponents = useMemo(() => {
     return Array.isArray(selectedBom?.components) ? selectedBom.components : []
   }, [selectedBom?.components])
+  const canImportNetlist = isTemplateSeries || selectedBomComponents.length === 0
+  const resolvedSourceUrl = useMemo(() => {
+    return (sourceUrlInput.trim() || selectedBom?.source_url?.trim() || "")
+  }, [selectedBom?.source_url, sourceUrlInput])
+  const canImportNetlistFromUrl = canImportNetlist && !!resolvedSourceUrl
   const ibomViewUrl = useMemo(() => {
     return toSameOriginS3Url(selectedBom?.ibom_file_url || selectedBom?.ibom_url || null)
   }, [selectedBom?.ibom_file_url, selectedBom?.ibom_url])
 
-  const { highlightInIbom, sendBarcodeScan, ibomConnected, highlightedRefs } = useIbomBridge(
+  const { highlightInIbom, sendBarcodeScan, syncIbomState, ibomConnected, highlightedRefs } = useIbomBridge(
     isBomView && bomId ? bomId : null,
   )
 
@@ -574,6 +634,12 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     }
   }, [isBomView, bomId])
 
+  useEffect(() => {
+    if (isTemplateSeries && (activeTab === "production" || activeTab === "finalize")) {
+      setActiveTab("bom")
+    }
+  }, [activeTab, isTemplateSeries])
+
   const updateProductMutation = useMutation({
     mutationFn: (payload: Partial<ProductDetail>) =>
       apiFetch(`/api/v1/production/productions/${productId}/`, {
@@ -657,9 +723,12 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
       apiFetch<BomItem>(`/api/v1/production/templates/${targetBomId}/duplicate/`, {
         method: "POST",
       }),
-    onSuccess: (created) => {
+    onSuccess: (created, targetBomId) => {
       queryClient.invalidateQueries({ queryKey: ["production-product", productId] })
-      toast.success("BOM duplicated.")
+      const sourceBom = productDetail?.templates.find((item) => item.id === targetBomId)
+      toast.success(
+        sourceBom?.series_kind === "template" ? "Working series created from template." : "BOM duplicated.",
+      )
       if (productId) {
         navigate(`/production/${productId}/bom/${created.id}`)
       }
@@ -794,6 +863,20 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     onError: () => toast.error("Failed to add manual line."),
   })
 
+  const handleImportSuccess = useCallback(
+    (response?: { working_copy_id?: string }) => {
+      queryClient.invalidateQueries({ queryKey: ["production-bom", bomId] })
+      queryClient.invalidateQueries({ queryKey: ["production-product", productId] })
+      if (response?.working_copy_id && productId) {
+        toast.success("Template series created. Opening working series.")
+        navigate(`/production/${productId}/bom/${response.working_copy_id}`)
+        return
+      }
+      toast.success("Netlist imported into template series.")
+    },
+    [bomId, navigate, productId, queryClient],
+  )
+
   const importFileMutation = useMutation({
     mutationFn: async ({ file }: { file: File }) => {
       const data = new FormData()
@@ -802,33 +885,30 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
       if (sourceUrlInput.trim()) {
         data.append("source_url", sourceUrlInput.trim())
       }
-      return apiFetch(`/api/v1/production/templates/${bomId}/import-bom/`, {
+      return apiFetch<{ working_copy_id?: string }>(`/api/v1/production/templates/${bomId}/import-bom/`, {
         method: "POST",
         body: data,
       })
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["production-bom", bomId] })
-      queryClient.invalidateQueries({ queryKey: ["production-product", productId] })
-      toast.success("Netlist imported.")
-    },
+    onSuccess: handleImportSuccess,
     onError: () => toast.error("Netlist import failed."),
   })
 
   const importUrlMutation = useMutation({
-    mutationFn: () =>
-      apiFetch<{ changed?: boolean; message?: string }>(`/api/v1/production/templates/${bomId}/import-url/`, {
-        method: "POST",
-        body: JSON.stringify({ source_url: sourceUrlInput.trim(), mode: importMode }),
-      }),
-    onSuccess: (response: { changed?: boolean; message?: string }) => {
+    mutationFn: (sourceUrl?: string) =>
+      apiFetch<{ changed?: boolean; message?: string; working_copy_id?: string }>(
+        `/api/v1/production/templates/${bomId}/import-url/`,
+        {
+          method: "POST",
+          body: JSON.stringify({ source_url: (sourceUrl || sourceUrlInput).trim(), mode: importMode }),
+        },
+      ),
+    onSuccess: (response) => {
       if (response?.changed === false) {
         toast.success(response.message || "No changes detected")
-      } else {
-        toast.success("BOM imported from URL.")
+        return
       }
-      queryClient.invalidateQueries({ queryKey: ["production-bom", bomId] })
-      queryClient.invalidateQueries({ queryKey: ["production-product", productId] })
+      handleImportSuccess(response)
     },
     onError: () => toast.error("Import from URL failed."),
   })
@@ -1163,17 +1243,9 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     const signature = `${bomId}|${sourcedSignature}|${placedSignature}`
     if (signature === lastIbomCompletionSyncRef.current) return
 
-    const client = getRealtimeClient()
-    client.emit({
-      type: IBOM_EVENT_TYPES.SYNC,
-      payload: { checkbox: "Sourced", refs: ibomCompletionRefs.sourced },
-    })
-    client.emit({
-      type: IBOM_EVENT_TYPES.SYNC,
-      payload: { checkbox: "Placed", refs: ibomCompletionRefs.placed },
-    })
+    void syncIbomState(ibomCompletionRefs)
     lastIbomCompletionSyncRef.current = signature
-  }, [autoSyncIbomCompletion, ibomConnected, bomId, ibomCompletionRefs])
+  }, [autoSyncIbomCompletion, ibomConnected, bomId, ibomCompletionRefs, syncIbomState])
 
   const sendIbomHover = useCallback((refs: [string, number][] | null, rowid: string) => {
     getRealtimeClient().emit({
@@ -1407,6 +1479,18 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     input.value = ""
   }
 
+  const handleImportNetlistFromUrl = () => {
+    if (!resolvedSourceUrl) {
+      toast.error("Enter a source URL above or configure one on this BOM.")
+      return
+    }
+    if (!canImportNetlist) {
+      toast.error("Netlist import is only available on template series or empty series.")
+      return
+    }
+    importUrlMutation.mutate(resolvedSourceUrl)
+  }
+
   const handleScanSubmit = (event: FormEvent) => {
     event.preventDefault()
     if (!scanInput.trim()) return
@@ -1460,8 +1544,23 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     setPacketSheetOpen(true)
   }
 
+  const openFindPacketSheet = () => {
+    setPacketSheetTarget({
+      browseMode: true,
+      mode: scannerMode === "PLACED" ? "PLACED" : "SOURCED",
+      initialSearch: scanInput.trim(),
+    })
+    setPacketSheetOpen(true)
+  }
+
   const handlePacketSelect = (packet: PacketSelectItem, qty: number) => {
     if (!packetSheetTarget) return
+    if (packetSheetTarget.browseMode || !packetSheetTarget.lineId) {
+      void executeScan(scannerMode, packet.id)
+      setPacketSheetOpen(false)
+      setPacketSheetTarget(null)
+      return
+    }
     manualPacketMutation.mutate({
       mode: packetSheetTarget.mode,
       barcode: packet.id,
@@ -1503,6 +1602,60 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     })
   }
 
+  const renderSeriesTableRows = (node: SeriesTreeNode, depth = 0): React.ReactNode[] => {
+    const { bom } = node
+    const rows: React.ReactNode[] = [
+      <TableRow key={bom.id} className={depth > 0 ? "bg-muted/15" : undefined}>
+        <TableCell className="min-w-[220px] align-top">
+          <div className="flex items-start gap-2" style={{ paddingLeft: `${depth * 1.25}rem` }}>
+            {depth > 0 ? <CornerDownRight className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" /> : null}
+            <div className="min-w-0">
+              <div className="font-medium text-foreground">{bom.name}</div>
+              {bom.description ? <p className="mt-0.5 text-xs text-muted-foreground">{bom.description}</p> : null}
+            </div>
+          </div>
+        </TableCell>
+        <TableCell className="align-top">
+          <span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold", seriesKindBadgeClass(bom.series_kind))}>
+            {bom.series_kind === "template" ? "Template" : "Working"}
+          </span>
+        </TableCell>
+        <TableCell className="align-top">
+          <span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold", statusBadgeClass(bom.status))}>
+            {bom.status}
+          </span>
+        </TableCell>
+        <TableCell className="align-top">
+          <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">{bom.qty_planned}x</span>
+        </TableCell>
+        <TableCell className="align-top text-sm text-muted-foreground">
+          {bom.planned_date ? new Date(bom.planned_date).toLocaleDateString() : "No date"}
+        </TableCell>
+        <TableCell className="align-top">
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => navigate(`/production/${productDetail!.id}/bom/${bom.id}`)}>
+              Open
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => duplicateBomMutation.mutate(bom.id)}>
+              {bom.series_kind === "template" ? "Create working series" : "Duplicate"}
+            </Button>
+            {bom.series_kind !== "template" && bom.status !== "locked" ? (
+              <Button variant="outline" size="sm" onClick={() => lockBomMutation.mutate(bom.id)}>
+                Lock
+              </Button>
+            ) : null}
+          </div>
+        </TableCell>
+      </TableRow>,
+    ]
+
+    for (const child of node.children) {
+      rows.push(...renderSeriesTableRows(child, depth + 1))
+    }
+
+    return rows
+  }
+
   return (
     <div
       className="w-full px-4 py-6 lg:px-6"
@@ -1528,16 +1681,28 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
           <p className="text-sm text-muted-foreground">Manage products, BOM series, availability and production flow.</p>
         </div>
         {isBomView && bomId ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="gap-1.5"
-            onClick={() => setShowBomDetails((value) => !value)}
-          >
-            {showBomDetails ? "Hide BOM detail" : "Show BOM detail"}
-            {showBomDetails ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {isTemplateSeries ? (
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => duplicateBomMutation.mutate(bomId)}
+                disabled={duplicateBomMutation.isPending}
+              >
+                Create working series
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setShowBomDetails((value) => !value)}
+            >
+              {showBomDetails ? "Hide BOM detail" : "Show BOM detail"}
+              {showBomDetails ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </Button>
+          </div>
         ) : null}
       </div>
 
@@ -1775,42 +1940,22 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                       {productDetail.templates.length === 0 ? (
                         <p className="text-sm text-muted-foreground">No BOM created yet.</p>
                       ) : (
-                        <div className="grid gap-2">
-                          {productDetail.templates
-                            .slice()
-                            .sort((a, b) => (b.planned_date || "").localeCompare(a.planned_date || ""))
-                            .map((bom) => (
-                              <div key={bom.id} className="rounded-md border border-border/60 p-3">
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                  <div>
-                                    <div className="flex items-center gap-2">
-                                      <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">{bom.qty_planned}x</span>
-                                      <h3 className="font-medium text-foreground">{bom.name}</h3>
-                                      <span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold", statusBadgeClass(bom.status))}>
-                                        {bom.status}
-                                      </span>
-                                    </div>
-                                    <p className="mt-1 text-sm text-muted-foreground">{bom.description || "No description."}</p>
-                                    <p className="text-xs text-muted-foreground">
-                                      {bom.planned_date ? new Date(bom.planned_date).toLocaleDateString() : "No date"}
-                                    </p>
-                                  </div>
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <Button variant="outline" size="sm" onClick={() => navigate(`/production/${productDetail.id}/bom/${bom.id}`)}>
-                                      Open
-                                    </Button>
-                                    <Button variant="outline" size="sm" onClick={() => duplicateBomMutation.mutate(bom.id)}>
-                                      Duplicate
-                                    </Button>
-                                    {bom.status !== "locked" ? (
-                                      <Button variant="outline" size="sm" onClick={() => lockBomMutation.mutate(bom.id)}>
-                                        Lock
-                                      </Button>
-                                    ) : null}
-                                  </div>
-                                </div>
-                              </div>
-                            ))}
+                        <div className="overflow-hidden rounded-lg border border-border/70">
+                          <Table>
+                            <TableHeader className="bg-muted/60">
+                              <TableRow>
+                                <TableHead>Name</TableHead>
+                                <TableHead>Kind</TableHead>
+                                <TableHead>Status</TableHead>
+                                <TableHead>Qty</TableHead>
+                                <TableHead>Date</TableHead>
+                                <TableHead className="text-right">Actions</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {seriesTree.flatMap((node) => renderSeriesTableRows(node))}
+                            </TableBody>
+                          </Table>
                         </div>
                       )}
                     </CardContent>
@@ -1836,6 +1981,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                           <div className="grid gap-3 sm:grid-cols-[1fr_130px_170px_auto]">
                             <Input
                               value={selectedBom.name}
+                              disabled={isTemplateSeries}
                               onChange={(e) =>
                                 queryClient.setQueryData<BomItem>(["production-bom", bomId], {
                                   ...selectedBom,
@@ -1845,6 +1991,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                             />
                             <Input
                               value={String(selectedBom.qty_planned)}
+                              disabled={isTemplateSeries}
                               onChange={(e) =>
                                 queryClient.setQueryData<BomItem>(["production-bom", bomId], {
                                   ...selectedBom,
@@ -1855,6 +2002,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                             <Input
                               type="date"
                               value={selectedBom.planned_date || ""}
+                              disabled={isTemplateSeries}
                               onChange={(e) =>
                                 queryClient.setQueryData<BomItem>(["production-bom", bomId], {
                                   ...selectedBom,
@@ -1898,8 +2046,12 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                           {([
                             { key: "bom", label: "BOM", icon: FileText },
                             { key: "ibom", label: "iBOM", icon: Link2 },
-                            { key: "production", label: "Production", icon: ScanLine },
-                            { key: "finalize", label: "Finalize & Lock", icon: Lock },
+                            ...(!isTemplateSeries
+                              ? [
+                                  { key: "production" as TabKey, label: "Production", icon: ScanLine },
+                                  { key: "finalize" as TabKey, label: "Finalize & Lock", icon: Lock },
+                                ]
+                              : []),
                           ] as Array<{ key: TabKey; label: string; icon: typeof FileText }>).map((tab) => {
                             const Icon = tab.icon
                             const active = activeTab === tab.key
@@ -1927,32 +2079,41 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
 
                         {activeTab === "bom" ? (
                           <div className="space-y-4">
+                            {isTemplateSeries ? (
+                              <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
+                                Template series is locked after netlist import. Use &quot;Create working series&quot; to run production.
+                              </p>
+                            ) : !canImportNetlist ? (
+                              <p className="rounded-md border border-border/60 bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+                                Netlist import is only available on template series or empty series. Duplicate from the template instead.
+                              </p>
+                            ) : null}
                             <div className="grid gap-2 rounded-md border border-border/60 p-3 sm:grid-cols-[1fr_140px_auto_auto]">
                               <Input
                                 placeholder="Source URL (HTTPS)"
                                 value={sourceUrlInput}
                                 onChange={(e) => setSourceUrlInput(e.target.value)}
-                                disabled={selectedBom.status === "locked"}
+                                disabled={!canImportNetlist}
                               />
                               <select
                                 value={importMode}
                                 onChange={(e) => setImportMode(e.target.value as "replace" | "merge")}
                                 className="rounded-md border border-input bg-background px-2 text-sm"
-                                disabled={selectedBom.status === "locked"}
+                                disabled={!canImportNetlist}
                               >
                                 <option value="replace">Replace</option>
                                 <option value="merge">Merge</option>
                               </select>
                               <Button
                                 variant="outline"
-                                disabled={selectedBom.status === "locked" || !sourceUrlInput.trim() || importUrlMutation.isPending}
+                                disabled={!canImportNetlist || !sourceUrlInput.trim() || importUrlMutation.isPending}
                                 onClick={() => importUrlMutation.mutate()}
                               >
                                 Import from URL
                               </Button>
                               <Button
                                 variant="outline"
-                                disabled={selectedBom.status === "locked" || !selectedBom.source_url || reImportMutation.isPending}
+                                disabled={!isTemplateSeries || !selectedBom.source_url || reImportMutation.isPending}
                                 onClick={() => reImportMutation.mutate()}
                               >
                                 Re-import
@@ -1960,16 +2121,44 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                             </div>
 
                             <div className="flex flex-wrap items-center gap-2">
-                              <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-input px-3 py-2 text-sm">
-                                <input
-                                  type="file"
-                                  accept=".xml,text/xml,application/xml"
-                                  onChange={handleImportFile}
-                                  className="hidden"
-                                  disabled={selectedBom.status === "locked"}
-                                />
-                                Import netlist (XML)
-                              </label>
+                              <div className="inline-flex items-stretch">
+                                <label
+                                  className={cn(
+                                    "inline-flex items-center gap-2 rounded-l-md border border-input px-3 py-2 text-sm",
+                                    canImportNetlist ? "cursor-pointer" : "cursor-not-allowed opacity-60",
+                                  )}
+                                >
+                                  <input
+                                    type="file"
+                                    accept=".xml,text/xml,application/xml"
+                                    onChange={handleImportFile}
+                                    className="hidden"
+                                    disabled={!canImportNetlist}
+                                  />
+                                  Import netlist (XML)
+                                </label>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      className="rounded-l-none border-l-0 px-2"
+                                      aria-label="Netlist actions"
+                                    >
+                                      <ChevronDown className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="start">
+                                    <DropdownMenuItem
+                                      onClick={handleImportNetlistFromUrl}
+                                      disabled={!canImportNetlistFromUrl || importUrlMutation.isPending}
+                                    >
+                                      Import from URL
+                                    </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
                               <Button
                                 variant="outline"
                                 size="sm"
@@ -2477,13 +2666,26 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
 
                         {activeTab === "production" ? (
                           <div className="space-y-3">
-                            <form onSubmit={handleScanSubmit} className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                            <form onSubmit={handleScanSubmit} className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
                               <Input
                                 ref={scanInputRef}
                                 value={scanInput}
                                 onChange={(e) => setScanInput(e.target.value)}
-                                placeholder="Scan barcode"
+                                placeholder="Scan barcode or search..."
                               />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                disabled={
+                                  scanLookupMutation.isPending
+                                  || scanCommitMutation.isPending
+                                  || Boolean(pendingScanConfirmation)
+                                  || Boolean(pendingNotInBomConfirmation)
+                                }
+                                onClick={openFindPacketSheet}
+                              >
+                                Find packet
+                              </Button>
                               <Button
                                 type="submit"
                                 disabled={
@@ -2912,6 +3114,8 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
         componentName={packetSheetTarget?.componentName}
         modeLabel={packetSheetTarget?.mode || "SOURCED"}
         lineProgress={packetSheetTarget?.lineProgress || null}
+        initialSearch={packetSheetTarget?.initialSearch || ""}
+        browseMode={packetSheetTarget?.browseMode}
         onSelect={handlePacketSelect}
       />
       <Dialog

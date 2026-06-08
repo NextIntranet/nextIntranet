@@ -114,6 +114,28 @@ class Template(NIModel):
         help_text=_('Verze šablony (např. v1.0, v2.1)')
     )
 
+    SERIES_KIND_CHOICES = [
+        ('template', _('Template')),
+        ('working', _('Working')),
+    ]
+
+    series_kind = models.CharField(
+        max_length=20,
+        choices=SERIES_KIND_CHOICES,
+        default='working',
+        verbose_name=_('Series kind'),
+        help_text=_('Template series holds imported netlist reference; working series is used for production.'),
+    )
+    source_template = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='working_copies',
+        verbose_name=_('Source template'),
+        help_text=_('Template series this working copy was created from.'),
+    )
+
     STATUS_CHOICES = [
         ('draft', _('Draft')),
         ('in_progress', _('In progress')),

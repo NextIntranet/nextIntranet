@@ -44,6 +44,8 @@ type PacketSelectSheetProps = {
   componentName?: string
   modeLabel: "SOURCED" | "PLACED"
   lineProgress?: PacketLineProgress | null
+  initialSearch?: string
+  browseMode?: boolean
   onSelect: (packet: PacketSelectItem, qty: number) => void
 }
 
@@ -99,6 +101,8 @@ export function PacketSelectSheet({
   componentName,
   modeLabel,
   lineProgress,
+  initialSearch = "",
+  browseMode = false,
   onSelect,
 }: PacketSelectSheetProps) {
   const [search, setSearch] = useState("")
@@ -110,8 +114,10 @@ export function PacketSelectSheet({
       setSearch("")
       setQtyByPacket({})
       setActivePacketId(null)
+      return
     }
-  }, [open])
+    setSearch(initialSearch.trim())
+  }, [open, initialSearch])
 
   const { data, isLoading, isFetching } = useQuery<PacketSelectItem[] | Paginated<PacketSelectItem>>({
     queryKey: ["production-packet-select", componentId || "__all__", open],
@@ -206,7 +212,7 @@ export function PacketSelectSheet({
 
   const handleUsePacket = (packet: PacketSelectItem) => {
     setActivePacketId(packet.id)
-    const qty = getQty(packet.id)
+    const qty = browseMode ? 1 : getQty(packet.id)
     if (qty <= 0) {
       toast.error("Quantity must be greater than 0.")
       return
@@ -243,17 +249,19 @@ export function PacketSelectSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full max-w-2xl">
         <SheetHeader>
-          <SheetTitle>Select bag for {modeLabel}</SheetTitle>
+          <SheetTitle>{browseMode ? "Find packet" : `Select bag for ${modeLabel}`}</SheetTitle>
           <SheetDescription>
-            {componentName
-              ? `Choose a bag for component "${componentName}".`
-              : "Choose a bag from the warehouse list."}
+            {browseMode
+              ? "Search by packet ID, component, location, or description, then select a bag."
+              : componentName
+                ? `Choose a bag for component "${componentName}".`
+                : "Choose a bag from the warehouse list."}
           </SheetDescription>
         </SheetHeader>
 
         <div className="mt-3 space-y-2">
           <Input
-            placeholder="Filter by packet ID, location, description..."
+            placeholder={browseMode ? "Search packets..." : "Filter by packet ID, location, description..."}
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             autoFocus
@@ -313,11 +321,18 @@ export function PacketSelectSheet({
                     key={packet.id}
                     className={cn(
                       "px-3 py-1.5 transition-colors",
+                      browseMode ? "cursor-pointer" : undefined,
                       activePacketId === packet.id
                         ? "bg-sky-100/70 ring-2 ring-inset ring-sky-400/70"
                         : "hover:bg-muted/40",
                     )}
-                    onClick={() => setActivePacketId(packet.id)}
+                    onClick={() => {
+                      if (browseMode) {
+                        handleUsePacket(packet)
+                        return
+                      }
+                      setActivePacketId(packet.id)
+                    }}
                   >
                     <div className="grid gap-1 text-[11px] sm:grid-cols-[1fr_auto] sm:items-center">
                       <div className="leading-[1.15]">
@@ -340,34 +355,48 @@ export function PacketSelectSheet({
                           <div className="line-clamp-1 text-[10px] text-muted-foreground">Description: {packet.description}</div>
                         ) : null}
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Input
-                          type="number"
-                          min="0"
-                          step="any"
-                          className="h-7 w-20"
-                          value={qtyByPacket[packet.id] ?? "0"}
-                          onFocus={() => setActivePacketId(packet.id)}
-                          onChange={(event) =>
-                            setQtyByPacket((prev) => ({
-                              ...prev,
-                              [packet.id]: event.target.value,
-                            }))
-                          }
-                        />
+                      {browseMode ? (
                         <Button
                           type="button"
-                          variant="outline"
                           size="sm"
                           className="h-7 px-2 text-[11px]"
-                          onClick={() => handleUseAll(packet)}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            handleUsePacket(packet)
+                          }}
                         >
-                          Use-all
+                          Select
                         </Button>
-                        <Button type="button" size="sm" className="h-7 px-2 text-[11px]" onClick={() => handleUsePacket(packet)}>
-                          Use
-                        </Button>
-                      </div>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            min="0"
+                            step="any"
+                            className="h-7 w-20"
+                            value={qtyByPacket[packet.id] ?? "0"}
+                            onFocus={() => setActivePacketId(packet.id)}
+                            onChange={(event) =>
+                              setQtyByPacket((prev) => ({
+                                ...prev,
+                                [packet.id]: event.target.value,
+                              }))
+                            }
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2 text-[11px]"
+                            onClick={() => handleUseAll(packet)}
+                          >
+                            Use-all
+                          </Button>
+                          <Button type="button" size="sm" className="h-7 px-2 text-[11px]" onClick={() => handleUsePacket(packet)}>
+                            Use
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}

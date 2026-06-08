@@ -7,14 +7,57 @@ import {
   type IbomHoverPayload,
   type IbomCheckboxPayload,
   type IbomReadyPayload,
+  type IbomStateResponse,
 } from './ibom-events';
+
+export interface IbomCompletionRefs {
+  sourced: Record<string, boolean>;
+  placed: Record<string, boolean>;
+}
 
 export interface UseIbomBridgeReturn {
   highlightInIbom: (ref: string) => void;
   markSourced: (ref: string, state: boolean) => void;
   sendBarcodeScan: (ref: string, autoCheck: boolean) => void;
+  syncIbomState: (refs?: IbomCompletionRefs) => Promise<void>;
   ibomConnected: boolean;
   highlightedRefs: string[] | null;
+}
+
+function buildCompletionRefsFromState(state: IbomStateResponse): IbomCompletionRefs {
+  const sourced: Record<string, boolean> = {};
+  const placed: Record<string, boolean> = {};
+  const qtyPlanned = Math.max(0, state.qty_planned || 0);
+
+  for (const line of state.components || []) {
+    if (line.dnp) continue;
+    const refs = Array.isArray(line.refs) ? line.refs : [];
+    if (refs.length === 0) continue;
+
+    const needed = Math.max(0, (line.qty_per_board || 0) * qtyPlanned);
+    const sourcedDone = needed > 0 && (line.sourced_total || 0) >= needed;
+    const placedDone = needed > 0 && (line.placed_total || 0) >= needed;
+
+    for (const ref of refs) {
+      if (!ref) continue;
+      sourced[ref] = sourcedDone;
+      placed[ref] = placedDone;
+    }
+  }
+
+  return { sourced, placed };
+}
+
+function emitIbomSync(refs: IbomCompletionRefs): void {
+  const client = getRealtimeClient();
+  client.emit({
+    type: IBOM_EVENT_TYPES.SYNC,
+    payload: { checkbox: 'Sourced', refs: refs.sourced },
+  });
+  client.emit({
+    type: IBOM_EVENT_TYPES.SYNC,
+    payload: { checkbox: 'Placed', refs: refs.placed },
+  });
 }
 
 export function useIbomBridge(templateId: string | null): UseIbomBridgeReturn {
@@ -22,6 +65,40 @@ export function useIbomBridge(templateId: string | null): UseIbomBridgeReturn {
   const [highlightedRefs, setHighlightedRefs] = useState<string[] | null>(null);
   const templateIdRef = useRef(templateId);
   templateIdRef.current = templateId;
+  const syncInFlightRef = useRef(false);
+
+  const syncIbomState = useCallback(async (refs?: IbomCompletionRefs) => {
+    const tid = templateIdRef.current;
+    if (!tid) return;
+    if (syncInFlightRef.current) return;
+
+    syncInFlightRef.current = true;
+    try {
+      let completionRefs = refs;
+      if (!completionRefs) {
+        const state = await apiFetch<IbomStateResponse>(`/api/v1/production/templates/${tid}/ibom-state/`);
+        completionRefs = buildCompletionRefsFromState(state);
+      }
+      emitIbomSync(completionRefs);
+    } catch (err) {
+      console.error('[ibom-bridge] sync error:', err);
+    } finally {
+      syncInFlightRef.current = false;
+    }
+  }, []);
+
+  const pushStateToIbom = useCallback(
+    (refs?: IbomCompletionRefs) => {
+      void syncIbomState(refs);
+      window.setTimeout(() => {
+        void syncIbomState(refs);
+      }, 500);
+      window.setTimeout(() => {
+        void syncIbomState(refs);
+      }, 2000);
+    },
+    [syncIbomState],
+  );
 
   const handleMessage = useCallback((event: RealtimeEvent) => {
     // Ignore only messages from this tab when echoed back (other tabs and osazovák still apply)
@@ -65,10 +142,21 @@ export function useIbomBridge(templateId: string | null): UseIbomBridgeReturn {
           break;
         }
         setIbomConnected(true);
+        pushStateToIbom();
+        break;
+      }
+
+      case IBOM_EVENT_TYPES.REQUEST_STATE: {
+        const requestedTemplateId = payload.templateId as string | undefined;
+        const currentTemplateId = templateIdRef.current;
+        if (currentTemplateId && requestedTemplateId && requestedTemplateId !== currentTemplateId) {
+          break;
+        }
+        pushStateToIbom();
         break;
       }
     }
-  }, []);
+  }, [pushStateToIbom]);
 
   useRealtimeMessages(handleMessage);
 
@@ -142,6 +230,7 @@ export function useIbomBridge(templateId: string | null): UseIbomBridgeReturn {
     highlightInIbom,
     markSourced,
     sendBarcodeScan,
+    syncIbomState,
     ibomConnected,
     highlightedRefs,
   };

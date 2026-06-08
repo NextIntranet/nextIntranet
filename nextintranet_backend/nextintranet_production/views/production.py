@@ -141,11 +141,11 @@ def _canonical_value(comp: ET.Element, lib_part: str) -> tuple[str, bool]:
 
 def _extract_component_id(fields: dict[str, str], props: dict[str, str]) -> str:
     keys = [
+        "NIID",
         "INTRANET_ID",
         "UUID",
         "UST_ID",
         "UST_id",
-        "NIID",
         "component_id",
     ]
     for key in keys:
@@ -153,6 +153,25 @@ def _extract_component_id(fields: dict[str, str], props: dict[str, str]) -> str:
         if value:
             return value
     return ""
+
+
+def _resolve_component_from_netlist_id(value: str) -> Component | None:
+    cleaned = _normalize_text(value)
+    if not cleaned:
+        return None
+
+    try:
+        parsed_uuid = uuid.UUID(cleaned)
+    except (TypeError, ValueError):
+        parsed_uuid = None
+
+    if parsed_uuid:
+        return Component.objects.filter(id=parsed_uuid).first()
+
+    for obj in resolve_identifier_objects(cleaned):
+        if isinstance(obj, Component):
+            return obj
+    return None
 
 
 def _extract_shop(fields: dict[str, str], props: dict[str, str]) -> str:
@@ -211,9 +230,7 @@ def _parse_netlist_components(xml_bytes: bytes):
             datasheet = ""
 
         component_id = _extract_component_id(fields, props)
-        linked_component = None
-        if component_id:
-            linked_component = Component.objects.filter(id=component_id).first()
+        linked_component = _resolve_component_from_netlist_id(component_id) if component_id else None
 
         group_key = (
             display_value,
@@ -494,15 +511,95 @@ def _apply_import_rows(template: Template, parsed_rows: list[dict[str, Any]], mo
     return created
 
 
+def _next_working_series_name(template: Template) -> str:
+    existing_count = template.working_copies.count()
+    if existing_count == 0:
+        return f"{template.name} (working)"
+    return f"{template.name} #{existing_count + 1}"
+
+
+def _working_qty_from_template(template: Template, qty_planned: int | None = None) -> int:
+    if qty_planned is not None:
+        return max(qty_planned, 1)
+    if template.qty_planned > 0:
+        return template.qty_planned
+    return 1
+
+
+def _clone_template_series(
+    template: Template,
+    *,
+    name: str | None = None,
+    qty_planned: int | None = None,
+    planned_date=None,
+    user=None,
+) -> Template:
+    clone = Template.objects.create(
+        production=template.production,
+        name=name or _next_working_series_name(template),
+        description=template.description,
+        version=template.version,
+        series_kind="working",
+        source_template=template if template.series_kind == "template" else template.source_template,
+        status="draft",
+        qty_planned=_working_qty_from_template(template, qty_planned),
+        planned_date=planned_date if planned_date is not None else template.planned_date,
+        source_url=template.source_url,
+        source_hash=template.source_hash,
+        source_file=template.source_file,
+        source_imported_at=template.source_imported_at,
+        ibom_url=template.ibom_url,
+        ibom_file=template.ibom_file,
+        ibom_updated_at=template.ibom_updated_at,
+        production_checkpoint={},
+    )
+
+    components = template.components.all().order_by("position", "created_at")
+    for idx, item in enumerate(components):
+        TemplateComponent.objects.create(
+            template=clone,
+            component=item.component,
+            position=idx,
+            notes=item.notes,
+            attributes=item.attributes,
+            source_type=item.source_type,
+            ref_group=item.ref_group,
+            refs=item.refs,
+            qty_per_board=item.qty_per_board,
+            qty_override_total=item.qty_override_total,
+            value=item.value,
+            footprint=item.footprint,
+            datasheet=item.datasheet,
+            bom_description=item.bom_description,
+            dnp=item.dnp,
+            needs_review=item.needs_review,
+            import_snapshot=item.import_snapshot,
+            sourced_total=0,
+            placed_total=0,
+        )
+
+    return clone
+
+
 def _import_xml_bytes_into_template(
     template: Template,
     xml_bytes: bytes,
     mode: str,
     source_url: str | None = None,
     source_filename: str | None = None,
+    *,
+    user=None,
+    create_working_copy: bool = True,
 ):
+    if template.series_kind == "working" and template.components.exists():
+        raise ValueError(
+            "Netlist import is only allowed on template series or empty series. "
+            "Create a working copy from the template instead."
+        )
+
     parsed_rows = _parse_netlist_components(xml_bytes)
     created = _apply_import_rows(template, parsed_rows, mode)
+    working_qty_planned = template.qty_planned
 
     filename = (source_filename or "netlist.xml").strip() or "netlist.xml"
     template.source_file.save(filename, ContentFile(xml_bytes), save=False)
@@ -510,9 +607,19 @@ def _import_xml_bytes_into_template(
     template.source_imported_at = timezone.now()
     if source_url is not None:
         template.source_url = source_url or None
-    template.status = "draft"
+    template.series_kind = "template"
+    template.qty_planned = 0
+    template.status = "locked"
+    template.locked_at = timezone.now()
+    template.locked_by = user
     template.save()
-    return created
+
+    working_copy = None
+    should_create_working = create_working_copy and template.working_copies.count() == 0
+    if should_create_working:
+        working_copy = _clone_template_series(template, qty_planned=working_qty_planned, user=user)
+
+    return created, working_copy
 
 
 class ProductionFolderViewSet(viewsets.ModelViewSet):
@@ -639,47 +746,17 @@ class TemplateViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def duplicate(self, request, pk=None):
         template = self.get_object()
-        clone = Template.objects.create(
-            production=template.production,
-            name=f"{template.name} (copy)",
-            description=template.description,
-            version=template.version,
-            status="draft",
-            qty_planned=template.qty_planned,
-            planned_date=template.planned_date,
-            source_url=template.source_url,
-            source_hash=template.source_hash,
-            source_file=template.source_file,
-            source_imported_at=template.source_imported_at,
-            ibom_url=template.ibom_url,
-            ibom_file=template.ibom_file,
-            ibom_updated_at=template.ibom_updated_at,
-            production_checkpoint={},
-        )
+        requested_name = _normalize_text(request.data.get("name"))
+        qty_planned = request.data.get("qty_planned")
+        planned_date = request.data.get("planned_date")
 
-        components = template.components.all().order_by("position", "created_at")
-        for idx, item in enumerate(components):
-            TemplateComponent.objects.create(
-                template=clone,
-                component=item.component,
-                position=idx,
-                notes=item.notes,
-                attributes=item.attributes,
-                source_type=item.source_type,
-                ref_group=item.ref_group,
-                refs=item.refs,
-                qty_per_board=item.qty_per_board,
-                qty_override_total=item.qty_override_total,
-                value=item.value,
-                footprint=item.footprint,
-                datasheet=item.datasheet,
-                bom_description=item.bom_description,
-                dnp=item.dnp,
-                needs_review=item.needs_review,
-                import_snapshot=item.import_snapshot,
-                sourced_total=0,
-                placed_total=0,
-            )
+        clone = _clone_template_series(
+            template,
+            name=requested_name or None,
+            qty_planned=int(qty_planned) if qty_planned is not None else None,
+            planned_date=planned_date or None,
+            user=request.user,
+        )
 
         serializer = self.get_serializer(clone)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -736,6 +813,7 @@ class TemplateViewSet(viewsets.ModelViewSet):
         return Response(
             {
                 "template_id": str(template.id),
+                "qty_planned": template.qty_planned,
                 "components": components,
             }
         )
@@ -809,24 +887,33 @@ class TemplateViewSet(viewsets.ModelViewSet):
                 source_url = _normalize_text(request.data.get("source_url"))
                 if source_url and not source_url.lower().startswith("https://"):
                     return Response({"error": "Source URL must use HTTPS."}, status=status.HTTP_400_BAD_REQUEST)
-            created = _import_xml_bytes_into_template(
+            create_working_copy = request.data.get("create_working_copy", "true")
+            if isinstance(create_working_copy, str):
+                create_working_copy = create_working_copy.lower() not in {"0", "false", "no"}
+
+            created, working_copy = _import_xml_bytes_into_template(
                 template=template,
                 xml_bytes=xml_bytes,
                 mode=mode,
                 source_url=source_url,
                 source_filename=xml_file.name,
+                user=request.user,
+                create_working_copy=create_working_copy,
             )
 
-            return Response(
-                {
-                    "success": True,
-                    "mode": mode,
-                    "rows_created": created,
-                    "hash": template.source_hash,
-                    "imported_at": template.source_imported_at,
-                },
-                status=status.HTTP_200_OK,
-            )
+            payload = {
+                "success": True,
+                "mode": mode,
+                "rows_created": created,
+                "hash": template.source_hash,
+                "imported_at": template.source_imported_at,
+                "series_kind": template.series_kind,
+            }
+            if working_copy:
+                payload["working_copy_id"] = str(working_copy.id)
+            return Response(payload, status=status.HTTP_200_OK)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         except ET.ParseError as exc:
             return Response({"error": f"Invalid XML file: {exc}"}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:
@@ -868,24 +955,34 @@ class TemplateViewSet(viewsets.ModelViewSet):
                 )
 
             filename = (urlparse(source_url).path.rsplit("/", 1)[-1] or "netlist.xml").strip() or "netlist.xml"
-            created = _import_xml_bytes_into_template(
+            create_working_copy = request.data.get("create_working_copy", "true")
+            if isinstance(create_working_copy, str):
+                create_working_copy = create_working_copy.lower() not in {"0", "false", "no"}
+
+            created, working_copy = _import_xml_bytes_into_template(
                 template=template,
                 xml_bytes=xml_bytes,
                 mode=mode,
                 source_url=source_url,
                 source_filename=filename,
+                user=request.user,
+                create_working_copy=create_working_copy,
             )
 
-            return Response(
-                {
-                    "success": True,
-                    "changed": True,
-                    "mode": mode,
-                    "rows_created": created,
-                    "hash": incoming_hash,
-                    "imported_at": template.source_imported_at,
-                }
-            )
+            payload = {
+                "success": True,
+                "changed": True,
+                "mode": mode,
+                "rows_created": created,
+                "hash": incoming_hash,
+                "imported_at": template.source_imported_at,
+                "series_kind": template.series_kind,
+            }
+            if working_copy:
+                payload["working_copy_id"] = str(working_copy.id)
+            return Response(payload)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         except ET.ParseError as exc:
             return Response({"error": f"Invalid XML from URL: {exc}"}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:
@@ -924,23 +1021,29 @@ class TemplateViewSet(viewsets.ModelViewSet):
                 )
 
             filename = (urlparse(template.source_url).path.rsplit("/", 1)[-1] or "netlist.xml").strip() or "netlist.xml"
-            created = _import_xml_bytes_into_template(
+            created, working_copy = _import_xml_bytes_into_template(
                 template=template,
                 xml_bytes=xml_bytes,
                 mode=mode,
                 source_url=template.source_url,
                 source_filename=filename,
+                user=request.user,
+                create_working_copy=False,
             )
-            return Response(
-                {
-                    "success": True,
-                    "changed": True,
-                    "mode": mode,
-                    "rows_created": created,
-                    "hash": template.source_hash,
-                    "imported_at": template.source_imported_at,
-                }
-            )
+            payload = {
+                "success": True,
+                "changed": True,
+                "mode": mode,
+                "rows_created": created,
+                "hash": template.source_hash,
+                "imported_at": template.source_imported_at,
+                "series_kind": template.series_kind,
+            }
+            if working_copy:
+                payload["working_copy_id"] = str(working_copy.id)
+            return Response(payload)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         except ET.ParseError as exc:
             return Response({"error": f"Invalid XML from URL: {exc}"}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:
@@ -1028,6 +1131,11 @@ class TemplateViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def scan(self, request, pk=None):
         template = self.get_object()
+        if template.series_kind == "template":
+            return Response(
+                {"error": "Scanner is only available on working series. Create a working copy from the template."},
+                status=status.HTTP_409_CONFLICT,
+            )
         mode = _normalize_text(request.data.get("mode")).upper()
         barcode = _normalize_text(request.data.get("barcode"))
         decision = _normalize_text(request.data.get("decision")).lower()

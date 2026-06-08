@@ -6,6 +6,7 @@ export const IBOM_EVENT_TYPES = {
   BARCODE: 'ibom.barcode',
   SYNC: 'ibom.sync',
   READY: 'ibom.ready',
+  REQUEST_STATE: 'ibom.request_state',
 } as const;
 
 export type IbomEventType = (typeof IBOM_EVENT_TYPES)[keyof typeof IBOM_EVENT_TYPES];
@@ -51,6 +52,7 @@ export interface IbomReadyPayload {
 
 export interface IbomStateResponse {
   template_id: string;
+  qty_planned: number;
   components: {
     id: string;
     refs: string[];
