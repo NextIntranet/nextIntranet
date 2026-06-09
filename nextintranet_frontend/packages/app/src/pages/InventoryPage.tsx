@@ -91,7 +91,15 @@ interface PaginatedStockOperations {
   results: StockOperation[]
 }
 
-const playAlertTone = () => {
+const buildInventoryDescription = (
+  countedQuantity: number,
+  recordedCount: number,
+  userDescription: string | null,
+) => {
+  const auditNote = `Physical count: ${countedQuantity} (recorded: ${recordedCount})`
+  const trimmed = userDescription?.trim()
+  return trimmed ? `${trimmed} | ${auditNote}` : auditNote
+}
   if (typeof window === "undefined") {
     return
   }
@@ -393,6 +401,8 @@ export function InventoryPage() {
     mutationFn: (payload: {
       packet: string
       quantity: number
+      countedQuantity: number
+      recordedCount: number
       description?: string | null
       reference?: string | null
     }) =>
@@ -402,8 +412,12 @@ export function InventoryPage() {
           packet: payload.packet,
           operation_type: "inventory",
           quantity: payload.quantity,
-          relative_quantity: false,
-          description: payload.description,
+          relative_quantity: true,
+          description: buildInventoryDescription(
+            payload.countedQuantity,
+            payload.recordedCount,
+            payload.description ?? null,
+          ),
           reference: payload.reference,
         }),
       }),
@@ -574,12 +588,20 @@ export function InventoryPage() {
   }
 
   const handleSubmit = () => {
-    if (!selectedPacket || parsedNewCount === null || Number.isNaN(parsedNewCount)) {
+    if (
+      !selectedPacket ||
+      parsedNewCount === null ||
+      Number.isNaN(parsedNewCount) ||
+      diff === null ||
+      Number.isNaN(diff)
+    ) {
       return
     }
     inventoryMutation.mutate({
       packet: selectedPacket.id,
-      quantity: parsedNewCount,
+      quantity: diff,
+      countedQuantity: parsedNewCount,
+      recordedCount: currentCount,
       description: description.trim() || null,
       reference: activeCampaign?.id ?? null,
     })
@@ -599,6 +621,8 @@ export function InventoryPage() {
     !!selectedPacket &&
     parsedNewCount !== null &&
     !Number.isNaN(parsedNewCount) &&
+    diff !== null &&
+    !Number.isNaN(diff) &&
     !inventoryMutation.isPending
 
   const allInventoried =
