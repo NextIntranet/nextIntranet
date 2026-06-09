@@ -73,9 +73,18 @@ class StockOperationCreateView(FormView):
 
 
 class StockOperationSerializer(serializers.ModelSerializer):
+    author_name = serializers.SerializerMethodField()
+
     class Meta:
         model = StockOperation
         fields = '__all__'
+
+    def get_author_name(self, instance):
+        author = instance.author
+        if not author:
+            return None
+        full_name = author.get_full_name().strip()
+        return full_name or author.username
 
     # def to_representation(self, instance):
     #     data = super().to_representation(instance)
@@ -102,7 +111,7 @@ class StockOperationSerializer(serializers.ModelSerializer):
 
 
 class StockOperationViewSet(viewsets.ModelViewSet):
-    queryset = StockOperation.objects.all()
+    queryset = StockOperation.objects.select_related('author').all()
     serializer_class = StockOperationSerializer
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend]

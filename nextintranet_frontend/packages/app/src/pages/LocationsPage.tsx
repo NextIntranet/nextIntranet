@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@nextintranet/core';
-import { CheckCircle, ChevronRight, Copy, Home, Pencil } from 'lucide-react';
+import { CheckCircle, ChevronRight, Copy, Home, Pencil, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { LocationParentSelect } from '@/components/LocationParentSelect';
@@ -163,6 +163,15 @@ export function LocationsPage() {
   const [isMapLoading, setIsMapLoading] = useState(false);
   const [mapFile, setMapFile] = useState<File | null>(null);
   const [removeMap, setRemoveMap] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createMapFile, setCreateMapFile] = useState<File | null>(null);
+  const [createForm, setCreateForm] = useState({
+    name: '',
+    location: '',
+    description: '',
+    parent: '',
+    can_store_items: false,
+  });
 
   const { data: user } = useQuery<User>({
     queryKey: ['me'],
@@ -304,6 +313,24 @@ export function LocationsPage() {
     },
     onError: () => {
       toast.error('Failed to update location.');
+    },
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (payload: LocationUpdatePayload) =>
+      apiFetch<LocationDetail>('/api/v1/store/location/', {
+        method: 'POST',
+        body: payload instanceof FormData ? payload : JSON.stringify(payload),
+      }),
+    onSuccess: (created) => {
+      queryClient.invalidateQueries({ queryKey: ['locations-tree'] });
+      setCreateOpen(false);
+      setCreateMapFile(null);
+      toast.success('Location created.');
+      navigate(`/store/location/${created.id}`);
+    },
+    onError: () => {
+      toast.error('Failed to create location.');
     },
   });
 
@@ -488,6 +515,43 @@ export function LocationsPage() {
     updateMutation.mutate(payload);
   };
 
+  const openCreateSheet = (parentId?: string | null) => {
+    setCreateForm({
+      name: '',
+      location: '',
+      description: '',
+      parent: parentId ?? levelId ?? '',
+      can_store_items: false,
+    });
+    setCreateMapFile(null);
+    setCreateOpen(true);
+  };
+
+  const handleCreate = () => {
+    if (!createForm.name.trim()) {
+      return;
+    }
+    const payload = {
+      name: createForm.name.trim(),
+      location: createForm.location.trim() || null,
+      description: createForm.description.trim() || null,
+      parent: createForm.parent || null,
+      can_store_items: createForm.can_store_items,
+    };
+    if (createMapFile) {
+      const data = new FormData();
+      data.append('name', payload.name);
+      data.append('location', payload.location ?? '');
+      data.append('description', payload.description ?? '');
+      data.append('parent', payload.parent ?? '');
+      data.append('can_store_items', payload.can_store_items ? 'true' : 'false');
+      data.append('map', createMapFile);
+      createMutation.mutate(data);
+      return;
+    }
+    createMutation.mutate(payload);
+  };
+
   const handleCopyLink = async (value: string) => {
     try {
       await navigator.clipboard.writeText(value);
@@ -528,6 +592,12 @@ export function LocationsPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {canEdit && (
+              <Button size="sm" className="gap-2" onClick={() => openCreateSheet()}>
+                <Plus className="h-4 w-4" />
+                Create location
+              </Button>
+            )}
             <ExtensionPoint name="locations.actions" context={{ locationId: id ?? null }} />
             <PrintActions targetType="location" targetId={id ?? null} label={locationDetail?.full_path || locationDetail?.name} compact />
           </div>
@@ -750,10 +820,21 @@ export function LocationsPage() {
                       {currentLevel ? currentLevel.name : 'Root'}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                     <span>{currentLevel?.full_path || 'Top-level locations'}</span>
                     {currentLevel?.id && (
                       <ShowComponentsButton to={`/store?locations=${currentLevel.id}`} />
+                    )}
+                    {canEdit && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1"
+                        onClick={() => openCreateSheet(currentLevel?.id ?? null)}
+                      >
+                        <Plus className="h-4 w-4" />
+                        Add location
+                      </Button>
                     )}
                   </div>
                 </div>
@@ -1074,6 +1155,87 @@ export function LocationsPage() {
                 Location details are not available.
               </div>
             )}
+          </SheetContent>
+        </Sheet>
+
+        <Sheet open={createOpen} onOpenChange={setCreateOpen}>
+          <SheetContent side="right" className="w-full max-w-lg">
+            <SheetHeader>
+              <SheetTitle>Create location</SheetTitle>
+            </SheetHeader>
+            <div className="mt-6 space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Name</label>
+                <Input
+                  value={createForm.name}
+                  onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
+                  placeholder="Location name"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Parent</label>
+                <LocationParentSelect
+                  locations={locationsTree || []}
+                  value={createForm.parent || null}
+                  onChange={(nextValue) =>
+                    setCreateForm({ ...createForm, parent: nextValue || '' })
+                  }
+                  emptyLabel="No parent (root level)"
+                  placeholder="Select parent location"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Location</label>
+                <Input
+                  value={createForm.location}
+                  onChange={(e) => setCreateForm({ ...createForm, location: e.target.value })}
+                  placeholder="Address or label"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Description</label>
+                <textarea
+                  value={createForm.description}
+                  onChange={(e) =>
+                    setCreateForm({ ...createForm, description: e.target.value })
+                  }
+                  className="min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  placeholder="Optional notes"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Map (SVG)</label>
+                <Input
+                  type="file"
+                  accept="image/svg+xml"
+                  onChange={(event) => {
+                    setCreateMapFile(event.target.files?.[0] ?? null);
+                  }}
+                />
+              </div>
+              <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <input
+                  type="checkbox"
+                  checked={createForm.can_store_items}
+                  onChange={(e) =>
+                    setCreateForm({ ...createForm, can_store_items: e.target.checked })
+                  }
+                  className="h-4 w-4 rounded border border-input"
+                />
+                Can store items
+              </label>
+              <div className="flex items-center justify-between gap-2 pt-2">
+                <Button variant="outline" onClick={() => setCreateOpen(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleCreate}
+                  disabled={!createForm.name.trim() || createMutation.isPending}
+                >
+                  {createMutation.isPending ? 'Creating...' : 'Create location'}
+                </Button>
+              </div>
+            </div>
           </SheetContent>
         </Sheet>
       </div>

@@ -62,6 +62,7 @@ interface StockOperation {
   quantity: number
   timestamp: string
   description?: string | null
+  author_name?: string | null
 }
 
 interface LocationNode {
@@ -554,10 +555,13 @@ export function PacketDetailPage() {
                       <TableHead className="h-9 w-[15%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                         Quantity
                       </TableHead>
-                      <TableHead className="h-9 w-[25%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      <TableHead className="h-9 w-[18%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                         Date
                       </TableHead>
-                      <TableHead className="h-9 w-[40%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      <TableHead className="h-9 w-[15%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Author
+                      </TableHead>
+                      <TableHead className="h-9 w-[27%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                         Description
                       </TableHead>
                     </TableRow>
@@ -573,6 +577,9 @@ export function PacketDetailPage() {
                         </TableCell>
                         <TableCell className="h-9 px-3 text-sm text-muted-foreground">
                           {new Date(operation.timestamp).toLocaleString()}
+                        </TableCell>
+                        <TableCell className="h-9 px-3 text-sm text-muted-foreground">
+                          {operation.author_name || "-"}
                         </TableCell>
                         <TableCell className="px-3 py-2 text-sm text-muted-foreground align-top">
                           {operation.description ? (

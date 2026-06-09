@@ -6,6 +6,7 @@ import { toast } from "sonner"
 
 import { ComponentInfoPopover } from "@/components/ComponentInfoPopover"
 import { LocationParentSelect } from "@/components/LocationParentSelect"
+import { PrintActions } from "@/components/PrintActions"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -59,6 +60,7 @@ interface PacketLocation {
 interface Packet {
   id: string
   count?: number | null
+  is_active?: boolean
   component: PacketComponent
   location?: PacketLocation | null
 }
@@ -149,6 +151,13 @@ export function InventoryPage() {
   const [locationCheckEnabled, setLocationCheckEnabled] = useState(true)
   const [newCount, setNewCount] = useState("")
   const [description, setDescription] = useState("")
+  const [showInventoriedWarning, setShowInventoriedWarning] = useState(false)
+
+  const notePacketLoaded = (packetId: string) => {
+    setShowInventoriedWarning(
+      !!activeCampaign && inventoriedPacketIds.has(packetId),
+    )
+  }
 
   const { data: locationsTree, isLoading: locationsLoading } = useQuery<LocationNode[]>(
     {
@@ -193,8 +202,29 @@ export function InventoryPage() {
 
   const packets = Array.isArray(packetsData) ? packetsData : packetsData?.results || []
 
-  const selectedPacket =
-    selectedPacketOverride ?? packets.find((packet) => packet.id === selectedPacketId)
+  const { data: packetDetail, isLoading: packetDetailLoading } = useQuery<Packet>({
+    queryKey: ["inventory-packet-detail", selectedPacketId],
+    queryFn: () => apiFetch<Packet>(`/api/v1/store/packet/${selectedPacketId}/`),
+    enabled: selectedPacketId.trim() !== "",
+  })
+
+  const selectedPacket = useMemo(() => {
+    const base =
+      packetDetail ??
+      selectedPacketOverride ??
+      packets.find((packet) => packet.id === selectedPacketId)
+    if (!base) {
+      return null
+    }
+    if (
+      selectedPacketOverride?.id === base.id &&
+      selectedPacketOverride.location &&
+      selectedPacketOverride.location.id !== base.location?.id
+    ) {
+      return { ...base, location: selectedPacketOverride.location }
+    }
+    return base
+  }, [packetDetail, selectedPacketOverride, packets, selectedPacketId])
 
   const { data: inventoryOperationsData } = useQuery<
     StockOperation[] | PaginatedStockOperations
@@ -235,9 +265,6 @@ export function InventoryPage() {
     ? packets.filter((packet) => !inventoriedPacketIds.has(packet.id))
     : packets
 
-  const isSelectedInventoried = selectedPacket
-    ? inventoriedPacketIds.has(selectedPacket.id)
-    : false
   const currentCount = selectedPacket?.count ?? 0
   const parsedNewCount = newCount.trim() === "" ? null : Number(newCount)
   const diff =
@@ -255,6 +282,11 @@ export function InventoryPage() {
     if (packetParam !== selectedPacketId) {
       setSelectedPacketId(packetParam)
       setSelectedPacketOverride(null)
+      if (packetParam) {
+        notePacketLoaded(packetParam)
+      } else {
+        setShowInventoriedWarning(false)
+      }
     }
 
     urlSyncRef.current = true
@@ -329,6 +361,7 @@ export function InventoryPage() {
         const packet = await apiFetch<Packet>(`/api/v1/store/packet/${packetId}/`)
         setSelectedPacketId(packet.id)
         setSelectedPacketOverride(packet)
+        notePacketLoaded(packet.id)
         setPacketScanValue("")
         setNewCount("")
         if (
@@ -369,19 +402,27 @@ export function InventoryPage() {
           packet: payload.packet,
           operation_type: "inventory",
           quantity: payload.quantity,
-          relative_quantity: true,
+          relative_quantity: false,
           description: payload.description,
           reference: payload.reference,
         }),
       }),
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["inventory-packets", selectedLocationId] })
       queryClient.invalidateQueries({
         queryKey: ["stocktaking-operations", activeCampaign?.id],
       })
+      queryClient.invalidateQueries({
+        queryKey: ["inventory-packet-detail", variables.packet],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ["packet-operations-preview", variables.packet],
+      })
       toast.success("Inventory recorded.")
       setNewCount("")
       setDescription("")
+      setShowInventoriedWarning(false)
+      setSelectedPacketOverride(null)
     },
     onError: () => {
       toast.error("Failed to record inventory.")
@@ -398,6 +439,9 @@ export function InventoryPage() {
       }),
     onSuccess: (_data, payload) => {
       queryClient.invalidateQueries({ queryKey: ["inventory-packets"] })
+      queryClient.invalidateQueries({
+        queryKey: ["inventory-packet-detail", payload.packetId],
+      })
       toast.success("Packet moved.")
       const targetLocation = locationLookup.get(payload.locationId)
       if (targetLocation) {
@@ -420,6 +464,25 @@ export function InventoryPage() {
     },
   })
 
+  const deactivatePacketMutation = useMutation({
+    mutationFn: (packetId: string) =>
+      apiFetch(`/api/v1/store/packet/${packetId}/`, {
+        method: "PATCH",
+        body: JSON.stringify({ is_active: false }),
+      }),
+    onSuccess: (_data, packetId) => {
+      queryClient.invalidateQueries({ queryKey: ["inventory-packets", selectedLocationId] })
+      queryClient.invalidateQueries({ queryKey: ["inventory-packet-detail", packetId] })
+      setSelectedPacketOverride((prev) =>
+        prev?.id === packetId ? { ...prev, is_active: false } : prev,
+      )
+      toast.success("Packet marked inactive.")
+    },
+    onError: () => {
+      toast.error("Failed to mark packet inactive.")
+    },
+  })
+
   const handleUnsetLocation = () => {
     setSelectedLocationId("")
     setLocationScanValue("")
@@ -427,6 +490,7 @@ export function InventoryPage() {
     setSelectedPacketOverride(null)
     setNewCount("")
     setMovePromptPacket(null)
+    setShowInventoriedWarning(false)
   }
 
   const handleLocationScan = () => {
@@ -443,6 +507,7 @@ export function InventoryPage() {
       setSelectedPacketId("")
       setSelectedPacketOverride(null)
       setNewCount("")
+      setShowInventoriedWarning(false)
       return
     }
     toast.error("Location not found.")
@@ -470,6 +535,7 @@ export function InventoryPage() {
     if (match) {
       setSelectedPacketId(match.id)
       setSelectedPacketOverride(null)
+      notePacketLoaded(match.id)
       setPacketScanValue("")
       setNewCount("")
       if (activeCampaign && inventoriedPacketIds.has(match.id)) {
@@ -483,6 +549,7 @@ export function InventoryPage() {
       const packet = await apiFetch<Packet>(`/api/v1/store/packet/${packetId}/`)
       setSelectedPacketId(packet.id)
       setSelectedPacketOverride(packet)
+      notePacketLoaded(packet.id)
       setPacketScanValue("")
       setNewCount("")
       if (activeCampaign && inventoriedPacketIds.has(packet.id)) {
@@ -507,12 +574,12 @@ export function InventoryPage() {
   }
 
   const handleSubmit = () => {
-    if (!selectedPacket || diff === null) {
+    if (!selectedPacket || parsedNewCount === null || Number.isNaN(parsedNewCount)) {
       return
     }
     inventoryMutation.mutate({
       packet: selectedPacket.id,
-      quantity: diff,
+      quantity: parsedNewCount,
       description: description.trim() || null,
       reference: activeCampaign?.id ?? null,
     })
@@ -530,8 +597,8 @@ export function InventoryPage() {
 
   const canSubmit =
     !!selectedPacket &&
-    diff !== null &&
-    !Number.isNaN(diff) &&
+    parsedNewCount !== null &&
+    !Number.isNaN(parsedNewCount) &&
     !inventoryMutation.isPending
 
   const allInventoried =
@@ -566,9 +633,16 @@ export function InventoryPage() {
                         Recorded count
                       </label>
                       <Input
-                        value={selectedPacket ? String(currentCount) : ""}
+                        value={
+                          packetDetailLoading && !packetDetail
+                            ? ""
+                            : selectedPacket
+                              ? String(currentCount)
+                              : ""
+                        }
                         disabled
                         className="h-14 text-lg font-semibold"
+                        placeholder={packetDetailLoading ? "Loading..." : undefined}
                       />
                     </div>
                     <div className="space-y-2">
@@ -600,7 +674,7 @@ export function InventoryPage() {
                       {diff === null || Number.isNaN(diff) ? "-" : diff}
                     </span>
                   </div>
-                  {activeCampaign && isSelectedInventoried && (
+                  {activeCampaign && showInventoriedWarning && (
                     <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-700">
                       Inventory already recorded for this packet in this campaign. You
                       can record it again if needed.
@@ -631,8 +705,16 @@ export function InventoryPage() {
           </Card>
 
           <Card className="border border-border/70">
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0">
               <CardTitle>Selected packet</CardTitle>
+              {selectedPacket ? (
+                <PrintActions
+                  targetType="packet"
+                  targetId={selectedPacket.id}
+                  label={selectedPacket.component.name || selectedPacket.id}
+                  compact
+                />
+              ) : null}
             </CardHeader>
             <CardContent className="space-y-4">
               {selectedPacket ? (
@@ -823,32 +905,36 @@ export function InventoryPage() {
                 <label className="text-sm font-medium text-foreground">
                   Select location
                 </label>
-                {locationsLoading ? (
-                  <Skeleton className="h-10 w-full" />
-                ) : (
-                  <LocationParentSelect
-                    locations={locationsTree || []}
-                    value={selectedLocationId || null}
-                    onChange={(value) => {
-                      setSelectedLocationId(value || "")
-                      setSelectedPacketId("")
-                      setSelectedPacketOverride(null)
-                      setNewCount("")
-                    }}
-                    emptyLabel="No location"
-                    placeholder="Select location"
-                  />
-                )}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleUnsetLocation}
-                  disabled={!selectedLocationId}
-                >
-                  Unset location
-                </Button>
+                <div className="flex gap-2">
+                  <div className="min-w-0 flex-1">
+                    {locationsLoading ? (
+                      <Skeleton className="h-10 w-full" />
+                    ) : (
+                      <LocationParentSelect
+                        locations={locationsTree || []}
+                        value={selectedLocationId || null}
+                        onChange={(value) => {
+                          setSelectedLocationId(value || "")
+                          setSelectedPacketId("")
+                          setSelectedPacketOverride(null)
+                          setNewCount("")
+                          setShowInventoriedWarning(false)
+                        }}
+                        emptyLabel="No location"
+                        placeholder="Select location"
+                      />
+                    )}
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleUnsetLocation}
+                    disabled={!selectedLocationId}
+                    className="shrink-0"
+                  >
+                    Unset location
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -896,34 +982,69 @@ export function InventoryPage() {
                   </div>
                 ) : visiblePackets.length ? (
                   <div className="divide-y divide-border/70">
-                    {visiblePackets.map((packet) => (
-                      <button
-                        key={packet.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedPacketId(packet.id)
-                          setSelectedPacketOverride(null)
-                          setNewCount("")
-                        }}
-                        className={`flex w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm ${
-                          selectedPacketId === packet.id
-                            ? "bg-muted/40 text-foreground"
-                            : "hover:bg-muted/30 text-muted-foreground"
-                        }`}
-                      >
-                        <div className="min-w-0">
-                          <div className="truncate text-foreground">
-                            {packet.component.name}
-                          </div>
-                          <div className="truncate text-xs text-muted-foreground">
-                            {packet.id}
-                          </div>
+                    {visiblePackets.map((packet) => {
+                      const isInactive = packet.is_active === false
+                      const zeroCount = (packet.count ?? 0) === 0
+                      const countLabel =
+                        typeof packet.count === "number"
+                          ? packet.count.toLocaleString()
+                          : "0"
+
+                      return (
+                        <div
+                          key={packet.id}
+                          className={`flex w-full items-center gap-2 px-4 py-2 text-sm ${
+                            selectedPacketId === packet.id
+                              ? "bg-muted/40"
+                              : "hover:bg-muted/30"
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedPacketId(packet.id)
+                              setSelectedPacketOverride(null)
+                              notePacketLoaded(packet.id)
+                              setNewCount("")
+                            }}
+                            className={`min-w-0 flex-1 text-left ${
+                              isInactive
+                                ? "text-muted-foreground line-through opacity-70"
+                                : selectedPacketId === packet.id
+                                  ? "text-foreground"
+                                  : "text-muted-foreground"
+                            }`}
+                          >
+                            <div className="truncate">{packet.component.name}</div>
+                            <div className="truncate text-xs">{packet.id}</div>
+                          </button>
+                          {zeroCount && !isInactive ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 shrink-0 px-2 text-xs"
+                              disabled={deactivatePacketMutation.isPending}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                deactivatePacketMutation.mutate(packet.id)
+                              }}
+                            >
+                              Mark inactive
+                            </Button>
+                          ) : null}
+                          <span
+                            className={`shrink-0 text-xs tabular-nums ${
+                              isInactive
+                                ? "text-muted-foreground line-through opacity-70"
+                                : "text-muted-foreground"
+                            }`}
+                          >
+                            {countLabel}
+                          </span>
                         </div>
-                        <div className="text-xs text-muted-foreground">
-                          {packet.count ?? 0}
-                        </div>
-                      </button>
-                    ))}
+                      )
+                    })}
                   </div>
                 ) : (
                   <p className="p-4 text-sm text-muted-foreground">

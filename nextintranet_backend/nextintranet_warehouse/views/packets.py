@@ -56,6 +56,8 @@ class PacketSerializer(serializers.ModelSerializer):
         return ExternalIdentifierSerializer(qs, many=True).data
 
     def to_representation(self, instance):
+        if instance.count == 0 and instance.operations.exists():
+            instance.calculate()
         response = super().to_representation(instance)
         response['component'] = ComponentSerializer(instance.component).data
         response['location'] = WarehouseSerializer(instance.location).data
@@ -65,9 +67,18 @@ class PacketSerializer(serializers.ModelSerializer):
 
 
 class StockOperationSerializer(serializers.ModelSerializer):
+    author_name = serializers.SerializerMethodField()
+
     class Meta:
         model = StockOperation
         fields = '__all__'
+
+    def get_author_name(self, instance):
+        author = instance.author
+        if not author:
+            return None
+        full_name = author.get_full_name().strip()
+        return full_name or author.username
 
 class PacketOperationsAPIView(mixins.RetrieveModelMixin, generics.GenericAPIView):
     queryset = StockOperation.objects.all()

@@ -410,10 +410,13 @@ class Packet(NIModel):
         Called automatically from StockOperation.save(); any code that creates or updates
         stock operations must use .save() (not bulk_create) so counts stay in sync.
         """
-        # Aktualizace počtu položek v packetu (předpokládáme, že výdej má zápornou quantity)
-        self.count = StockOperation.objects.filter(packet=self).aggregate(
-            total_quantity=models.Sum('quantity')
-        )['total_quantity'] or 0
+        count = 0
+        for operation in StockOperation.objects.filter(packet=self).order_by('timestamp', 'id'):
+            if operation.relative_quantity:
+                count += operation.quantity or 0
+            else:
+                count = operation.quantity or 0
+        self.count = count
 
         if self.count <= 0:
             self.totalValue = 0
