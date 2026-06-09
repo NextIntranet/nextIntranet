@@ -100,6 +100,8 @@ const buildInventoryDescription = (
   const trimmed = userDescription?.trim()
   return trimmed ? `${trimmed} | ${auditNote}` : auditNote
 }
+
+const playAlertTone = () => {
   if (typeof window === "undefined") {
     return
   }
