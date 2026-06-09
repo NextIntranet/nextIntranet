@@ -1,30 +1,29 @@
 
 import sys
 
-from PyQt6.QtCore import QUrl
-from PyQt6.QtWidgets import QApplication, QHBoxLayout, QLineEdit
-from PyQt6.QtWidgets import QMainWindow, QPushButton, QVBoxLayout
-from PyQt6.QtWidgets import QWidget
-from PyQt6.QtWebEngineWidgets import QWebEngineView
-from PyQt6.QtWebChannel import QWebChannel
-from PyQt6.QtWebEngineCore import QWebEngineSettings
+from PySide6.QtCore import QUrl
+from PySide6.QtWidgets import QApplication, QHBoxLayout, QLineEdit
+from PySide6.QtWidgets import QMainWindow, QPushButton, QVBoxLayout
+from PySide6.QtWidgets import QWidget
+from PySide6.QtWebEngineWidgets import QWebEngineView
+from PySide6.QtWebChannel import QWebChannel
+from PySide6.QtWebEngineCore import QWebEngineSettings
 
-from PyQt6.QtCore import pyqtSlot, QObject
-from PyQt6.QtCore import QTimer
+from PySide6.QtCore import Slot, QObject
+from PySide6.QtCore import QTimer
 
-from PyQt6.QtCore import QThread, pyqtSignal
-from PyQt6.QtCore import QSettings, QRect
-from PyQt6.QtWidgets import QLabel, QCheckBox, QTableWidget
+from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import QSettings, QRect
+from PySide6.QtWidgets import QLabel, QCheckBox, QTableWidget
 
 
-from PyQt6.QtWidgets import QDialog, QComboBox
-from PyQt6.QtWidgets import QVBoxLayout, QHBoxLayout
-from PyQt6.QtWidgets import QLabel, QLineEdit, QPushButton
-from PyQt6.QtWidgets import QCheckBox
-from PyQt6.QtNetwork import QNetworkRequest
-from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget
-from PyQt6.QtWebEngineCore import QWebEngineProfile, QWebEngineUrlRequestInterceptor
-import sys
+from PySide6.QtWidgets import QDialog, QComboBox
+from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout
+from PySide6.QtWidgets import QLabel, QLineEdit, QPushButton
+from PySide6.QtWidgets import QCheckBox
+from PySide6.QtNetwork import QNetworkRequest
+from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget
+from PySide6.QtWebEngineCore import QWebEngineProfile, QWebEngineUrlRequestInterceptor
 
 
 
@@ -44,7 +43,7 @@ import serial
 
 class SerialReader(QThread):
     """Třída pro čtení dat ze sériové linky v jiném vlákně"""
-    data_received = pyqtSignal(str)  # Signál přenášející zprávu do hlavního vlákna
+    data_received = Signal(str)  # Signál přenášející zprávu do hlavního vlákna
 
     def __init__(self, port="/dev/ttyUSB0", baudrate=9600):
         super().__init__()
@@ -76,7 +75,7 @@ class SerialReader(QThread):
 
 class WebBridge(QObject):
 
-    @pyqtSlot(str, str)
+    @Slot(str, str)
     def print_local(self, url, id):
 
         print("Label printed from Python!")
