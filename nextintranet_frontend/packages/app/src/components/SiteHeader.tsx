@@ -41,6 +41,7 @@ const segmentTitleMap: Record<string, string> = {
   "parameter-type": "Parameter types",
   "inventory-campaign": "Inventory campaigns",
   inventory: "Inventory",
+  packets: "Packet list",
   user: "Users",
   profile: "Profile",
   projects: "Projects",

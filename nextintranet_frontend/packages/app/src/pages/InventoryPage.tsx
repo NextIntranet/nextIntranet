@@ -31,6 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { postInventoryOperation } from "@/lib/inventory"
 import { getOperationLabel } from "@/lib/stockOperations"
 import { resolvePacketIdFromScan } from "@/lib/resolvePacketIdFromScan"
 
@@ -90,16 +91,6 @@ interface StockOperation {
 
 interface PaginatedStockOperations {
   results: StockOperation[]
-}
-
-const buildInventoryDescription = (
-  countedQuantity: number,
-  recordedCount: number,
-  userDescription: string | null,
-) => {
-  const auditNote = `Physical count: ${countedQuantity} (recorded: ${recordedCount})`
-  const trimmed = userDescription?.trim()
-  return trimmed ? `${trimmed} | ${auditNote}` : auditNote
 }
 
 const playAlertTone = () => {
@@ -468,20 +459,13 @@ export function InventoryPage() {
       description?: string | null
       reference?: string | null
     }) =>
-      apiFetch("/api/v1/store/packet/operation/", {
-        method: "POST",
-        body: JSON.stringify({
-          packet: payload.packet,
-          operation_type: "inventory",
-          quantity: payload.quantity,
-          relative_quantity: true,
-          description: buildInventoryDescription(
-            payload.countedQuantity,
-            payload.recordedCount,
-            payload.description ?? null,
-          ),
-          reference: payload.reference,
-        }),
+      postInventoryOperation({
+        packet: payload.packet,
+        quantity: payload.quantity,
+        countedQuantity: payload.countedQuantity,
+        recordedCount: payload.recordedCount,
+        userDescription: payload.description ?? null,
+        reference: payload.reference,
       }),
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["inventory-packets", selectedLocationId] })

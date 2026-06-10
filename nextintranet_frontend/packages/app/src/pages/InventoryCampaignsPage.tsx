@@ -302,7 +302,11 @@ export function InventoryCampaignsPage() {
           <Button size="sm" variant="outline" onClick={() => navigate("/store/inventory")}>
             Do inventory
           </Button>
-          <Button size="sm" variant="outline" disabled>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => navigate("/store/inventory/packets")}
+          >
             Packet list
           </Button>
           {canEdit && (
@@ -455,6 +459,15 @@ export function InventoryCampaignsPage() {
                       {stocktakingDetail.is_active ? "Open" : "Closed"}
                     </p>
                   </div>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() =>
+                      navigate(`/store/inventory/packets?campaign=${stocktakingDetail.id}`)
+                    }
+                  >
+                    View packet list
+                  </Button>
                   {canEdit && (
                     <Button
                       variant="outline"
