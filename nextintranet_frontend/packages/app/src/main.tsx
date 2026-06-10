@@ -16,6 +16,8 @@ initApiClient({
   getToken: () => tokenStorage.getToken(),
   setToken: (token: string | null) => token && tokenStorage.setToken(token),
   clearToken: () => tokenStorage.clearTokens(),
+  getRefreshToken: () => tokenStorage.getRefreshToken(),
+  setRefreshToken: (token: string) => tokenStorage.setRefreshToken(token),
   onUnauthorized: () => {
     const next = `${window.location.pathname}${window.location.search}${window.location.hash}` || '/';
     const loginUrl = `/login?next=${encodeURIComponent(next)}`;

@@ -5,6 +5,7 @@ import { apiFetch, nextIO } from "@nextintranet/core"
 import { toast } from "sonner"
 
 import { ComponentInfoPopover } from "@/components/ComponentInfoPopover"
+import { LocationDisplay } from "@/components/LocationDisplay"
 import { LocationParentSelect } from "@/components/LocationParentSelect"
 import { PrintActions } from "@/components/PrintActions"
 import { Button } from "@/components/ui/button"
@@ -130,6 +131,48 @@ const playAlertTone = () => {
   } catch {}
 }
 
+const playSuccessTone = () => {
+  if (typeof window === "undefined") {
+    return
+  }
+  const AudioContext =
+    window.AudioContext ||
+    (window as Window & { webkitAudioContext?: typeof window.AudioContext })
+      .webkitAudioContext
+  if (!AudioContext) {
+    return
+  }
+  try {
+    const context = new AudioContext()
+    const oscillator = context.createOscillator()
+    const gain = context.createGain()
+    oscillator.type = "sine"
+    oscillator.frequency.setValueAtTime(660, context.currentTime)
+    oscillator.frequency.setValueAtTime(990, context.currentTime + 0.12)
+    gain.gain.value = 0.08
+    oscillator.connect(gain)
+    gain.connect(context.destination)
+    oscillator.start()
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.3)
+    oscillator.stop(context.currentTime + 0.32)
+    oscillator.onended = () => {
+      context.close()
+    }
+  } catch {}
+}
+
+type StatusBanner = {
+  type: "success" | "error" | "info" | "warning"
+  text: string
+}
+
+const bannerStyles: Record<StatusBanner["type"], string> = {
+  success: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  error: "border-red-200 bg-red-50 text-red-700",
+  info: "border-sky-200 bg-sky-50 text-sky-700",
+  warning: "border-amber-200 bg-amber-50 text-amber-700",
+}
+
 const flattenLocations = (nodes: LocationNode[]) => {
   const map = new Map<string, LocationNode>()
   const walk = (items: LocationNode[]) => {
@@ -148,12 +191,15 @@ export function InventoryPage() {
   const queryClient = useQueryClient()
   const countInputRef = useRef<HTMLInputElement>(null)
   const lastScanRef = useRef<{ text: string; ts: number } | null>(null)
-  const urlSyncRef = useRef(false)
   const [searchParams, setSearchParams] = useSearchParams()
-  const [selectedLocationId, setSelectedLocationId] = useState("")
+  const [selectedLocationId, setSelectedLocationId] = useState(
+    () => searchParams.get("location-id") ?? "",
+  )
   const [locationScanValue, setLocationScanValue] = useState("")
   const [packetScanValue, setPacketScanValue] = useState("")
-  const [selectedPacketId, setSelectedPacketId] = useState("")
+  const [selectedPacketId, setSelectedPacketId] = useState(
+    () => searchParams.get("packet-id") ?? "",
+  )
   const [selectedPacketOverride, setSelectedPacketOverride] = useState<Packet | null>(
     null,
   )
@@ -162,10 +208,16 @@ export function InventoryPage() {
   const [newCount, setNewCount] = useState("")
   const [description, setDescription] = useState("")
   const [showInventoriedWarning, setShowInventoriedWarning] = useState(false)
+  const [statusBanner, setStatusBanner] = useState<StatusBanner | null>(null)
 
-  const notePacketLoaded = (packetId: string) => {
-    setShowInventoriedWarning(
-      !!activeCampaign && inventoriedPacketIds.has(packetId),
+  const notePacketLoaded = (packetId: string, componentName?: string) => {
+    const alreadyInventoried =
+      !!activeCampaign && inventoriedPacketIds.has(packetId)
+    setShowInventoriedWarning(alreadyInventoried)
+    setStatusBanner(
+      alreadyInventoried || !componentName
+        ? null
+        : { type: "info", text: `Packet changed: ${componentName}` },
     )
   }
 
@@ -275,6 +327,11 @@ export function InventoryPage() {
     ? packets.filter((packet) => !inventoriedPacketIds.has(packet.id))
     : packets
 
+  const isPacketResolving =
+    selectedPacketId.trim() !== "" &&
+    !selectedPacket &&
+    (packetDetailLoading || (selectedLocationId.trim() !== "" && packetsLoading))
+
   const currentCount = selectedPacket?.count ?? 0
   const parsedNewCount = newCount.trim() === "" ? null : Number(newCount)
   const diff =
@@ -282,51 +339,54 @@ export function InventoryPage() {
       ? null
       : parsedNewCount - currentCount
 
+  // Browser back/forward or external link: apply URL params to local state.
   useEffect(() => {
     const locationParam = searchParams.get("location-id") ?? ""
     const packetParam = searchParams.get("packet-id") ?? ""
 
-    if (locationParam !== selectedLocationId) {
-      setSelectedLocationId(locationParam)
+    setSelectedLocationId((current) =>
+      current === locationParam ? current : locationParam,
+    )
+    setSelectedPacketId((current) =>
+      current === packetParam ? current : packetParam,
+    )
+    setSelectedPacketOverride((current) =>
+      current && current.id !== packetParam ? null : current,
+    )
+    if (!packetParam) {
+      setShowInventoriedWarning(false)
     }
-    if (packetParam !== selectedPacketId) {
-      setSelectedPacketId(packetParam)
-      setSelectedPacketOverride(null)
-      if (packetParam) {
-        notePacketLoaded(packetParam)
-      } else {
-        setShowInventoriedWarning(false)
-      }
-    }
-
-    urlSyncRef.current = true
   }, [searchParams])
 
+  // UI selection changes: keep URL in sync without fighting URL hydration on mount.
   useEffect(() => {
-    if (!urlSyncRef.current) {
-      return
-    }
-    const nextParams = new URLSearchParams(searchParams)
     const locationParam = selectedLocationId.trim()
     const packetParam = selectedPacketId.trim()
 
-    if (locationParam) {
-      nextParams.set("location-id", locationParam)
-    } else {
-      nextParams.delete("location-id")
-    }
+    setSearchParams(
+      (prev) => {
+        const currentLocation = prev.get("location-id") ?? ""
+        const currentPacket = prev.get("packet-id") ?? ""
+        if (locationParam === currentLocation && packetParam === currentPacket) {
+          return prev
+        }
 
-    if (packetParam) {
-      nextParams.set("packet-id", packetParam)
-    } else {
-      nextParams.delete("packet-id")
-    }
-
-    const nextQuery = nextParams.toString()
-    if (nextQuery !== searchParams.toString()) {
-      setSearchParams(nextParams, { replace: true })
-    }
-  }, [searchParams, selectedLocationId, selectedPacketId, setSearchParams])
+        const next = new URLSearchParams(prev)
+        if (locationParam) {
+          next.set("location-id", locationParam)
+        } else {
+          next.delete("location-id")
+        }
+        if (packetParam) {
+          next.set("packet-id", packetParam)
+        } else {
+          next.delete("packet-id")
+        }
+        return next
+      },
+      { replace: true },
+    )
+  }, [selectedLocationId, selectedPacketId, setSearchParams])
 
   useEffect(() => {
     if (!selectedPacket) {
@@ -371,7 +431,7 @@ export function InventoryPage() {
         const packet = await apiFetch<Packet>(`/api/v1/store/packet/${packetId}/`)
         setSelectedPacketId(packet.id)
         setSelectedPacketOverride(packet)
-        notePacketLoaded(packet.id)
+        notePacketLoaded(packet.id, packet.component.name)
         setPacketScanValue("")
         setNewCount("")
         if (
@@ -434,14 +494,19 @@ export function InventoryPage() {
       queryClient.invalidateQueries({
         queryKey: ["packet-operations-preview", variables.packet],
       })
-      toast.success("Inventory recorded.")
+      playSuccessTone()
+      setStatusBanner({ type: "success", text: "Inventory recorded." })
       setNewCount("")
       setDescription("")
       setShowInventoriedWarning(false)
       setSelectedPacketOverride(null)
     },
     onError: () => {
-      toast.error("Failed to record inventory.")
+      playAlertTone()
+      setStatusBanner({
+        type: "error",
+        text: "Failed to record inventory. Please try again.",
+      })
     },
   })
 
@@ -507,6 +572,7 @@ export function InventoryPage() {
     setNewCount("")
     setMovePromptPacket(null)
     setShowInventoriedWarning(false)
+    setStatusBanner(null)
   }
 
   const handleLocationScan = () => {
@@ -524,6 +590,7 @@ export function InventoryPage() {
       setSelectedPacketOverride(null)
       setNewCount("")
       setShowInventoriedWarning(false)
+      setStatusBanner(null)
       return
     }
     toast.error("Location not found.")
@@ -551,7 +618,7 @@ export function InventoryPage() {
     if (match) {
       setSelectedPacketId(match.id)
       setSelectedPacketOverride(null)
-      notePacketLoaded(match.id)
+      notePacketLoaded(match.id, match.component.name)
       setPacketScanValue("")
       setNewCount("")
       if (activeCampaign && inventoriedPacketIds.has(match.id)) {
@@ -565,7 +632,7 @@ export function InventoryPage() {
       const packet = await apiFetch<Packet>(`/api/v1/store/packet/${packetId}/`)
       setSelectedPacketId(packet.id)
       setSelectedPacketOverride(packet)
-      notePacketLoaded(packet.id)
+      notePacketLoaded(packet.id, packet.component.name)
       setPacketScanValue("")
       setNewCount("")
       if (activeCampaign && inventoriedPacketIds.has(packet.id)) {
@@ -634,6 +701,15 @@ export function InventoryPage() {
   const moveTargetLocation = selectedLocation?.full_path || "this location"
   const hasPacketHistory = packetOperations.length > 0
 
+  const activeBanner: StatusBanner | null =
+    statusBanner ??
+    (activeCampaign && showInventoriedWarning
+      ? {
+          type: "warning",
+          text: "Inventory already recorded for this packet in this campaign. You can record it again if needed.",
+        }
+      : null)
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 lg:px-6">
       <div className="flex flex-col gap-1">
@@ -649,9 +725,29 @@ export function InventoryPage() {
           <Card>
             <CardHeader>
               <CardTitle>Inventory entry</CardTitle>
+              {selectedPacket ? (
+                <Link
+                  to={`/store/component/${selectedPacket.component.id}?packet=${selectedPacket.id}`}
+                  className="block min-h-[20px] truncate text-lg font-semibold text-foreground hover:text-primary hover:underline"
+                >
+                  {selectedPacket.component.name}
+                </Link>
+              ) : isPacketResolving ? (
+                <Skeleton className="h-7 w-48" />
+              ) : (
+                <p className="min-h-[20px] text-lg font-semibold text-muted-foreground">
+                  No packet selected
+                </p>
+              )}
             </CardHeader>
             <CardContent className="space-y-4">
-              {selectedPacket ? (
+              {isPacketResolving ? (
+                <div className="space-y-4">
+                  <Skeleton className="h-14 w-full" />
+                  <Skeleton className="h-14 w-full" />
+                  <Skeleton className="h-12 w-full" />
+                </div>
+              ) : selectedPacket ? (
                 <>
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
@@ -700,12 +796,17 @@ export function InventoryPage() {
                       {diff === null || Number.isNaN(diff) ? "-" : diff}
                     </span>
                   </div>
-                  {activeCampaign && showInventoriedWarning && (
-                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-700">
-                      Inventory already recorded for this packet in this campaign. You
-                      can record it again if needed.
-                    </div>
-                  )}
+                  <div
+                    className={`flex h-12 items-center overflow-hidden rounded-lg border px-4 text-sm ${
+                      activeBanner
+                        ? bannerStyles[activeBanner.type]
+                        : "border-border/40 bg-muted/10 text-muted-foreground"
+                    }`}
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <span className="truncate">{activeBanner?.text ?? ""}</span>
+                  </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground">
                       Description
@@ -718,9 +819,25 @@ export function InventoryPage() {
                       disabled={false}
                     />
                   </div>
-                  <Button onClick={handleSubmit} disabled={!canSubmit}>
-                    {inventoryMutation.isPending ? "Saving..." : "Record inventory"}
-                  </Button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button onClick={handleSubmit} disabled={!canSubmit}>
+                      {inventoryMutation.isPending ? "Saving..." : "Record inventory"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => deactivatePacketMutation.mutate(selectedPacket.id)}
+                      disabled={
+                        selectedPacket.is_active === false ||
+                        deactivatePacketMutation.isPending
+                      }
+                    >
+                      {deactivatePacketMutation.isPending
+                        ? "Discarding..."
+                        : selectedPacket.is_active === false
+                          ? "Packet inactive"
+                          : "Discard packet"}
+                    </Button>
+                  </div>
                 </>
               ) : (
                 <p className="text-sm text-muted-foreground">
@@ -743,7 +860,18 @@ export function InventoryPage() {
               ) : null}
             </CardHeader>
             <CardContent className="space-y-4">
-              {selectedPacket ? (
+              {isPacketResolving ? (
+                <div className="space-y-4">
+                  <div className="grid gap-4 sm:grid-cols-[160px_1fr]">
+                    <Skeleton className="h-40 w-full" />
+                    <div className="space-y-3">
+                      <Skeleton className="h-5 w-2/3" />
+                      <Skeleton className="h-5 w-1/2" />
+                      <Skeleton className="h-5 w-3/4" />
+                    </div>
+                  </div>
+                </div>
+              ) : selectedPacket ? (
                 <>
                   <div className="grid gap-4 sm:grid-cols-[160px_1fr]">
                     <div className="flex items-center justify-center rounded-lg border border-border/70 bg-muted/20 p-2">
@@ -791,9 +919,7 @@ export function InventoryPage() {
                         <p className="text-xs font-semibold uppercase text-muted-foreground">
                           Location
                         </p>
-                        <p className="text-foreground">
-                          {selectedPacket.location?.full_path || "-"}
-                        </p>
+                        <LocationDisplay location={selectedPacket.location} />
                       </div>
                     </div>
                   </div>
@@ -1030,7 +1156,7 @@ export function InventoryPage() {
                             onClick={() => {
                               setSelectedPacketId(packet.id)
                               setSelectedPacketOverride(null)
-                              notePacketLoaded(packet.id)
+                              notePacketLoaded(packet.id, packet.component.name)
                               setNewCount("")
                             }}
                             className={`min-w-0 flex-1 text-left ${

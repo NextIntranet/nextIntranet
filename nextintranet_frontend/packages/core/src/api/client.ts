@@ -4,6 +4,8 @@ export interface ApiConfig {
   setToken: (token: string) => void;
   clearToken: () => void;
   onUnauthorized: () => void;
+  getRefreshToken?: () => string | null;
+  setRefreshToken?: (token: string) => void;
 }
 
 let config: ApiConfig | null = null;
@@ -35,31 +37,82 @@ class ApiErrorImpl extends Error implements ApiError {
   }
 }
 
+// Shared promise so that concurrent 401s trigger only one refresh request.
+let refreshPromise: Promise<boolean> | null = null;
+
+async function refreshAccessToken(cfg: ApiConfig): Promise<boolean> {
+  const refreshToken = cfg.getRefreshToken?.();
+  if (!refreshToken) return false;
+
+  try {
+    const response = await fetch(`${cfg.baseUrl}/api/token/refresh/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh: refreshToken }),
+    });
+
+    if (!response.ok) return false;
+
+    const data: { access?: string; refresh?: string } = await response.json();
+    if (!data.access) return false;
+
+    cfg.setToken(data.access);
+    // Backend rotates refresh tokens, so store the new one when provided.
+    if (data.refresh) {
+      cfg.setRefreshToken?.(data.refresh);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function tryRefreshToken(cfg: ApiConfig): Promise<boolean> {
+  if (!refreshPromise) {
+    refreshPromise = refreshAccessToken(cfg).finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
+}
+
 export async function apiFetch<T = unknown>(
   path: string,
   init?: RequestInit
 ): Promise<T> {
   const cfg = getApiConfig();
-  const token = cfg.getToken();
-  
-  const headers = new Headers(init?.headers);
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
-  }
-  const isFormData = typeof FormData !== 'undefined' && init?.body instanceof FormData;
-  if (!headers.has('Content-Type') && !isFormData) {
-    headers.set('Content-Type', 'application/json');
-  }
 
-  const url = `${cfg.baseUrl}${path}`;
-  
-  const response = await fetch(url, {
-    ...init,
-    headers,
-  });
+  const isFormData = typeof FormData !== 'undefined' && init?.body instanceof FormData;
+
+  const doFetch = () => {
+    const headers = new Headers(init?.headers);
+    const token = cfg.getToken();
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
+    if (!headers.has('Content-Type') && !isFormData) {
+      headers.set('Content-Type', 'application/json');
+    }
+    return fetch(`${cfg.baseUrl}${path}`, {
+      ...init,
+      headers,
+    });
+  };
+
+  let response = await doFetch();
+
+  const isAuthEndpoint = path.startsWith('/api/token/');
+  if (response.status === 401 && !isAuthEndpoint) {
+    const refreshed = await tryRefreshToken(cfg);
+    if (refreshed) {
+      response = await doFetch();
+    }
+  }
 
   if (response.status === 401) {
-    cfg.onUnauthorized();
+    if (!isAuthEndpoint) {
+      cfg.onUnauthorized();
+    }
     throw new ApiErrorImpl('Unauthorized', 401);
   }
 

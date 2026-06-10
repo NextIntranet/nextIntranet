@@ -3,11 +3,12 @@ import { Link, useParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { type ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table"
 import { apiFetch } from "@nextintranet/core"
-import { Pencil, Plus, Trash2 } from "lucide-react"
+import { Copy, Pencil, Plus, Share2, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import Select, { type SingleValue, type MultiValue } from "react-select"
 import type { StylesConfig } from "react-select"
 
+import { LocationDisplay } from "@/components/LocationDisplay"
 import { LocationParentSelect } from "@/components/LocationParentSelect"
 import { PacketOperationSheet } from "@/components/PacketOperationSheet"
 import { PriceLabel } from "@/components/PriceLabel"
@@ -280,6 +281,15 @@ export function PacketDetailPage() {
     [packet],
   )
 
+  const handleCopy = async (value: string, successMessage: string) => {
+    try {
+      await navigator.clipboard.writeText(value)
+      toast.success(successMessage)
+    } catch {
+      toast.error("Unable to copy to clipboard.")
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="mx-auto max-w-7xl px-4 py-6 lg:px-6">
@@ -313,7 +323,37 @@ export function PacketDetailPage() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
             <h1 className="text-2xl font-semibold text-foreground">Packet</h1>
-            <p className="text-sm text-muted-foreground">ID: {packet.id}</p>
+            <div className="flex items-center gap-1">
+              <span className="text-sm text-muted-foreground">ID: {packet.id}</span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-5 w-5 text-muted-foreground [&_svg]:size-3.5"
+                    onClick={() => handleCopy(packet.id, "Packet ID copied.")}
+                  >
+                    <Copy />
+                    <span className="sr-only">Copy ID</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Copy ID</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-5 w-5 text-muted-foreground [&_svg]:size-3.5"
+                    onClick={() => handleCopy(window.location.href, "Link copied.")}
+                  >
+                    <Share2 />
+                    <span className="sr-only">Share link</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Copy link</TooltipContent>
+              </Tooltip>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <ExtensionPoint name="packets.actions" context={{ packetId: packet.id }} />
@@ -377,19 +417,11 @@ export function PacketDetailPage() {
                   <div className="text-right">
                     {!editMode ? (
                       packet.location ? (
-                        <div className="space-y-1">
-                          <Link
-                            to={`/store/location/${packet.location.id}`}
-                            className="text-primary hover:underline"
-                          >
-                            {packet.location.full_path}
-                          </Link>
-                          {packet.location.description && (
-                            <div className="text-xs text-muted-foreground">
-                              {packet.location.description}
-                            </div>
-                          )}
-                        </div>
+                        <LocationDisplay
+                          location={packet.location}
+                          showInlineDescription
+                          labelClassName="text-right"
+                        />
                       ) : (
                         <span className="text-muted-foreground">-</span>
                       )
@@ -674,6 +706,7 @@ export function PacketDetailPage() {
           queryClient.invalidateQueries({ queryKey: ["packet", id] })
         }}
       />
+
     </TooltipProvider>
   )
 }
