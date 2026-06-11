@@ -5,7 +5,7 @@ import { apiFetch, nextIO } from "@nextintranet/core"
 import { toast } from "sonner"
 
 import { ComponentInfoPopover } from "@/components/ComponentInfoPopover"
-import { InventoryProgressBar } from "@/components/InventoryProgressBar"
+import { CampaignProgressSummary } from "@/components/CampaignProgressSummary"
 import { LocationDisplay } from "@/components/LocationDisplay"
 import { LocationParentSelect } from "@/components/LocationParentSelect"
 import { PrintActions } from "@/components/PrintActions"
@@ -33,6 +33,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { postInventoryOperation } from "@/lib/inventory"
+import { type StocktakingProgress } from "@/lib/stocktaking"
 import { getOperationLabel } from "@/lib/stockOperations"
 import { resolvePacketIdFromScan } from "@/lib/resolvePacketIdFromScan"
 
@@ -78,8 +79,7 @@ interface StocktakingCampaign {
   description?: string | null
   target_date?: string | null
   is_active: boolean
-  inventoried_packet_count?: number
-  total_packet_count?: number
+  progress?: StocktakingProgress
 }
 
 interface StockOperation {
@@ -711,10 +711,22 @@ export function InventoryPage() {
 
       {activeCampaign ? (
         <div className="mt-4 rounded-lg border border-border/70 bg-muted/20 px-4 py-3">
-          <InventoryProgressBar
-            inventoried={activeCampaign.inventoried_packet_count ?? 0}
-            total={activeCampaign.total_packet_count ?? 0}
+          <CampaignProgressSummary
+            progress={activeCampaign.progress}
+            variant="full"
             label={`Inventoried in ${activeCampaign.name}`}
+            headerAction={
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 shrink-0 px-2 text-xs text-muted-foreground hover:text-foreground"
+                asChild
+              >
+                <Link to={`/store/inventory/packets?campaign=${activeCampaign.id}`}>
+                  Packet list
+                </Link>
+              </Button>
+            }
           />
         </div>
       ) : (

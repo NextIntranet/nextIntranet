@@ -6,8 +6,9 @@ import { Pencil, Plus } from "lucide-react"
 import { toast } from "sonner"
 import Select, { type MultiValue, type StylesConfig } from "react-select"
 
-import { InventoryProgressBar } from "@/components/InventoryProgressBar"
+import { CampaignProgressSummary } from "@/components/CampaignProgressSummary"
 import { Button } from "@/components/ui/button"
+import { type StocktakingProgress } from "@/lib/stocktaking"
 import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -20,8 +21,7 @@ interface Stocktaking {
   description?: string | null
   target_date?: string | null
   is_active: boolean
-  inventoried_packet_count?: number
-  total_packet_count?: number
+  progress?: StocktakingProgress
   authors?: string[]
   authors_details?: Array<{
     id: string
@@ -383,10 +383,10 @@ export function InventoryCampaignsPage() {
                         : "-"}
                     </TableCell>
                     <TableCell className="px-3 py-2">
-                      <InventoryProgressBar
-                        inventoried={campaign.inventoried_packet_count ?? 0}
-                        total={campaign.total_packet_count ?? 0}
+                      <CampaignProgressSummary
+                        progress={campaign.progress}
                         loading={isStocktakingLoading}
+                        variant="compact"
                       />
                     </TableCell>
                     <TableCell className="h-9 px-3 text-sm text-muted-foreground">
@@ -472,10 +472,16 @@ export function InventoryCampaignsPage() {
                       {stocktakingDetail.is_active ? "Open" : "Closed"}
                     </p>
                   </div>
-                  <InventoryProgressBar
-                    inventoried={stocktakingDetail.inventoried_packet_count ?? 0}
-                    total={stocktakingDetail.total_packet_count ?? 0}
-                  />
+                  <div className="space-y-2 rounded-lg border border-border/70 bg-muted/20 px-4 py-3">
+                    <p className="text-xs font-semibold uppercase text-muted-foreground">
+                      Campaign progress
+                    </p>
+                    <CampaignProgressSummary
+                      progress={stocktakingDetail.progress}
+                      loading={isDetailLoading}
+                      variant="full"
+                    />
+                  </div>
                   <Button
                     variant="outline"
                     className="w-full"

@@ -13,7 +13,7 @@ import {
 import Select, { type SingleValue, type StylesConfig } from "react-select"
 import { toast } from "sonner"
 
-import { InventoryProgressBar } from "@/components/InventoryProgressBar"
+import { CampaignProgressSummary } from "@/components/CampaignProgressSummary"
 import { LocationDisplay } from "@/components/LocationDisplay"
 import { LocationParentSelect } from "@/components/LocationParentSelect"
 import { Button } from "@/components/ui/button"
@@ -34,11 +34,13 @@ import {
   postInventoryOperation,
   type PaginatedResponse,
 } from "@/lib/inventory"
+import { type StocktakingProgress } from "@/lib/stocktaking"
 
 interface StocktakingCampaign {
   id: string
   name: string
   is_active: boolean
+  progress?: StocktakingProgress
 }
 
 interface PacketComponent {
@@ -445,46 +447,6 @@ export function InventoryPacketListPage() {
   const selectedPageOption =
     pageOptions.find((option) => option.value === String(page)) ?? pageOptions[0]
 
-  const { data: campaignTotalCountData } = useQuery<Packet[] | PaginatedResponse<Packet>>({
-    queryKey: ["inventory-packet-list-campaign-total-count", packetListFilters],
-    queryFn: () => {
-      const params = buildPacketListSearchParams(packetListFilters, {
-        page: 1,
-        pageSize: 1,
-        applyInventoryStatus: false,
-      })
-      return apiFetch<Packet[] | PaginatedResponse<Packet>>(
-        `/api/v1/store/packet/?${params.toString()}`,
-      )
-    },
-    enabled: locationInitialized && !!selectedCampaignId.trim(),
-  })
-
-  const { data: inventoriedCountData, isLoading: inventoriedCountLoading } = useQuery<
-    Packet[] | PaginatedResponse<Packet>
-  >({
-    queryKey: ["inventory-packet-list-inventoried-count", packetListFilters],
-    queryFn: () => {
-      const params = buildPacketListSearchParams(packetListFilters, {
-        page: 1,
-        pageSize: 1,
-        inventoryStatus: "inventoried",
-        applyInventoryStatus: true,
-      })
-      return apiFetch<Packet[] | PaginatedResponse<Packet>>(
-        `/api/v1/store/packet/?${params.toString()}`,
-      )
-    },
-    enabled: locationInitialized && !!selectedCampaignId.trim(),
-  })
-
-  const campaignTotalPacketCount = Array.isArray(campaignTotalCountData)
-    ? campaignTotalCountData.length
-    : campaignTotalCountData?.count ?? 0
-  const inventoriedPacketCount = Array.isArray(inventoriedCountData)
-    ? inventoriedCountData.length
-    : inventoriedCountData?.count ?? 0
-
   const selectedCampaign = campaigns.find((campaign) => campaign.id === selectedCampaignId)
 
   const campaignOptions: CampaignOption[] = campaigns.map((campaign) => ({
@@ -510,8 +472,7 @@ export function InventoryPacketListPage() {
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["inventory-packet-list"] })
-      queryClient.invalidateQueries({ queryKey: ["inventory-packet-list-inventoried-count"] })
-      queryClient.invalidateQueries({ queryKey: ["inventory-packet-list-campaign-total-count"] })
+      queryClient.invalidateQueries({ queryKey: ["stocktaking"] })
       toast.success(
         variables.is_active ? "Packet marked active." : "Packet marked inactive.",
       )
@@ -543,8 +504,6 @@ export function InventoryPacketListPage() {
     },
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["inventory-packet-list"] })
-      queryClient.invalidateQueries({ queryKey: ["inventory-packet-list-inventoried-count"] })
-      queryClient.invalidateQueries({ queryKey: ["inventory-packet-list-campaign-total-count"] })
       queryClient.invalidateQueries({ queryKey: ["stocktaking"] })
       queryClient.invalidateQueries({ queryKey: ["stocktaking-active"] })
       setRowCounts((prev) => {
@@ -591,10 +550,6 @@ export function InventoryPacketListPage() {
     setSelectedCampaignId(option?.value ?? "")
   }
 
-  const progressLoading =
-    !!selectedCampaignId.trim() &&
-    (inventoriedCountLoading || packetsLoading)
-
   return (
     <div className="w-full px-4 py-6 lg:px-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -622,10 +577,9 @@ export function InventoryPacketListPage() {
 
       {selectedCampaignId.trim() ? (
         <div className="mt-4 rounded-lg border border-border/70 bg-muted/20 px-4 py-3">
-          <InventoryProgressBar
-            inventoried={inventoriedPacketCount}
-            total={campaignTotalPacketCount}
-            loading={progressLoading}
+          <CampaignProgressSummary
+            progress={selectedCampaign?.progress}
+            variant="full"
             label={
               selectedCampaign
                 ? `Inventoried in ${selectedCampaign.name}`

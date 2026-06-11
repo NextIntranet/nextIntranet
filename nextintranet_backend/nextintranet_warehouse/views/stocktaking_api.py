@@ -1,5 +1,4 @@
-from django.db.models import Count, IntegerField, OuterRef, Subquery
-from django.db.models.functions import Coalesce
+from django.db.models import Count
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import serializers, viewsets
 from rest_framework.permissions import IsAuthenticated
@@ -11,6 +10,55 @@ from ..models.component import Packet, StockOperation
 from ..models.stocktaking import Stocktaking
 
 
+def get_stocktaking_progress_map(campaign_ids):
+    campaign_ids = [campaign_id for campaign_id in campaign_ids if campaign_id]
+    if not campaign_ids:
+        return {}
+
+    total_packets = Packet.objects.filter(is_active=True).count()
+    inventoried_rows = (
+        StockOperation.objects.filter(
+            operation_type="inventory",
+            reference__in=campaign_ids,
+        )
+        .values("reference")
+        .annotate(inventoried=Count("packet", distinct=True))
+    )
+    inventoried_by_id = {
+        str(row["reference"]): row["inventoried"] for row in inventoried_rows
+    }
+
+    result = {}
+    for campaign_id in campaign_ids:
+        campaign_key = str(campaign_id)
+        inventoried = inventoried_by_id.get(campaign_key, 0)
+        pending = max(0, total_packets - inventoried)
+        percent = round(inventoried / total_packets * 100) if total_packets else 0
+        result[campaign_key] = {
+            "total_packets": total_packets,
+            "inventoried_packets": inventoried,
+            "pending_packets": pending,
+            "progress_percent": percent,
+        }
+    return result
+
+
+def empty_stocktaking_progress(total_packets=0):
+    return {
+        "total_packets": total_packets,
+        "inventoried_packets": 0,
+        "pending_packets": total_packets,
+        "progress_percent": 0,
+    }
+
+
+class StocktakingProgressSerializer(serializers.Serializer):
+    total_packets = serializers.IntegerField()
+    inventoried_packets = serializers.IntegerField()
+    pending_packets = serializers.IntegerField()
+    progress_percent = serializers.IntegerField()
+
+
 class StocktakingSerializer(serializers.ModelSerializer):
     authors = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.all(),
@@ -18,8 +66,7 @@ class StocktakingSerializer(serializers.ModelSerializer):
         required=False,
     )
     authors_details = serializers.SerializerMethodField()
-    inventoried_packet_count = serializers.IntegerField(read_only=True)
-    total_packet_count = serializers.SerializerMethodField()
+    progress = serializers.SerializerMethodField()
 
     class Meta:
         model = Stocktaking
@@ -34,8 +81,7 @@ class StocktakingSerializer(serializers.ModelSerializer):
             "is_active",
             "authors",
             "authors_details",
-            "inventoried_packet_count",
-            "total_packet_count",
+            "progress",
         ]
 
     def get_authors_details(self, instance):
@@ -49,8 +95,13 @@ class StocktakingSerializer(serializers.ModelSerializer):
             for author in instance.authors.all()
         ]
 
-    def get_total_packet_count(self, instance):
-        return self.context.get("total_active_packet_count", 0)
+    def get_progress(self, instance):
+        progress_map = self.context.get("progress_map", {})
+        total_packets = self.context.get("total_active_packet_count", 0)
+        return progress_map.get(
+            str(instance.pk),
+            empty_stocktaking_progress(total_packets),
+        )
 
     def validate(self, attrs):
         is_active = attrs.get(
@@ -75,30 +126,21 @@ class StocktakingViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["is_active"]
 
-    def get_queryset(self):
-        inventoried_subquery = (
-            StockOperation.objects.filter(
-                operation_type="inventory",
-                reference=OuterRef("pk"),
-            )
-            .values("reference")
-            .annotate(count=Count("packet", distinct=True))
-            .values("count")
-        )
-        return (
-            super()
-            .get_queryset()
-            .annotate(
-                inventoried_packet_count=Coalesce(
-                    Subquery(inventoried_subquery[:1], output_field=IntegerField()),
-                    0,
-                )
-            )
-        )
-
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        context["total_active_packet_count"] = Packet.objects.filter(is_active=True).count()
+        total_active_packet_count = Packet.objects.filter(is_active=True).count()
+        context["total_active_packet_count"] = total_active_packet_count
+
+        if self.action in ("list", "retrieve"):
+            if self.action == "retrieve":
+                campaign_id = self.kwargs.get("pk")
+                campaign_ids = [campaign_id] if campaign_id else []
+            else:
+                campaign_ids = list(
+                    self.filter_queryset(self.get_queryset()).values_list("pk", flat=True)
+                )
+            context["progress_map"] = get_stocktaking_progress_map(campaign_ids)
+
         return context
 
 
