@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Link, useParams, useSearchParams } from "react-router-dom"
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   type ColumnDef,
@@ -284,6 +284,7 @@ const selectStyles: StylesConfig<OptionType, false> = {
 
 export function ComponentDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [editMode, setEditMode] = useState(false)
   const [editedData, setEditedData] = useState<Partial<Component>>({})
