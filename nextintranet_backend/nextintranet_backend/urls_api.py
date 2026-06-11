@@ -23,6 +23,8 @@ from .views.printList import (
 from .views.dashboard import DashboardMetricsAPIView
 from .views.plugins import PluginInstanceRouter, PluginExecuteView
 from .views.serviceToken import ServiceTokenRouter
+from .views.branding import BrandingSettingsView
+from .views.labelTemplate import LabelTemplateRouter, LabelTemplatePreviewView
 
 
 from .schema import schema
@@ -68,6 +70,9 @@ urlpatterns = [
     path('v1/production/', include(production_api_urls)),
     path('v1/graphql/', GraphQLView.as_view(graphiql=True, schema=schema), name='graphql'),
 
+    path('v1/setting/branding/', BrandingSettingsView.as_view(), name='api_setting_branding'),
+    path('v1/print/template/preview/', LabelTemplatePreviewView.as_view(), name='api_print_template_preview'),
+    path('v1/print/template/', include(LabelTemplateRouter.urls), name='api_print_template'),
     path('v1/print/list/', include(PrintListRouter.urls), name='api_print_list'),
     path('v1/print/render/', include(PrintRenderJobRouter.urls), name='api_print_render'),
     path('v1/print/item/upload/', PrintItemUploadView.as_view(), name='api_print_item_upload'),

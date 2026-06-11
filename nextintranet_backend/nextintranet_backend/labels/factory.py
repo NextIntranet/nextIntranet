@@ -29,6 +29,9 @@ class LabelGeneratorFactory:
                 page_margin_top: Top margin of the page in mm
                 page_margin_right: Right margin of the page in mm
                 page_margin_bottom: Bottom margin of the page in mm
+                content_overrides: Optional dict mapping label type keys to
+                    LabelContentGenerator instances (e.g. template-based
+                    generators) that replace the built-in ones
             
         Returns:
             Configured label generator instance
@@ -85,14 +88,6 @@ class LabelGeneratorFactory:
             width_mm = kwargs.get('width_mm', 70)
             height_mm = kwargs.get('height_mm', 42.3)
 
-            margin_left_mm = 3
-            margin_top_mm = 3
-            spacing_h_mm = 0
-            spacing_v_mm = 0
-            skip_labels = 0
-            width_mm = 70
-            height_mm = 42.3
-            
             print(f"LabelGeneratorFactory: Using margins for 3x7: left={margin_left_mm}mm, top={margin_top_mm}mm")
             print(f"LabelGeneratorFactory: Using spacing for 3x7: h={spacing_h_mm}mm, v={spacing_v_mm}mm")
             
@@ -141,6 +136,11 @@ class LabelGeneratorFactory:
         generator.register_content_generator('packet', PacketLabelGenerator())
         generator.register_content_generator('component', ComponentLabelGenerator())
         generator.register_content_generator('location', LocationLabelGenerator())
-        
+
+        # Template-based generators replace built-in ones when provided
+        content_overrides = kwargs.get('content_overrides') or {}
+        for key, override in content_overrides.items():
+            generator.register_content_generator(key, override)
+
         print(f"LabelGeneratorFactory: Generator created: {type(generator).__name__}")
         return generator

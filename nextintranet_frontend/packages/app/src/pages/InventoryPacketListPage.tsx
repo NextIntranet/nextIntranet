@@ -14,8 +14,10 @@ import Select, { type SingleValue, type StylesConfig } from "react-select"
 import { toast } from "sonner"
 
 import { CampaignProgressSummary } from "@/components/CampaignProgressSummary"
+import { ComponentInfoPopover } from "@/components/ComponentInfoPopover"
 import { LocationDisplay } from "@/components/LocationDisplay"
 import { LocationParentSelect } from "@/components/LocationParentSelect"
+import { PacketInfoPopover } from "@/components/PacketInfoPopover"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -29,6 +31,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { copyToClipboard } from "@/lib/clipboard"
 import {
   getInventoryStatusLabel,
   postInventoryOperation,
@@ -49,6 +52,11 @@ interface StocktakingCampaign {
 interface PacketComponent {
   id: string
   name: string
+  // The packet list endpoint embeds the full component serializer, so these
+  // are available for the hover popover without extra requests.
+  description?: string | null
+  primary_image_url?: string | null
+  primary_image?: string | null
 }
 
 interface PacketLocation {
@@ -58,7 +66,8 @@ interface PacketLocation {
 
 interface Packet {
   id: string
-  count?: number | null
+  // DRF serializes the Decimal field as a string.
+  count?: number | string | null
   is_active?: boolean
   inventory_op_count?: number
   component: PacketComponent
@@ -344,6 +353,17 @@ export function InventoryPacketListPage() {
     ? campaignsData
     : campaignsData?.results || []
 
+  // Fresh progress for the selected campaign only — polling the full campaign
+  // list this often would recompute progress for every campaign.
+  const { data: selectedCampaignDetail } = useQuery<StocktakingCampaign>({
+    queryKey: ["stocktaking-detail", selectedCampaignId],
+    queryFn: () =>
+      apiFetch<StocktakingCampaign>(`/api/v1/store/stocktaking/${selectedCampaignId}/`),
+    enabled: Boolean(selectedCampaignId.trim()),
+    refetchInterval: 10_000,
+    refetchIntervalInBackground: true,
+  })
+
   const activeCampaign = campaigns.find((campaign) => campaign.is_active)
   const defaultCampaignApplied = useRef(false)
   const { data: user } = useQuery<UserMe>({
@@ -476,8 +496,26 @@ export function InventoryPacketListPage() {
       })
     },
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["inventory-packet-list"] })
+      // Patch only the toggled row in the cache instead of refetching the
+      // whole table; the row stays visible (marked changed) even when the
+      // active filter would exclude it after a refetch.
+      queryClient.setQueryData<Packet[] | PaginatedResponse<Packet>>(
+        packetQueryKey,
+        (old) => {
+          if (!old) {
+            return old
+          }
+          const patch = (items: Packet[]) =>
+            items.map((packet) =>
+              packet.id === variables.packetId
+                ? { ...packet, is_active: variables.is_active }
+                : packet,
+            )
+          return Array.isArray(old) ? patch(old) : { ...old, results: patch(old.results) }
+        },
+      )
       queryClient.invalidateQueries({ queryKey: ["stocktaking"] })
+      queryClient.invalidateQueries({ queryKey: ["stocktaking-detail"] })
       toast.success(
         variables.is_active ? "Packet marked active." : "Packet marked inactive.",
       )
@@ -503,6 +541,7 @@ export function InventoryPacketListPage() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["inventory-packet-list"] })
       queryClient.invalidateQueries({ queryKey: ["stocktaking"] })
+      queryClient.invalidateQueries({ queryKey: ["stocktaking-detail"] })
       queryClient.invalidateQueries({ queryKey: ["stocktaking-active"] })
       setRowCounts((prev) => {
         const next = { ...prev }
@@ -518,15 +557,6 @@ export function InventoryPacketListPage() {
       setPendingPacketId(null)
     },
   })
-
-  const handleCopyText = async (value: string, successMessage: string) => {
-    try {
-      await navigator.clipboard.writeText(value)
-      toast.success(successMessage)
-    } catch {
-      toast.error("Unable to copy to clipboard.")
-    }
-  }
 
   const handleRecordInventory = (packet: Packet) => {
     const raw = rowCounts[packet.id]?.trim() ?? ""
@@ -572,7 +602,7 @@ export function InventoryPacketListPage() {
       {selectedCampaignId.trim() ? (
         <div className="mt-4 rounded-lg border border-border/70 bg-muted/20 px-4 py-3">
           <CampaignProgressSummary
-            progress={selectedCampaign?.progress}
+            progress={selectedCampaignDetail?.progress ?? selectedCampaign?.progress}
             variant="full"
             label={
               selectedCampaign
@@ -736,25 +766,27 @@ export function InventoryPacketListPage() {
                               <div className="min-w-0 flex-1">
                                 {isFirstInComponent ? (
                                   <div className="flex min-w-0 items-center gap-1">
-                                    <Link
-                                      to={`/store/component/${packet.component.id}?packet=${packet.id}`}
-                                      className={`truncate font-medium hover:underline ${inactiveRowClass || "text-foreground"}`}
-                                      title={packet.component.name}
+                                    <ComponentInfoPopover
+                                      component={packet.component}
+                                      packetId={packet.id}
+                                      openOnHover
                                     >
-                                      {packet.component.name}
-                                    </Link>
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <Link
-                                          to={`/store/packet/${packet.id}`}
-                                          className="inline-flex shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                                          aria-label="Open packet detail"
-                                        >
-                                          <Package className="h-3 w-3" />
-                                        </Link>
-                                      </TooltipTrigger>
-                                      <TooltipContent>Open packet</TooltipContent>
-                                    </Tooltip>
+                                      <Link
+                                        to={`/store/component/${packet.component.id}?packet=${packet.id}`}
+                                        className={`truncate font-medium hover:underline ${inactiveRowClass || "text-foreground"}`}
+                                      >
+                                        {packet.component.name}
+                                      </Link>
+                                    </ComponentInfoPopover>
+                                    <PacketInfoPopover packet={packet} openOnHover>
+                                      <Link
+                                        to={`/store/packet/${packet.id}`}
+                                        className="inline-flex shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                                        aria-label="Open packet detail"
+                                      >
+                                        <Package className="h-3 w-3" />
+                                      </Link>
+                                    </PacketInfoPopover>
                                   </div>
                                 ) : null}
                                 <div
@@ -762,12 +794,13 @@ export function InventoryPacketListPage() {
                                     isFirstInComponent ? "mt-0.5" : ""
                                   }`}
                                 >
-                                  <span
-                                    className={`truncate font-mono text-[10px] leading-tight ${inactiveRowClass || "text-muted-foreground"}`}
-                                    title={packet.id}
-                                  >
-                                    {packet.id}
-                                  </span>
+                                  <PacketInfoPopover packet={packet} openOnHover>
+                                    <span
+                                      className={`truncate font-mono text-[10px] leading-tight ${inactiveRowClass || "text-muted-foreground"}`}
+                                    >
+                                      {packet.id}
+                                    </span>
+                                  </PacketInfoPopover>
                                   <Tooltip>
                                     <TooltipTrigger asChild>
                                       <Button
@@ -776,7 +809,7 @@ export function InventoryPacketListPage() {
                                         size="icon"
                                         className="h-4 w-4 shrink-0 text-muted-foreground [&_svg]:size-2.5"
                                         onClick={() =>
-                                          handleCopyText(packet.id, "Packet ID copied.")
+                                          copyToClipboard(packet.id, "Packet ID copied.")
                                         }
                                         aria-label="Copy packet ID"
                                       >
@@ -790,7 +823,9 @@ export function InventoryPacketListPage() {
                             </div>
                           </TableCell>
                           <TableCell className={`${compactCellClass} tabular-nums`}>
-                            <span className={inactiveRowClass}>{packet.count ?? 0}</span>
+                            <span className={inactiveRowClass}>
+                              {Number(packet.count ?? 0).toLocaleString()}
+                            </span>
                           </TableCell>
                           <TableCell className={`${compactCellClass} text-center`}>
                             <InventoryStatusIcon

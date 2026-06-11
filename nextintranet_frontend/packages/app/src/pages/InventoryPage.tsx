@@ -66,7 +66,8 @@ interface PacketLocation {
 
 interface Packet {
   id: string
-  count?: number | null
+  // DRF serializes the Decimal field as a string.
+  count?: number | string | null
   is_active?: boolean
   component: PacketComponent
   location?: PacketLocation | null
@@ -326,12 +327,21 @@ export function InventoryPage() {
     ? packets.filter((packet) => !inventoriedPacketIds.has(packet.id))
     : packets
 
+  // Inactive packets go to the end of the list, below a separator.
+  const activeVisiblePackets = visiblePackets.filter(
+    (packet) => packet.is_active !== false,
+  )
+  const inactiveVisiblePackets = visiblePackets.filter(
+    (packet) => packet.is_active === false,
+  )
+
   const isPacketResolving =
     selectedPacketId.trim() !== "" &&
     !selectedPacket &&
     (packetDetailLoading || (selectedLocationId.trim() !== "" && packetsLoading))
 
-  const currentCount = selectedPacket?.count ?? 0
+  // DRF serializes the Decimal count as a string, so coerce before math.
+  const currentCount = Number(selectedPacket?.count ?? 0)
   const parsedNewCount = newCount.trim() === "" ? null : Number(newCount)
   const diff =
     parsedNewCount === null || Number.isNaN(parsedNewCount)
@@ -696,6 +706,66 @@ export function InventoryPage() {
           text: "Inventory already recorded for this packet in this campaign. You can record it again if needed.",
         }
       : null)
+
+  const renderLocationPacketRow = (packet: Packet) => {
+    const isInactive = packet.is_active === false
+    // DRF serializes the Decimal count as a string, so coerce before use.
+    const countValue = Number(packet.count ?? 0)
+    const zeroCount = countValue === 0
+    const countLabel = Number.isFinite(countValue) ? countValue.toLocaleString() : "0"
+
+    return (
+      <div
+        key={packet.id}
+        className={`flex w-full items-center gap-2 px-4 py-2 text-sm ${
+          selectedPacketId === packet.id ? "bg-muted/40" : "hover:bg-muted/30"
+        }`}
+      >
+        <button
+          type="button"
+          onClick={() => {
+            setSelectedPacketId(packet.id)
+            setSelectedPacketOverride(null)
+            notePacketLoaded(packet.id, packet.component.name)
+          }}
+          className={`min-w-0 flex-1 text-left ${
+            isInactive
+              ? "text-muted-foreground line-through opacity-70"
+              : selectedPacketId === packet.id
+                ? "text-foreground"
+                : "text-muted-foreground"
+          }`}
+        >
+          <div className="truncate">{packet.component.name}</div>
+          <div className="truncate text-xs">{packet.id}</div>
+        </button>
+        {zeroCount && !isInactive ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 shrink-0 px-2 text-xs"
+            disabled={deactivatePacketMutation.isPending}
+            onClick={(event) => {
+              event.stopPropagation()
+              deactivatePacketMutation.mutate(packet.id)
+            }}
+          >
+            Mark inactive
+          </Button>
+        ) : null}
+        <span
+          className={`shrink-0 text-xs tabular-nums ${
+            isInactive
+              ? "text-muted-foreground line-through opacity-70"
+              : "text-muted-foreground"
+          }`}
+        >
+          {countLabel}
+        </span>
+      </div>
+    )
+  }
 
   return (
     <div className="w-full px-4 py-6 lg:px-6">
@@ -1147,68 +1217,15 @@ export function InventoryPage() {
                   </div>
                 ) : visiblePackets.length ? (
                   <div className="divide-y divide-border/70">
-                    {visiblePackets.map((packet) => {
-                      const isInactive = packet.is_active === false
-                      const zeroCount = (packet.count ?? 0) === 0
-                      const countLabel =
-                        typeof packet.count === "number"
-                          ? packet.count.toLocaleString()
-                          : "0"
-
-                      return (
-                        <div
-                          key={packet.id}
-                          className={`flex w-full items-center gap-2 px-4 py-2 text-sm ${
-                            selectedPacketId === packet.id
-                              ? "bg-muted/40"
-                              : "hover:bg-muted/30"
-                          }`}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedPacketId(packet.id)
-                              setSelectedPacketOverride(null)
-                              notePacketLoaded(packet.id, packet.component.name)
-                            }}
-                            className={`min-w-0 flex-1 text-left ${
-                              isInactive
-                                ? "text-muted-foreground line-through opacity-70"
-                                : selectedPacketId === packet.id
-                                  ? "text-foreground"
-                                  : "text-muted-foreground"
-                            }`}
-                          >
-                            <div className="truncate">{packet.component.name}</div>
-                            <div className="truncate text-xs">{packet.id}</div>
-                          </button>
-                          {zeroCount && !isInactive ? (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="h-7 shrink-0 px-2 text-xs"
-                              disabled={deactivatePacketMutation.isPending}
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                deactivatePacketMutation.mutate(packet.id)
-                              }}
-                            >
-                              Mark inactive
-                            </Button>
-                          ) : null}
-                          <span
-                            className={`shrink-0 text-xs tabular-nums ${
-                              isInactive
-                                ? "text-muted-foreground line-through opacity-70"
-                                : "text-muted-foreground"
-                            }`}
-                          >
-                            {countLabel}
-                          </span>
-                        </div>
-                      )
-                    })}
+                    {activeVisiblePackets.map(renderLocationPacketRow)}
+                    {inactiveVisiblePackets.length > 0 && (
+                      <div className="border-t-2 border-border bg-muted/30 px-4 py-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Inactive
+                        </span>
+                      </div>
+                    )}
+                    {inactiveVisiblePackets.map(renderLocationPacketRow)}
                   </div>
                 ) : (
                   <p className="p-4 text-sm text-muted-foreground">

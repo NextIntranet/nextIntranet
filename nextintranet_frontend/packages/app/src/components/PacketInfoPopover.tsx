@@ -1,45 +1,38 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
-import { Copy, Info, Link as LinkIcon } from "lucide-react"
+import { Copy, Link as LinkIcon, Package } from "lucide-react"
 import { Link } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { copyToClipboard } from "@/lib/clipboard"
 
-interface ComponentInfo {
+interface PacketInfo {
   id: string
-  name: string
-  description?: string | null
-  primary_image_url?: string | null
-  primary_image?: string | null
-  category?: {
+  count?: number | string | null
+  is_active?: boolean
+  component?: {
     id: string
     name: string
   } | null
+  location?: {
+    id: string
+    full_path: string
+  } | null
 }
 
-interface ComponentInfoPopoverProps {
-  component: ComponentInfo
-  packetId?: string
+interface PacketInfoPopoverProps {
+  packet: PacketInfo
   children?: ReactNode
   openOnHover?: boolean
 }
 
-export function ComponentInfoPopover({
-  component,
-  packetId,
+export function PacketInfoPopover({
+  packet,
   children,
   openOnHover = false,
-}: ComponentInfoPopoverProps) {
+}: PacketInfoPopoverProps) {
   const [hoverOpen, setHoverOpen] = useState(false)
-  const [imageSrc, setImageSrc] = useState<string | null>(
-    component.primary_image_url || component.primary_image || null,
-  )
   const closeTimeoutRef = useRef<number | null>(null)
-
-  useEffect(() => {
-    setImageSrc(component.primary_image_url || component.primary_image || null)
-  }, [component.id, component.primary_image_url, component.primary_image])
 
   useEffect(() => {
     return () => {
@@ -68,19 +61,19 @@ export function ComponentInfoPopover({
     }, 120)
   }
 
-  const componentLink = `/store/component/${component.id}${
-    packetId ? `?packet=${packetId}` : ""
-  }`
+  const isInactive = packet.is_active === false
+  const count = Number(packet.count ?? 0)
+
   const trigger = children ?? (
     <Button variant="ghost" size="icon" type="button" className="h-8 w-8">
-      <Info className="h-4 w-4" />
-      <span className="sr-only">Component details</span>
+      <Package className="h-4 w-4" />
+      <span className="sr-only">Packet details</span>
     </Button>
   )
 
   const triggerNode = openOnHover ? (
     <span
-      className="inline-flex min-w-0 max-w-full"
+      className="inline-flex min-w-0"
       onMouseEnter={openPopover}
       onMouseLeave={closePopover}
     >
@@ -101,48 +94,42 @@ export function ComponentInfoPopover({
         onMouseEnter={openOnHover ? openPopover : undefined}
         onMouseLeave={openOnHover ? closePopover : undefined}
       >
-        <div className="flex items-start gap-3">
-          {imageSrc ? (
-            <img
-              src={imageSrc}
-              alt={component.name}
-              className="h-12 w-12 rounded-md border border-border object-contain"
-              loading="lazy"
-              onError={() => {
-                if (imageSrc !== component.primary_image && component.primary_image) {
-                  setImageSrc(component.primary_image)
-                  return
-                }
-                setImageSrc(null)
-              }}
-            />
-          ) : (
-            <div className="flex h-12 w-12 items-center justify-center rounded-md border border-border bg-muted text-[10px] text-muted-foreground">
-              No image
-            </div>
-          )}
+        <div className="flex items-start gap-2">
+          <Package className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-foreground">{component.name}</p>
-            <p className="text-xs text-muted-foreground">{component.id}</p>
-            {component.category?.name && (
-              <p className="text-xs text-muted-foreground">
-                Category: {component.category.name}
+            <p className="break-all font-mono text-xs text-foreground">{packet.id}</p>
+            {packet.component?.name && (
+              <p className="mt-1 truncate text-sm font-medium text-foreground">
+                {packet.component.name}
               </p>
             )}
           </div>
         </div>
-        {component.description && (
-          <p className="mt-3 max-h-20 overflow-hidden text-xs text-muted-foreground">
-            {component.description}
-          </p>
-        )}
+        <dl className="mt-3 space-y-1 text-xs text-muted-foreground">
+          {packet.location?.full_path && (
+            <div className="flex gap-2">
+              <dt className="shrink-0 font-medium">Location:</dt>
+              <dd className="min-w-0 truncate">{packet.location.full_path}</dd>
+            </div>
+          )}
+          <div className="flex gap-2">
+            <dt className="shrink-0 font-medium">Count:</dt>
+            <dd className="tabular-nums">{Number.isFinite(count) ? count.toLocaleString() : "0"}</dd>
+          </div>
+          <div className="flex gap-2">
+            <dt className="shrink-0 font-medium">Status:</dt>
+            <dd className={isInactive ? "text-destructive" : "text-emerald-600"}>
+              {isInactive ? "Inactive" : "Active"}
+            </dd>
+          </div>
+        </dl>
         <div className="mt-3 flex items-center gap-2">
           <Button
             type="button"
             variant="outline"
             size="sm"
             className="h-7 gap-1.5 px-2 text-xs"
-            onClick={() => copyToClipboard(component.id, "Component ID copied.")}
+            onClick={() => copyToClipboard(packet.id, "Packet ID copied.")}
           >
             <Copy className="h-3 w-3" />
             Copy ID
@@ -154,8 +141,8 @@ export function ComponentInfoPopover({
             className="h-7 gap-1.5 px-2 text-xs"
             onClick={() =>
               copyToClipboard(
-                `${window.location.origin}/store/component/${component.id}`,
-                "Component link copied.",
+                `${window.location.origin}/store/packet/${packet.id}`,
+                "Packet link copied.",
               )
             }
           >
@@ -164,8 +151,11 @@ export function ComponentInfoPopover({
           </Button>
         </div>
         <div className="mt-3">
-          <Link to={componentLink} className="text-sm text-primary hover:underline">
-            Open component details
+          <Link
+            to={`/store/packet/${packet.id}`}
+            className="text-sm text-primary hover:underline"
+          >
+            Open packet detail
           </Link>
         </div>
       </PopoverContent>

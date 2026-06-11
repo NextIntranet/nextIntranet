@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { apiFetch, getApiConfig, nextIO, tokenStorage } from "@nextintranet/core"
-import { ChevronDown, ListPlus, Printer } from "lucide-react"
+import { ChevronDown, FileText, ListPlus, Printer } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -17,6 +17,8 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { useAddToPrintQueue } from "@/hooks/useAddToPrintQueue"
+import { PdfPrintDialog } from "@/components/PdfPrintDialog"
+import { fetchLabelTemplates, templatesForFormat } from "@/lib/printing"
 
 import type { AgentConfig } from "@nextintranet/core"
 
@@ -118,6 +120,8 @@ export function PrintActions({
   const [selectedPrinter, setSelectedPrinter] = useState("")
   const [printing, setPrinting] = useState(false)
   const [queuePending, setQueuePending] = useState(false)
+  const [pdfDialogOpen, setPdfDialogOpen] = useState(false)
+  const [selectedTemplateId, setSelectedTemplateId] = useState("")
   const agents = nextIO.getProfile().agents
   const isDocument = kind === "document"
   const documentUrl = fileUrl?.trim() || ""
@@ -163,6 +167,34 @@ export function PrintActions({
     queryKey: ["print-queues"],
     queryFn: () => apiFetch<PrintQueueOption[]>("/api/v1/print/list/"),
   })
+
+  const { data: templates = [] } = useQuery({
+    queryKey: ["label-templates"],
+    queryFn: fetchLabelTemplates,
+    enabled: !isDocument,
+  })
+
+  // Templates usable for direct agent printing (single label format).
+  const singleTemplates = useMemo(
+    () => (isDocument ? [] : templatesForFormat(templates, "single", targetType)),
+    [isDocument, templates, targetType],
+  )
+
+  useEffect(() => {
+    if (!singleTemplates.length) {
+      setSelectedTemplateId("")
+      return
+    }
+    if (
+      selectedTemplateId
+      && singleTemplates.some((template) => template.id === selectedTemplateId)
+    ) {
+      return
+    }
+    const preferred =
+      singleTemplates.find((template) => template.is_default) ?? singleTemplates[0]
+    setSelectedTemplateId(preferred.id)
+  }, [singleTemplates, selectedTemplateId])
 
   const { defaultQueueId, defaultQueueName, otherQueues } = useMemo(() => {
     const defaultQueue = queues.find((queue) => queue.is_default) ?? null
@@ -342,13 +374,15 @@ export function PrintActions({
         })
         itemId = item.id
 
+        const renderPayload: Record<string, unknown> = { format: "single" }
+        if (selectedTemplateId) {
+          renderPayload.template_id = selectedTemplateId
+        }
         const renderJob = await apiFetch<PrintRenderJob>("/api/v1/print/render/", {
           method: "POST",
           body: JSON.stringify({
             print_item_ids: [itemId],
-            payload: {
-              format: "single",
-            },
+            payload: renderPayload,
           }),
         })
 
@@ -474,6 +508,33 @@ export function PrintActions({
               No printers found
             </DropdownMenuItem>
           )}
+          {!isDocument && singleTemplates.length > 0 && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem disabled className="cursor-default text-xs text-muted-foreground">
+                Label template
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuRadioGroup
+                value={selectedTemplateId}
+                onValueChange={(value) => setSelectedTemplateId(value)}
+              >
+                {singleTemplates.map((template) => (
+                  <DropdownMenuRadioItem key={template.id} value={template.id}>
+                    {template.name}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+            </>
+          )}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={() => setPdfDialogOpen(true)}
+            disabled={isDocument ? !documentUrl : !targetId}
+          >
+            <FileText className="mr-1.5 h-3.5 w-3.5" />
+            Print to PDF...
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           {otherQueues.length ? (
             <>
@@ -501,6 +562,14 @@ export function PrintActions({
           )}
         </DropdownMenuContent>
       </DropdownMenu>
+      <PdfPrintDialog
+        open={pdfDialogOpen}
+        onOpenChange={setPdfDialogOpen}
+        targetType={isDocument ? undefined : targetType}
+        targetId={isDocument ? undefined : targetId}
+        documentUrl={isDocument ? documentUrl : undefined}
+        label={label}
+      />
     </div>
   )
 }

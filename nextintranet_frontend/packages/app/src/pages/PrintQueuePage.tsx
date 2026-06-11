@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ExtensionPoint } from "@/plugins/ExtensionPoint"
+import { PdfPrintDialog } from "@/components/PdfPrintDialog"
 import { cn } from "@/lib/utils"
 
 interface AgentPrinter {
@@ -88,6 +89,7 @@ export function PrintQueuePage() {
   const [selectedPrinter, setSelectedPrinter] = useState("")
   const [printing, setPrinting] = useState(false)
   const [printStatus, setPrintStatus] = useState<string | null>(null)
+  const [pdfDialogOpen, setPdfDialogOpen] = useState(false)
 
   const selectedAgent = useMemo(
     () => agents.find((agent) => agent.id === selectedAgentId) ?? null,
@@ -358,6 +360,13 @@ export function PrintQueuePage() {
           <Button size="sm" variant="outline" onClick={() => setCreateOpen(true)}>
             New queue
           </Button>
+          <Button
+            size="sm"
+            onClick={() => setPdfDialogOpen(true)}
+            disabled={!activeQueueId || !items.some((item) => item.kind === "label")}
+          >
+            Print to PDF
+          </Button>
           <ExtensionPoint name="printqueue.actions" context={{ queueId: activeQueueId }} />
         </div>
       </div>
@@ -614,6 +623,13 @@ export function PrintQueuePage() {
           </CardContent>
         </Card>
       </div>
+
+      <PdfPrintDialog
+        open={pdfDialogOpen}
+        onOpenChange={setPdfDialogOpen}
+        queueId={activeQueueId}
+        label={activeQueue?.name || "queue-labels"}
+      />
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-md">

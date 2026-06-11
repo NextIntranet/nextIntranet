@@ -26,6 +26,7 @@ import { HardwarePage } from './pages/HardwarePage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ServiceTokensPage } from './pages/ServiceTokensPage';
 import { SoftwareSettingsPage } from './pages/SoftwareSettingsPage';
+import { LabelTemplatesPage } from './pages/LabelTemplatesPage';
 import { DocsPage } from './pages/DocsPage';
 import { SupplierRelationPage } from './pages/SupplierRelationPage';
 import { ProductionPage } from './pages/ProductionPage';
@@ -217,6 +218,7 @@ export function App() {
           <Route path="settings" element={<SettingsPage />} />
           <Route path="settings/service-token" element={<ServiceTokensPage />} />
           <Route path="settings/software" element={<SoftwareSettingsPage />} />
+          <Route path="settings/label-template" element={<LabelTemplatesPage />} />
           <Route path="setting/hardware" element={<HardwarePage />} />
           <Route path="settings/hardware" element={<Navigate to="/setting/hardware" replace />} />
           <Route path="setting/service-token" element={<Navigate to="/settings/service-token" replace />} />
