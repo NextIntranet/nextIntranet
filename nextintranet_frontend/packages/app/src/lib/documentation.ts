@@ -105,6 +105,33 @@ export function buildPublicDocumentationHref(page: string, hash?: string) {
   return hash ? `${base}#${hash}` : base
 }
 
+export function parseDocumentationHref(href: string): { page: string; hash?: string } | null {
+  if (href.endsWith(".md")) {
+    const page = href.replace(/\.md$/, "").replace(/^\/?/, "")
+    return { page }
+  }
+  if (href.startsWith("/docs")) {
+    const withoutPrefix = href.replace(/^\/docs\/?/, "")
+    const [pathPart, hashPart] = withoutPrefix.split("#")
+    return {
+      page: pathPart.replace(/^\/+|\/+$/g, ""),
+      hash: hashPart ? decodeURIComponent(hashPart) : undefined,
+    }
+  }
+  return null
+}
+
+export function scrollDocumentationToHash(hash: string, root?: HTMLElement | null) {
+  if (!hash) {
+    return
+  }
+  const id = decodeURIComponent(hash.replace(/^#/, ""))
+  const target = root?.querySelector(`#${CSS.escape(id)}`) ?? document.getElementById(id)
+  if (target) {
+    target.scrollIntoView({ behavior: "smooth", block: "start" })
+  }
+}
+
 type NavSection = {
   label: string
   pages: DocumentationPage[]

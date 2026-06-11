@@ -24,7 +24,9 @@ from rest_framework import mixins
 from rest_framework import generics
 from rest_framework import viewsets
 from nextintranet_backend.routers import NoFormatSuffixRouter as DefaultRouter
+from django_filters import rest_framework as django_filters
 from django_filters.rest_framework import DjangoFilterBackend
+from django.db.models import Count, Q
 from rest_framework.pagination import PageNumberPagination
 from rest_framework import status
 
@@ -32,6 +34,8 @@ from rest_framework.response import Response
 from rest_framework import serializers
 
 from django.contrib.contenttypes.models import ContentType
+from django.db import transaction
+from django.db.models import F
 
 from nextintranet_warehouse.models.component import Packet, StockOperation, Component, Identifier
 from nextintranet_warehouse.models.warehouse import Warehouse
@@ -45,10 +49,44 @@ class PacketSerializer(serializers.ModelSerializer):
     component = serializers.PrimaryKeyRelatedField(queryset=Component.objects.all())
     location = serializers.PrimaryKeyRelatedField(queryset=Warehouse.objects.all())
     external_identifiers = serializers.SerializerMethodField()
+    inventory_op_count = serializers.IntegerField(read_only=True, required=False)
 
     class Meta:
         model = Packet
         fields = '__all__'
+        read_only_fields = [
+            'count',
+            'totalValue',
+            'itemValue',
+            'last_operation',
+            'date_added',
+            'inventory_op_count',
+        ]
+
+    def _initial_count(self) -> float:
+        raw = self.initial_data.get('count', 0)
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def create(self, validated_data):
+        initial_count = self._initial_count()
+        request = self.context.get('request')
+
+        with transaction.atomic():
+            packet = Packet.objects.create(**validated_data, count=0)
+            if initial_count > 0:
+                StockOperation.objects.create(
+                    packet=packet,
+                    operation_type='add',
+                    quantity=initial_count,
+                    relative_quantity=True,
+                    description='Initial stock',
+                    author=request.user if request and request.user.is_authenticated else None,
+                )
+                packet.refresh_from_db()
+        return packet
 
     def get_external_identifiers(self, instance):
         ct = ContentType.objects.get_for_model(Packet)
@@ -62,6 +100,7 @@ class PacketSerializer(serializers.ModelSerializer):
         response['component'] = ComponentSerializer(instance.component).data
         response['location'] = WarehouseSerializer(instance.location).data
         response['external_identifiers'] = self.get_external_identifiers(instance)
+        response['inventory_op_count'] = getattr(instance, 'inventory_op_count', 0)
         return response
 
 
@@ -103,13 +142,75 @@ class CustomPagination(PageNumberPagination):
     page_size_query_param = 'page_size'
     max_page_size = 1000
 
+
+class PacketFilter(django_filters.FilterSet):
+    location = django_filters.UUIDFilter(method="filter_location")
+    is_active = django_filters.BooleanFilter()
+    component_name = django_filters.CharFilter(
+        field_name="component__name",
+        lookup_expr="icontains",
+    )
+    inventory_status = django_filters.ChoiceFilter(
+        choices=[
+            ("pending", "Pending"),
+            ("inventoried", "Inventoried"),
+            ("multiple", "Inventoried multiple"),
+        ],
+        method="filter_inventory_status",
+    )
+
+    class Meta:
+        model = Packet
+        fields = ["location", "component", "is_active", "component_name", "inventory_status"]
+
+    def filter_location(self, queryset, name, value):
+        try:
+            node = Warehouse.objects.get(pk=value)
+        except Warehouse.DoesNotExist:
+            return queryset.none()
+        location_ids = node.get_descendants(include_self=True).values_list("pk", flat=True)
+        return queryset.filter(location_id__in=location_ids)
+
+    def filter_inventory_status(self, queryset, name, value):
+        campaign = self.data.get("inventory_campaign")
+        if not campaign or not value:
+            return queryset
+        if value == "pending":
+            return queryset.filter(inventory_op_count=0)
+        if value == "inventoried":
+            return queryset.filter(inventory_op_count__gte=1)
+        if value == "multiple":
+            return queryset.filter(inventory_op_count__gte=2)
+        return queryset
+
+
 class PacketAPIView(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     queryset = Packet.objects.all()
     serializer_class = PacketSerializer
     pagination_class = CustomPagination
     filter_backends = [DjangoFilterBackend]
-    filterset_fields = ["location", "component"]
+    filterset_class = PacketFilter
+
+    def get_queryset(self):
+        queryset = Packet.objects.select_related("component", "location")
+        campaign = self.request.query_params.get("inventory_campaign")
+        if campaign:
+            queryset = queryset.annotate(
+                inventory_op_count=Count(
+                    "operations",
+                    filter=Q(
+                        operations__operation_type="inventory",
+                        operations__reference=campaign,
+                    ),
+                )
+            )
+        return queryset.order_by(
+            F("location__tree_id").asc(nulls_last=True),
+            F("location__lft").asc(nulls_last=True),
+            "component__name",
+            "id",
+        )
 
     @action(detail=True, methods=['post'])
     def calculate(self, request, *args, **kwargs):

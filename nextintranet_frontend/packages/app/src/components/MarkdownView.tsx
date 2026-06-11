@@ -4,14 +4,16 @@ import remarkGfm from "remark-gfm"
 import rehypeSlug from "rehype-slug"
 import rehypeAutolinkHeadings from "rehype-autolink-headings"
 
+import { parseDocumentationHref } from "@/lib/documentation"
 import { cn } from "@/lib/utils"
 
 type MarkdownViewProps = {
   content: string
   className?: string
+  onDocumentationNavigate?: (page: string, hash?: string) => void
 }
 
-export function MarkdownView({ content, className }: MarkdownViewProps) {
+export function MarkdownView({ content, className, onDocumentationNavigate }: MarkdownViewProps) {
   return (
     <div
       className={cn(
@@ -49,6 +51,21 @@ export function MarkdownView({ content, className }: MarkdownViewProps) {
         components={{
           a: ({ href, children, ...props }) => {
             if (href?.startsWith("/docs") || href?.endsWith(".md")) {
+              const parsed = parseDocumentationHref(href)
+              if (parsed && onDocumentationNavigate) {
+                return (
+                  <a
+                    href={href}
+                    onClick={(event) => {
+                      event.preventDefault()
+                      onDocumentationNavigate(parsed.page, parsed.hash)
+                    }}
+                    {...props}
+                  >
+                    {children}
+                  </a>
+                )
+              }
               const docHref = href.endsWith(".md")
                 ? `/docs/${href.replace(/\.md$/, "").replace(/^\/?/, "")}`
                 : href

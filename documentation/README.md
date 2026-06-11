@@ -34,12 +34,26 @@ mkdocs serve -f documentation/mkdocs.yml
 
 ## Deep links from UI
 
-Use `DocLink` in the React app:
+Use `DocLink` when navigation to the full documentation page is appropriate:
 
 ```tsx
 <DocLink page="guide/settings/mcp" hash="generate-token">
   MCP setup guide
 </DocLink>
 ```
+
+Use `DocHelpButton` for contextual help in a slide-over sheet (user stays on the current page):
+
+```tsx
+<DocHelpButton page="guide/settings/mcp" hash="generate-token" label="MCP setup help" />
+```
+
+| Goal | Component |
+|------|-----------|
+| Open full `/docs/...` page | `DocLink` |
+| Contextual help without leaving the page | `DocHelpButton` |
+| Link to a section | `hash` prop (must match heading IDs in `manifest.json`) |
+
+Sheet links can be shared via URL search params: `?help=guide/settings/mcp&helpHash=generate-token`.
 
 Set `VITE_PUBLIC_DOCS_URL` for external links (see `nextintranet_frontend/.env.example`).

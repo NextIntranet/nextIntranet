@@ -28,6 +28,7 @@ import {
   Layers,
   Link2,
   Copy,
+  CopyPlus,
   Check,
   Pencil,
   Plus,
@@ -491,6 +492,21 @@ export function ComponentDetailPage() {
     },
     onError: () => {
       toast.error("Failed to save component.")
+    },
+  })
+
+  const duplicateComponentMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<Component>(`/api/v1/store/component/${id}/duplicate/`, {
+        method: "POST",
+      }),
+    onSuccess: (created) => {
+      queryClient.invalidateQueries({ queryKey: ["components"] })
+      toast.success("Component duplicated.")
+      navigate(`/store/component/${created.id}`)
+    },
+    onError: () => {
+      toast.error("Failed to duplicate component.")
     },
   })
 
@@ -1923,10 +1939,22 @@ export function ComponentDetailPage() {
                   </Button>
                 </>
               ) : (
-                <Button size="sm" onClick={handleEdit} className="gap-2">
-                  <Pencil className="h-4 w-4" />
-                  Edit
-                </Button>
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => duplicateComponentMutation.mutate()}
+                    disabled={duplicateComponentMutation.isPending}
+                    className="gap-2"
+                  >
+                    <CopyPlus className="h-4 w-4" />
+                    {duplicateComponentMutation.isPending ? "Duplicating..." : "Duplicate"}
+                  </Button>
+                  <Button size="sm" onClick={handleEdit} className="gap-2">
+                    <Pencil className="h-4 w-4" />
+                    Edit
+                  </Button>
+                </>
               )}
             </>
           )}

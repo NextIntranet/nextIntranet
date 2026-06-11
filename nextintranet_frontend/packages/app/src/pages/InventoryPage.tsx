@@ -5,6 +5,7 @@ import { apiFetch, nextIO } from "@nextintranet/core"
 import { toast } from "sonner"
 
 import { ComponentInfoPopover } from "@/components/ComponentInfoPopover"
+import { InventoryProgressBar } from "@/components/InventoryProgressBar"
 import { LocationDisplay } from "@/components/LocationDisplay"
 import { LocationParentSelect } from "@/components/LocationParentSelect"
 import { PrintActions } from "@/components/PrintActions"
@@ -77,6 +78,8 @@ interface StocktakingCampaign {
   description?: string | null
   target_date?: string | null
   is_active: boolean
+  inventoried_packet_count?: number
+  total_packet_count?: number
 }
 
 interface StockOperation {
@@ -478,6 +481,8 @@ export function InventoryPage() {
       queryClient.invalidateQueries({
         queryKey: ["packet-operations-preview", variables.packet],
       })
+      queryClient.invalidateQueries({ queryKey: ["stocktaking"] })
+      queryClient.invalidateQueries({ queryKey: ["stocktaking-active"] })
       playSuccessTone()
       setStatusBanner({ type: "success", text: "Inventory recorded." })
       setNewCount("")
@@ -695,7 +700,7 @@ export function InventoryPage() {
       : null)
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 lg:px-6">
+    <div className="w-full px-4 py-6 lg:px-6">
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold text-foreground">Inventory</h1>
         <p className="text-sm text-muted-foreground">
@@ -703,6 +708,20 @@ export function InventoryPage() {
           tracked per campaign; without one, counts are saved as ad-hoc inventory.
         </p>
       </div>
+
+      {activeCampaign ? (
+        <div className="mt-4 rounded-lg border border-border/70 bg-muted/20 px-4 py-3">
+          <InventoryProgressBar
+            inventoried={activeCampaign.inventoried_packet_count ?? 0}
+            total={activeCampaign.total_packet_count ?? 0}
+            label={`Inventoried in ${activeCampaign.name}`}
+          />
+        </div>
+      ) : (
+        <p className="mt-4 text-sm text-muted-foreground">
+          No open inventory campaign. Counts are saved as ad-hoc inventory.
+        </p>
+      )}
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
         <div className="space-y-4">

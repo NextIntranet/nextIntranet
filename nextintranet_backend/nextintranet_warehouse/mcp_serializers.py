@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from nextintranet_backend.models.printList import PrintList, PrintItem
 from nextintranet_warehouse.models.component import (
     Component, ComponentParameter, ParameterType, Tag, Document,
     Packet, Supplier, SupplierRelation, Reservation,
@@ -197,3 +198,60 @@ class MCPLocationSerializer(MCPLocationFlatSerializer):
     def get_children(self, obj):
         children = obj.get_children()
         return MCPLocationSerializer(children, many=True).data
+
+
+_PRINT_TARGET_TYPE_BY_MODEL = {
+    "component": "component",
+    "packet": "packet",
+    "warehouse": "location",
+}
+
+
+class MCPPrintQueueSerializer(serializers.ModelSerializer):
+    items_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PrintList
+        fields = [
+            "id",
+            "name",
+            "is_default",
+            "is_public",
+            "items_count",
+            "created_at",
+        ]
+
+    def get_items_count(self, obj):
+        return obj.items.count()
+
+
+class MCPPrintQueueItemSerializer(serializers.ModelSerializer):
+    target_type = serializers.SerializerMethodField()
+    target_label = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PrintItem
+        fields = [
+            "id",
+            "print_list",
+            "kind",
+            "status",
+            "target_type",
+            "target_label",
+            "object_id",
+            "payload",
+            "created_at",
+        ]
+
+    def get_target_type(self, obj):
+        if not obj.content_type:
+            return None
+        return _PRINT_TARGET_TYPE_BY_MODEL.get(obj.content_type.model)
+
+    def get_target_label(self, obj):
+        content = obj.content_object
+        if not content:
+            return None
+        if hasattr(content, "name") and content.name:
+            return content.name
+        return str(getattr(content, "id", content))

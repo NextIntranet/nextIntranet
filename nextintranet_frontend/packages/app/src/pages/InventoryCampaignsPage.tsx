@@ -6,6 +6,7 @@ import { Pencil, Plus } from "lucide-react"
 import { toast } from "sonner"
 import Select, { type MultiValue, type StylesConfig } from "react-select"
 
+import { InventoryProgressBar } from "@/components/InventoryProgressBar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
@@ -19,6 +20,8 @@ interface Stocktaking {
   description?: string | null
   target_date?: string | null
   is_active: boolean
+  inventoried_packet_count?: number
+  total_packet_count?: number
   authors?: string[]
   authors_details?: Array<{
     id: string
@@ -290,7 +293,7 @@ export function InventoryCampaignsPage() {
   const createFormValid = createForm.name.trim() !== ""
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 lg:px-6">
+    <div className="w-full px-4 py-6 lg:px-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Inventory campaigns</h1>
@@ -329,10 +332,13 @@ export function InventoryCampaignsPage() {
                 <TableHead className="h-9 w-[25%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                   Target date
                 </TableHead>
-                <TableHead className="h-9 w-[25%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <TableHead className="h-9 w-[18%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                   Authors
                 </TableHead>
-                <TableHead className="h-9 w-[20%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                <TableHead className="h-9 w-[22%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Progress
+                </TableHead>
+                <TableHead className="h-9 w-[10%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                   Status
                 </TableHead>
               </TableRow>
@@ -340,7 +346,7 @@ export function InventoryCampaignsPage() {
             <TableBody>
               {isStocktakingLoading ? (
                 <TableRow className="border-border/40">
-                  <TableCell colSpan={4} className="py-8">
+                  <TableCell colSpan={5} className="py-8">
                     <div className="space-y-2">
                       <Skeleton className="h-5 w-1/2" />
                       <Skeleton className="h-5 w-3/4" />
@@ -376,6 +382,13 @@ export function InventoryCampaignsPage() {
                             .join(", ")
                         : "-"}
                     </TableCell>
+                    <TableCell className="px-3 py-2">
+                      <InventoryProgressBar
+                        inventoried={campaign.inventoried_packet_count ?? 0}
+                        total={campaign.total_packet_count ?? 0}
+                        loading={isStocktakingLoading}
+                      />
+                    </TableCell>
                     <TableCell className="h-9 px-3 text-sm text-muted-foreground">
                       {campaign.is_active ? "Open" : "Closed"}
                     </TableCell>
@@ -384,7 +397,7 @@ export function InventoryCampaignsPage() {
               ) : (
                 <TableRow className="border-border/40">
                   <TableCell
-                    colSpan={4}
+                    colSpan={5}
                     className="py-8 text-center text-sm text-muted-foreground"
                   >
                     No inventory campaigns found.
@@ -459,6 +472,10 @@ export function InventoryCampaignsPage() {
                       {stocktakingDetail.is_active ? "Open" : "Closed"}
                     </p>
                   </div>
+                  <InventoryProgressBar
+                    inventoried={stocktakingDetail.inventoried_packet_count ?? 0}
+                    total={stocktakingDetail.total_packet_count ?? 0}
+                  />
                   <Button
                     variant="outline"
                     className="w-full"

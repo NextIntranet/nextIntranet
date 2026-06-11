@@ -1,15 +1,14 @@
-import { useEffect, useMemo } from "react"
+import { useMemo } from "react"
 import { Link, Navigate, useLocation, useParams } from "react-router-dom"
 import { ExternalLink } from "lucide-react"
 
-import { MarkdownView } from "@/components/MarkdownView"
+import { DocumentationArticle } from "@/components/DocumentationArticle"
 import { cn } from "@/lib/utils"
 import {
   buildPublicDocumentationHref,
   getDefaultDocumentationPath,
   getDocumentationNavSections,
   getDocumentationPage,
-  publicDocsBaseUrl,
 } from "@/lib/documentation"
 
 function useDocumentationPath() {
@@ -18,31 +17,12 @@ function useDocumentationPath() {
   return splat.replace(/^\/+|\/+$/g, "")
 }
 
-function scrollToHash(hash: string) {
-  if (!hash) {
-    return
-  }
-  const id = decodeURIComponent(hash.replace(/^#/, ""))
-  const target = document.getElementById(id)
-  if (target) {
-    target.scrollIntoView({ behavior: "smooth", block: "start" })
-  }
-}
-
 export function DocsPage() {
   const location = useLocation()
   const docPath = useDocumentationPath()
   const resolvedPath = docPath || ""
   const page = useMemo(() => getDocumentationPage(resolvedPath), [resolvedPath])
   const navSections = useMemo(() => getDocumentationNavSections(), [])
-
-  useEffect(() => {
-    if (!location.hash) {
-      return
-    }
-    const timer = window.setTimeout(() => scrollToHash(location.hash), 0)
-    return () => window.clearTimeout(timer)
-  }, [location.hash, resolvedPath, page?.content])
 
   if (!docPath && location.pathname === "/docs") {
     return <Navigate to={`/docs/${getDefaultDocumentationPath()}`} replace />
@@ -62,7 +42,7 @@ export function DocsPage() {
     )
   }
 
-  const tocHeadings = page.headings.filter((heading) => heading.level >= 2 && heading.level <= 3)
+  const hash = location.hash.replace(/^#/, "") || undefined
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4 lg:flex-row lg:gap-8">
@@ -99,16 +79,10 @@ export function DocsPage() {
         </nav>
       </aside>
 
-      <article className="min-w-0 flex-1 space-y-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="space-y-1">
-            <h1 className="text-2xl font-semibold text-foreground">{page.title}</h1>
-            {page.description ? (
-              <p className="text-sm text-muted-foreground">{page.description}</p>
-            ) : null}
-          </div>
+      <div className="min-w-0 flex-1 space-y-4">
+        <div className="flex flex-wrap items-start justify-end gap-3">
           <a
-            href={buildPublicDocumentationHref(resolvedPath, location.hash.replace(/^#/, "") || undefined)}
+            href={buildPublicDocumentationHref(resolvedPath, hash)}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground"
@@ -118,34 +92,8 @@ export function DocsPage() {
           </a>
         </div>
 
-        <MarkdownView content={page.content} />
-      </article>
-
-      {tocHeadings.length > 0 ? (
-        <aside className="hidden w-48 shrink-0 xl:block">
-          <div className="sticky top-20 space-y-2 rounded-lg border border-border/70 bg-card p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">On this page</p>
-            <ul className="space-y-1">
-              {tocHeadings.map((heading) => (
-                <li key={heading.id}>
-                  <a
-                    href={`#${heading.id}`}
-                    className={cn(
-                      "block text-sm text-muted-foreground hover:text-foreground",
-                      heading.level === 3 && "pl-3",
-                    )}
-                  >
-                    {heading.text}
-                  </a>
-                </li>
-              ))}
-            </ul>
-            <p className="pt-2 text-[10px] text-muted-foreground">
-              Public mirror: {publicDocsBaseUrl}
-            </p>
-          </div>
-        </aside>
-      ) : null}
+        <DocumentationArticle page={resolvedPath} hash={hash} />
+      </div>
     </div>
   )
 }

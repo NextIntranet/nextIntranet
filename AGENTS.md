@@ -66,7 +66,7 @@
 
 - Source of truth: `documentation/content/**/*.md` with frontmatter (`title`, `description`, optional `draft: true`).
 - Public site: MkDocs Material → GitHub Pages (`.github/workflows/docs.yml`, config `documentation/mkdocs.yml`).
-- Intranet: authenticated routes `/docs/*` render the same Markdown; use `DocLink` for deep links (`page`, `hash`).
+- Intranet: authenticated routes `/docs/*` render the same Markdown; use `DocLink` for full-page deep links (`page`, `hash`) and `DocHelpButton` for contextual help in a sheet (`?help=` / `helpHash=` URL params supported).
 - After adding or renaming pages: update `documentation/mkdocs.yml` nav and run `pnpm docs:manifest` from `nextintranet_frontend/` (writes `documentation/manifest.json`).
 - Internal plans stay in `docs/` (see `docs/README.md`).
 

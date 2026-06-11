@@ -11,6 +11,7 @@ from .views import warehouse
 from .views.components import (
     ComponentListAPIView,
     ComponentDetailAPIView,
+    ComponentDuplicateAPIView,
     ComponentHistoryAPIView,
     ComponentIdentifierListCreateAPIView,
     ComponentIdentifierDetailAPIView,
@@ -50,6 +51,7 @@ from .views.supplier_api import SupplierRelationApplyAPIView, SupplierRelationSy
 urlpatterns = [
     path('components/', ComponentListAPIView.as_view(), name='api_warehouse_components'),
     path('component/<uuid:pk>/', ComponentDetailAPIView.as_view(), name='api_warehouse_component_detail'),
+    path('component/<uuid:pk>/duplicate/', ComponentDuplicateAPIView.as_view(), name='api_warehouse_component_duplicate'),
     path('component/<uuid:pk>/history/', ComponentHistoryAPIView.as_view(), name='api_warehouse_component_history'),
     path('component/<uuid:pk>/identifiers/', ComponentIdentifierListCreateAPIView.as_view(), name='api_warehouse_component_identifiers'),
     path('component/<uuid:component_pk>/identifiers/<uuid:identifier_pk>/', ComponentIdentifierDetailAPIView.as_view(), name='api_warehouse_component_identifier_detail'),

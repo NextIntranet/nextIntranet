@@ -17,7 +17,15 @@ from nextintranet_backend.models.userSettings import UserSetting
 from django.views.generic import DetailView, ListView
 
 from ..models.warehouse import Warehouse
-from ..models.component import Component, Supplier, SupplierRelation, Packet, StockOperation, Reservation
+from ..models.component import (
+    Component,
+    ComponentParameter,
+    Supplier,
+    SupplierRelation,
+    Packet,
+    StockOperation,
+    Reservation,
+)
 from rest_framework.response import Response
 
 from django.views.generic.edit import CreateView
@@ -26,7 +34,8 @@ from django.urls import reverse
 from django.contrib import messages
 from django import forms
 
-from django.db import models
+from django.db import models, transaction
+from django.db.models import Prefetch
 from django.db.models import Q, Sum, Value, Case, When, F, DecimalField, Subquery, OuterRef
 from django.db.models.functions import Coalesce
 
@@ -578,6 +587,87 @@ class ComponentIdentifierDetailAPIView(APIView):
         )
         identifier.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ComponentDuplicateAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def _serializer_context(self, request):
+        user_settings = UserSetting.objects.filter(user=request.user).select_related('home_location').first()
+        if user_settings and user_settings.home_location:
+            location_ids = user_settings.home_location.get_descendants(include_self=True).values_list('id', flat=True)
+            home_location_ids = set(location_ids)
+        else:
+            home_location_ids = None
+        return {
+            'request': request,
+            'home_location_ids': home_location_ids,
+        }
+
+    def post(self, request, pk):
+        source = get_object_or_404(
+            Component.objects.prefetch_related('tags', 'parameters', 'suppliers'),
+            pk=pk,
+        )
+
+        with transaction.atomic():
+            duplicate = Component.objects.create(
+                name=f'[copy] {source.name}',
+                description=source.description,
+                category=source.category,
+                unit_type=source.unit_type,
+                selling_price=source.selling_price,
+                internal_price=source.internal_price,
+                primary_image=source.primary_image,
+            )
+            duplicate.tags.set(source.tags.all())
+
+            if source.parameters.exists():
+                ComponentParameter.objects.bulk_create([
+                    ComponentParameter(
+                        component=duplicate,
+                        parameter_type=parameter.parameter_type,
+                        value=parameter.value,
+                        value_number=parameter.value_number,
+                        is_inherited=parameter.is_inherited,
+                        source_rule=parameter.source_rule,
+                    )
+                    for parameter in source.parameters.all()
+                ])
+
+            if source.suppliers.exists():
+                SupplierRelation.objects.bulk_create([
+                    SupplierRelation(
+                        component=duplicate,
+                        supplier=relation.supplier,
+                        symbol=relation.symbol,
+                        description=relation.description,
+                        custom_url=relation.custom_url,
+                        api_data=relation.api_data,
+                        api_data_hash=relation.api_data_hash,
+                        api_fetched_at=relation.api_fetched_at,
+                        api_applied_at=relation.api_applied_at,
+                        api_price=relation.api_price,
+                        api_availability=relation.api_availability,
+                    )
+                    for relation in source.suppliers.all()
+                ])
+
+        duplicate = (
+            Component.objects.prefetch_related(
+                Prefetch(
+                    'packets',
+                    queryset=Packet.objects.select_related('location', 'last_operation'),
+                ),
+                'documents',
+                'tags',
+                'parameters',
+                'suppliers',
+            )
+            .get(pk=duplicate.pk)
+        )
+        serializer = ComponentSerializer(duplicate, context=self._serializer_context(request))
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class ComponentHistoryAPIView(APIView):

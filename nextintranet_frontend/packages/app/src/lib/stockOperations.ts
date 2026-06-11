@@ -13,14 +13,14 @@ export const OPERATION_OPTIONS: OperationOption[] = [
   { value: "buy", label: "Purchase", flow: "in", mode: "single" },
   { value: "sell", label: "Sale", flow: "out", mode: "single" },
   { value: "service", label: "Service withdrawal", flow: "out", mode: "single" },
-  { value: "add", label: "Production", flow: "in", mode: "single" },
+  { value: "add", label: "Addition", flow: "in", mode: "single" },
   { value: "inventory", label: "Inventory (inactive)", flow: "neutral", mode: "single", disabled: true },
   { value: "transfer", label: "Transfer (move)", mode: "transfer" },
   { value: "transfer_separate", label: "Transfer (separate)", mode: "transfer_separate" },
 ]
 
 const OPERATION_LABELS: Record<string, string> = {
-  add: "Production",
+  add: "Addition",
   remove: "Removal",
   adjust: "Adjustment",
   trans_in: "Transfer (addition)",

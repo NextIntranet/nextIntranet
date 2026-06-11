@@ -4,6 +4,7 @@ from rest_framework.exceptions import PermissionDenied
 from django.db.models import Q, Sum
 
 from nextintranet_backend.models.serviceToken import ServiceToken
+from nextintranet_backend.models.printList import PrintList, PrintItem
 from nextintranet_warehouse.models.component import (
     Component, ComponentParameter, ParameterType, Packet, StockOperation, Tag,
     Supplier, SupplierRelation, Reservation, Document,
@@ -24,6 +25,8 @@ from nextintranet_warehouse.mcp_serializers import (
     MCPReservationSerializer,
     MCPPacketSerializer,
     MCPDocumentSerializer,
+    MCPPrintQueueSerializer,
+    MCPPrintQueueItemSerializer,
 )
 from nextintranet_warehouse.services.parameter_values import coerce_decimal_for_storage
 
@@ -182,6 +185,82 @@ def _normalize_stock_quantity(operation_type: str, quantity: float) -> float:
     if operation_type in {"add", "trans_in", "buy"}:
         return abs(quantity)
     return quantity
+
+
+_PRINT_TARGET_TYPES = {
+    "packet": Packet,
+    "location": Warehouse,
+    "component": Component,
+}
+
+
+def _mcp_service_token(request):
+    token = getattr(request, "auth", None)
+    if isinstance(token, ServiceToken):
+        return token
+    return None
+
+
+def _mcp_print_queue_user(request):
+    token = _mcp_service_token(request)
+    if token and token.created_by and token.created_by.is_active:
+        return token.created_by
+    return None
+
+
+def _mcp_print_queues_queryset(request):
+    token = _mcp_service_token(request)
+    if token and token.allowed_print_lists.exists():
+        return token.allowed_print_lists.all().order_by("-is_default", "name")
+
+    user = _mcp_print_queue_user(request)
+    if not user:
+        return PrintList.objects.none()
+
+    return (
+        PrintList.objects.filter(owner=user)
+        | PrintList.objects.filter(is_public=True)
+    ).distinct().order_by("-is_default", "name")
+
+
+def _resolve_mcp_print_queue(request, queue_id: str = ""):
+    queues = _mcp_print_queues_queryset(request)
+    if queue_id:
+        return queues.filter(id=queue_id).first()
+
+    default = queues.filter(is_default=True).first()
+    if default:
+        return default
+    return queues.first()
+
+
+def _resolve_print_target(target_type: str, target_id: str):
+    model = _PRINT_TARGET_TYPES.get(target_type)
+    if not model:
+        allowed = ", ".join(sorted(_PRINT_TARGET_TYPES))
+        raise ValueError(f"Invalid target_type '{target_type}'. Use one of: {allowed}.")
+
+    if target_type == "location":
+        try:
+            return Warehouse.objects.get(id=target_id)
+        except Warehouse.DoesNotExist:
+            return Warehouse.objects.get(uuid=target_id)
+
+    return model.objects.get(id=target_id)
+
+
+def _create_print_queue_item(queue, target, *, kind: str = "label", payload: dict | None = None) -> PrintItem:
+    if kind not in dict(PrintItem.KIND_CHOICES):
+        allowed = ", ".join(key for key, _label in PrintItem.KIND_CHOICES)
+        raise ValueError(f"Invalid kind '{kind}'. Use one of: {allowed}.")
+
+    return PrintItem.objects.create(
+        print_list=queue,
+        kind=kind,
+        status=PrintItem.STATUS_QUEUED,
+        content_object=target,
+        payload=payload or {},
+    )
 
 
 def _component_summary(component: Component) -> dict:
@@ -509,6 +588,45 @@ class WarehouseReadToolset(MCPToolset):
         _require_read(self.request)
         document = Document.objects.select_related("component").get(id=document_id)
         return _serialize_mcp_document(document)
+
+    def list_print_queues(self, limit: int = 50) -> list[dict]:
+        """List print queues available to the MCP token.
+
+        Uses the token creator's queues (and public queues), or queues explicitly
+        allowed on the service token when configured.
+
+        Args:
+            limit: Maximum number of results (default 50, max 200).
+        """
+        _require_read(self.request)
+        row_limit = _clamp_list_limit(limit, default=50, maximum=200)
+        queues = _mcp_print_queues_queryset(self.request)[:row_limit]
+        return MCPPrintQueueSerializer(queues, many=True).data
+
+    def list_print_queue_items(
+        self,
+        print_list_id: str = "",
+        limit: int = 100,
+    ) -> list[dict]:
+        """List items in a print queue.
+
+        Args:
+            print_list_id: Optional queue UUID. Uses the default queue when omitted.
+            limit: Maximum number of results (default 100, max 500).
+        """
+        _require_read(self.request)
+
+        queue = _resolve_mcp_print_queue(self.request, print_list_id)
+        if not queue:
+            raise ValueError("Print queue not found.")
+
+        row_limit = _clamp_list_limit(limit, default=100, maximum=500)
+        items = (
+            PrintItem.objects.filter(print_list=queue)
+            .select_related("content_type")
+            .order_by("-created_at")[:row_limit]
+        )
+        return MCPPrintQueueItemSerializer(items, many=True).data
 
 
 class WarehouseWriteToolset(MCPToolset):
@@ -1447,3 +1565,103 @@ class WarehouseWriteToolset(MCPToolset):
         payload = MCPReservationSerializer(reservation).data
         reservation.delete()
         return {"deleted": True, "reservation": payload}
+
+    def add_to_print_queue(
+        self,
+        target_type: str,
+        target_id: str,
+        print_list_id: str = "",
+        kind: str = "label",
+    ) -> dict:
+        """Add a warehouse location, packet, or component label to a print queue.
+
+        Args:
+            target_type: One of component, packet, or location.
+            target_id: UUID of the target (for location, id or legacy uuid field).
+            print_list_id: Optional queue UUID. Uses the default queue when omitted.
+            kind: Print item kind — label (default) or document.
+        """
+        _require_write(self.request)
+
+        if not _mcp_print_queue_user(self.request) and not (
+            _mcp_service_token(self.request)
+            and _mcp_service_token(self.request).allowed_print_lists.exists()
+        ):
+            raise ValueError(
+                "Print queue access requires a service token linked to a user "
+                "or with allowed print queues configured."
+            )
+
+        queue = _resolve_mcp_print_queue(self.request, print_list_id)
+        if not queue:
+            raise ValueError("Print queue not found.")
+
+        target = _resolve_print_target(target_type.strip().lower(), target_id)
+        item = _create_print_queue_item(queue, target, kind=kind.strip().lower() or "label")
+        return MCPPrintQueueItemSerializer(item).data
+
+    def add_targets_to_print_queue(
+        self,
+        targets: list[dict],
+        print_list_id: str = "",
+        kind: str = "label",
+    ) -> list[dict]:
+        """Add multiple labels to a print queue in one call.
+
+        Args:
+            targets: List of objects with target_type and target_id keys.
+            print_list_id: Optional queue UUID. Uses the default queue when omitted.
+            kind: Print item kind — label (default) or document.
+        """
+        _require_write(self.request)
+
+        if not isinstance(targets, list) or not targets:
+            raise ValueError("targets must be a non-empty list.")
+
+        if not _mcp_print_queue_user(self.request) and not (
+            _mcp_service_token(self.request)
+            and _mcp_service_token(self.request).allowed_print_lists.exists()
+        ):
+            raise ValueError(
+                "Print queue access requires a service token linked to a user "
+                "or with allowed print queues configured."
+            )
+
+        queue = _resolve_mcp_print_queue(self.request, print_list_id)
+        if not queue:
+            raise ValueError("Print queue not found.")
+
+        normalized_kind = kind.strip().lower() or "label"
+        results = []
+        for index, entry in enumerate(targets):
+            if not isinstance(entry, dict):
+                raise ValueError(f"targets[{index}] must be an object.")
+            target_type = (entry.get("target_type") or "").strip().lower()
+            target_id = (entry.get("target_id") or "").strip()
+            if not target_type or not target_id:
+                raise ValueError(f"targets[{index}] must include target_type and target_id.")
+            target = _resolve_print_target(target_type, target_id)
+            item = _create_print_queue_item(queue, target, kind=normalized_kind)
+            results.append(MCPPrintQueueItemSerializer(item).data)
+        return results
+
+    def remove_print_queue_item(self, item_id: str) -> dict:
+        """Remove an item from a print queue.
+
+        Args:
+            item_id: UUID of the print queue item.
+        """
+        _require_write(self.request)
+
+        queues = _mcp_print_queues_queryset(self.request)
+        item = (
+            PrintItem.objects.filter(id=item_id, print_list__in=queues)
+            .select_related("content_type", "print_list")
+            .first()
+        )
+        if not item:
+            raise ValueError("Print queue item not found.")
+
+        payload = MCPPrintQueueItemSerializer(item).data
+        item.delete()
+        return {"deleted": True, "item": payload}

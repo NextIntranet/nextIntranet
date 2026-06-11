@@ -61,6 +61,8 @@ The generated JSON looks like:
 - `list_document_types` — allowed document type keys and labels (use keys in `doc_type`)
 - `list_component_documents` — documents for a component
 - `get_component_document` — single document by ID
+- `list_print_queues` — print queues available to the token (`limit` default 50, max 200)
+- `list_print_queue_items` — items in a queue (`print_list_id` optional; uses default queue)
 
 ### Write (`mcp:write` scope, includes all read tools)
 
@@ -79,6 +81,20 @@ The generated JSON looks like:
 - `create_supplier` / `update_supplier` / `delete_supplier` — suppliers
 - `link_component_supplier` / `update_supplier_relation` / `delete_supplier_relation` — component–supplier links
 - `create_reservation` / `update_reservation` / `delete_reservation` — reservations
+- `add_to_print_queue` — add a component, packet, or location label to a queue
+- `add_targets_to_print_queue` — add multiple labels in one call
+- `remove_print_queue_item` — remove an item from a queue
+
+## Print queue
+
+MCP can enqueue labels for **components**, **packets** (stock batches), and **warehouse locations** — the same targets as the intranet “Add to queue” actions.
+
+- `target_type`: `component`, `packet`, or `location`
+- `target_id`: UUID of the target (`location` also accepts the legacy location `uuid` field)
+- `print_list_id`: optional; omit to use the token owner’s default queue
+- `kind`: `label` (default) or `document`
+
+Tokens created in **Settings → Software → Generate MCP config** use the creating user’s queues (including public queues). Service tokens with `allowed_print_lists` configured are limited to those queues (same as print render).
 
 ## Component documents
 
