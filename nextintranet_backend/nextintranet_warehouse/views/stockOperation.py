@@ -1,4 +1,7 @@
+import re
+
 from django import forms
+from django.db import transaction
 from django.views.generic.edit import FormView
 from django.shortcuts import redirect
 from django.views.generic.edit import CreateView
@@ -72,12 +75,43 @@ class StockOperationCreateView(FormView):
         return context
 
 
+_INVENTORY_AUDIT_RE = re.compile(r"\s*\|\s*Physical count:.*$", re.IGNORECASE)
+
+
+def _inventory_audit_note(counted_quantity: float, recorded_count: float) -> str:
+    return f"Physical count: {counted_quantity} (recorded: {recorded_count})"
+
+
+def _apply_inventory_description(
+    validated_data: dict,
+    counted_quantity: float,
+    recorded_count: float,
+) -> None:
+    audit_note = _inventory_audit_note(counted_quantity, recorded_count)
+    description = (validated_data.get("description") or "").strip()
+
+    if description.lower().startswith("fast inventory |"):
+        validated_data["description"] = f"Fast inventory | {audit_note}"
+        return
+
+    if description:
+        prefix = _INVENTORY_AUDIT_RE.sub("", description).strip()
+        validated_data["description"] = (
+            f"{prefix} | {audit_note}" if prefix else audit_note
+        )
+        return
+
+    validated_data["description"] = audit_note
+
+
 class StockOperationSerializer(serializers.ModelSerializer):
     author_name = serializers.SerializerMethodField()
+    absolute_quantity = serializers.FloatField(write_only=True, required=False)
+    quantity = serializers.FloatField(required=False)
 
     class Meta:
         model = StockOperation
-        fields = '__all__'
+        fields = "__all__"
 
     def get_author_name(self, instance):
         author = instance.author
@@ -85,6 +119,44 @@ class StockOperationSerializer(serializers.ModelSerializer):
             return None
         full_name = author.get_full_name().strip()
         return full_name or author.username
+
+    def validate(self, attrs):
+        absolute_quantity = attrs.pop("absolute_quantity", None)
+        operation_type = attrs.get("operation_type") or (
+            self.instance.operation_type if self.instance else None
+        )
+
+        if absolute_quantity is not None:
+            if operation_type != "inventory":
+                raise serializers.ValidationError(
+                    {"absolute_quantity": "Only supported for inventory operations."}
+                )
+            attrs["_absolute_quantity"] = absolute_quantity
+        elif self.instance is None and operation_type == "inventory" and "quantity" not in attrs:
+            raise serializers.ValidationError(
+                {"quantity": "Provide quantity or absolute_quantity for inventory operations."}
+            )
+        elif self.instance is None and operation_type != "inventory" and "quantity" not in attrs:
+            raise serializers.ValidationError({"quantity": "This field is required."})
+
+        return attrs
+
+    def create(self, validated_data):
+        absolute_quantity = validated_data.pop("_absolute_quantity", None)
+
+        if absolute_quantity is not None:
+            packet = validated_data["packet"]
+            with transaction.atomic():
+                locked_packet = Packet.objects.select_for_update().get(pk=packet.pk)
+                recorded_count = float(locked_packet.count or 0)
+                validated_data["quantity"] = absolute_quantity - recorded_count
+                validated_data["relative_quantity"] = True
+                validated_data["packet"] = locked_packet
+                _apply_inventory_description(
+                    validated_data, absolute_quantity, recorded_count
+                )
+
+        return super().create(validated_data)
 
     # def to_representation(self, instance):
     #     data = super().to_representation(instance)

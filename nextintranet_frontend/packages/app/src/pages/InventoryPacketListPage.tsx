@@ -486,18 +486,11 @@ export function InventoryPacketListPage() {
   })
 
   const inventoryMutation = useMutation({
-    mutationFn: (payload: {
-      packetId: string
-      quantity: number
-      countedQuantity: number
-      recordedCount: number
-    }) => {
+    mutationFn: (payload: { packetId: string; absoluteQuantity: number }) => {
       setPendingPacketId(payload.packetId)
       return postInventoryOperation({
         packet: payload.packetId,
-        quantity: payload.quantity,
-        countedQuantity: payload.countedQuantity,
-        recordedCount: payload.recordedCount,
+        absoluteQuantity: payload.absoluteQuantity,
         reference: selectedCampaignId.trim() || null,
         fast: true,
       })
@@ -532,17 +525,13 @@ export function InventoryPacketListPage() {
 
   const handleRecordInventory = (packet: Packet) => {
     const raw = rowCounts[packet.id]?.trim() ?? ""
-    const countedQuantity = Number(raw)
-    if (raw === "" || Number.isNaN(countedQuantity)) {
+    const absoluteQuantity = Number(raw)
+    if (raw === "" || Number.isNaN(absoluteQuantity)) {
       return
     }
-    const recordedCount = packet.count ?? 0
-    const quantity = countedQuantity - recordedCount
     inventoryMutation.mutate({
       packetId: packet.id,
-      quantity,
-      countedQuantity,
-      recordedCount,
+      absoluteQuantity,
     })
   }
 

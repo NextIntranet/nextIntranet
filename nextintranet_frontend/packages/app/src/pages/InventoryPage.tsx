@@ -384,8 +384,10 @@ export function InventoryPage() {
 
   useEffect(() => {
     if (!selectedPacket) {
+      setNewCount("")
       return
     }
+    setNewCount(String(selectedPacket.count ?? 0))
     requestAnimationFrame(() => {
       countInputRef.current?.focus()
       countInputRef.current?.select()
@@ -427,7 +429,6 @@ export function InventoryPage() {
         setSelectedPacketOverride(packet)
         notePacketLoaded(packet.id, packet.component.name)
         setPacketScanValue("")
-        setNewCount("")
         if (
           locationCheckEnabled &&
           selectedLocationId &&
@@ -456,17 +457,13 @@ export function InventoryPage() {
   const inventoryMutation = useMutation({
     mutationFn: (payload: {
       packet: string
-      quantity: number
-      countedQuantity: number
-      recordedCount: number
+      absoluteQuantity: number
       description?: string | null
       reference?: string | null
     }) =>
       postInventoryOperation({
         packet: payload.packet,
-        quantity: payload.quantity,
-        countedQuantity: payload.countedQuantity,
-        recordedCount: payload.recordedCount,
+        absoluteQuantity: payload.absoluteQuantity,
         userDescription: payload.description ?? null,
         reference: payload.reference,
       }),
@@ -485,7 +482,7 @@ export function InventoryPage() {
       queryClient.invalidateQueries({ queryKey: ["stocktaking-active"] })
       playSuccessTone()
       setStatusBanner({ type: "success", text: "Inventory recorded." })
-      setNewCount("")
+      setNewCount(String(variables.absoluteQuantity))
       setDescription("")
       setShowInventoriedWarning(false)
       setSelectedPacketOverride(null)
@@ -609,7 +606,6 @@ export function InventoryPage() {
       setSelectedPacketOverride(null)
       notePacketLoaded(match.id, match.component.name)
       setPacketScanValue("")
-      setNewCount("")
       if (activeCampaign && inventoriedPacketIds.has(match.id)) {
         playAlertTone()
         toast("Inventory already recorded for this packet in the campaign.")
@@ -623,7 +619,6 @@ export function InventoryPage() {
       setSelectedPacketOverride(packet)
       notePacketLoaded(packet.id, packet.component.name)
       setPacketScanValue("")
-      setNewCount("")
       if (activeCampaign && inventoriedPacketIds.has(packet.id)) {
         playAlertTone()
         toast("Inventory already recorded for this packet in the campaign.")
@@ -657,9 +652,7 @@ export function InventoryPage() {
     }
     inventoryMutation.mutate({
       packet: selectedPacket.id,
-      quantity: diff,
-      countedQuantity: parsedNewCount,
-      recordedCount: currentCount,
+      absoluteQuantity: parsedNewCount,
       description: description.trim() || null,
       reference: activeCampaign?.id ?? null,
     })
@@ -1172,7 +1165,6 @@ export function InventoryPage() {
                               setSelectedPacketId(packet.id)
                               setSelectedPacketOverride(null)
                               notePacketLoaded(packet.id, packet.component.name)
-                              setNewCount("")
                             }}
                             className={`min-w-0 flex-1 text-left ${
                               isInactive

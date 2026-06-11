@@ -14,26 +14,18 @@ export type PaginatedResponse<T> = {
   results: T[]
 }
 
-export const buildInventoryDescription = (
-  countedQuantity: number,
-  recordedCount: number,
+const buildInventoryDescriptionPrefix = (
+  absoluteQuantity: number,
   userDescription: string | null,
 ) => {
-  const auditNote = `Physical count: ${countedQuantity} (recorded: ${recordedCount})`
+  const countNote = `Physical count: ${absoluteQuantity}`
   const trimmed = userDescription?.trim()
-  return trimmed ? `${trimmed} | ${auditNote}` : auditNote
+  return trimmed ? `${trimmed} | ${countNote}` : countNote
 }
-
-export const buildFastInventoryDescription = (
-  countedQuantity: number,
-  recordedCount: number,
-) => `Fast inventory | Physical count: ${countedQuantity} (recorded: ${recordedCount})`
 
 export interface PostInventoryOperationParams {
   packet: string
-  quantity: number
-  countedQuantity: number
-  recordedCount: number
+  absoluteQuantity: number
   reference?: string | null
   fast?: boolean
   userDescription?: string | null
@@ -45,13 +37,11 @@ export const postInventoryOperation = (params: PostInventoryOperationParams) =>
     body: JSON.stringify({
       packet: params.packet,
       operation_type: "inventory",
-      quantity: params.quantity,
-      relative_quantity: true,
+      absolute_quantity: params.absoluteQuantity,
       description: params.fast
-        ? buildFastInventoryDescription(params.countedQuantity, params.recordedCount)
-        : buildInventoryDescription(
-            params.countedQuantity,
-            params.recordedCount,
+        ? `Fast inventory | Physical count: ${params.absoluteQuantity}`
+        : buildInventoryDescriptionPrefix(
+            params.absoluteQuantity,
             params.userDescription ?? null,
           ),
       reference: params.reference ?? null,
