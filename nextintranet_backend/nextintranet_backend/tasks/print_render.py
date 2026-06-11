@@ -5,6 +5,11 @@ from django.core.files.base import ContentFile
 from django.utils import timezone
 
 from nextintranet_backend.labels.factory import LabelGeneratorFactory
+from nextintranet_backend.labels.resolver import (
+    cleanup_logo_file,
+    prepare_logo_file,
+    resolve_template_overrides,
+)
 from nextintranet_backend.models.printList import PrintFile, PrintItem, PrintRenderJob
 
 
@@ -49,8 +54,15 @@ def render_print_job(job_id):
         label_items = [_build_label_item(item) for item in items]
         format_params = _build_format_params(payload)
 
-        generator = LabelGeneratorFactory.create_label_generator(format_type, **format_params)
-        pdf_content = generator.generate_pdf(label_items)
+        logo_path = prepare_logo_file(color_mode=format_params.get("color_mode", "color"))
+        try:
+            format_params["content_overrides"] = resolve_template_overrides(
+                format_type, payload, logo_path=logo_path
+            )
+            generator = LabelGeneratorFactory.create_label_generator(format_type, **format_params)
+            pdf_content = generator.generate_pdf(label_items)
+        finally:
+            cleanup_logo_file(logo_path)
 
         ttl_seconds = int(getattr(settings, "PRINT_RENDER_TTL_SECONDS", 3600))
         expires_at = timezone.now() + timedelta(seconds=ttl_seconds)

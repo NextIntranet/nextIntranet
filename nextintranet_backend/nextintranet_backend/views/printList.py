@@ -21,6 +21,11 @@ from django.http import HttpResponse
 from io import BytesIO
 
 from nextintranet_backend.labels.factory import LabelGeneratorFactory
+from nextintranet_backend.labels.resolver import (
+    cleanup_logo_file,
+    prepare_logo_file,
+    resolve_template_overrides,
+)
 from django_q.tasks import async_task
 
 
@@ -28,7 +33,7 @@ class PrintApi(APIView):
     """
     An API endpoint for generating and returning files based on request body.
     """
-    # permission_classes = [None] # Allow any permission for this endpoint
+    permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
         print("=== PrintApi.post called ===")
@@ -73,15 +78,30 @@ class PrintApi(APIView):
                     print(f"Overriding {key} from data: {data[key]}")
                     params[key] = float(data[key])
             
-            # Create label generator using factory
-            print(f"Creating label generator with format: {format_type}")
-            generator = LabelGeneratorFactory.create_label_generator(format_type, **params)
-            print(f"Generator created: {type(generator).__name__}")
-            
-            # Generate PDF
-            print("Generating PDF...")
-            pdf_content = generator.generate_pdf(items)
-            print(f"PDF generated, size: {len(pdf_content)} bytes")
+            # Resolve label templates and branding logo
+            logo_path = prepare_logo_file(color_mode=color_mode)
+            try:
+                params['content_overrides'] = resolve_template_overrides(
+                    format_type,
+                    {
+                        'template_id': data.get('template_id'),
+                        'show_logo': data.get('show_logo'),
+                        'color_mode': color_mode,
+                    },
+                    logo_path=logo_path,
+                )
+
+                # Create label generator using factory
+                print(f"Creating label generator with format: {format_type}")
+                generator = LabelGeneratorFactory.create_label_generator(format_type, **params)
+                print(f"Generator created: {type(generator).__name__}")
+
+                # Generate PDF
+                print("Generating PDF...")
+                pdf_content = generator.generate_pdf(items)
+                print(f"PDF generated, size: {len(pdf_content)} bytes")
+            finally:
+                cleanup_logo_file(logo_path)
             
             # Create response
             print("Creating response...")
@@ -215,6 +235,8 @@ class PrintRenderJobViewSet(ModelViewSet):
 
         for key in [
             "format",
+            "template_id",
+            "show_logo",
             "skip_labels",
             "show_borders",
             "color_mode",

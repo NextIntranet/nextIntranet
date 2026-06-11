@@ -4,6 +4,8 @@ from .user import *
 from .userSettings import *
 from .plugin import *
 from .serviceToken import *
+from .branding import *
+from .labelTemplate import *
 
 from django.db import models
 from django.utils import timezone
