@@ -50,3 +50,4 @@ nextintranet_backend/static/
 # Docker runtime data & mounts
 data/
 dev/
+nginx_config/nginx.conf

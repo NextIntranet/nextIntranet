@@ -2107,7 +2107,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                               <Button
                                 variant="outline"
                                 disabled={!canImportNetlist || !sourceUrlInput.trim() || importUrlMutation.isPending}
-                                onClick={() => importUrlMutation.mutate()}
+                                onClick={() => importUrlMutation.mutate(sourceUrlInput)}
                               >
                                 Import from URL
                               </Button>

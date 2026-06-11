@@ -92,11 +92,6 @@ interface LocationNode {
   children?: LocationNode[]
 }
 
-interface LocationOption {
-  id: string
-  label: string
-}
-
 type SelectOption = { value: string; label: string }
 
 interface PurchaseDelivery {
@@ -250,22 +245,6 @@ const transitionByStatus: Partial<Record<PurchaseStatus, { target: PurchaseStatu
   exported: { target: "receiving", label: "Start receiving" },
 }
 
-const flattenLocationOptions = (nodes: LocationNode[]): LocationOption[] => {
-  const out: LocationOption[] = []
-  const walk = (items: LocationNode[]) => {
-    items.forEach((item) => {
-      if (item.can_store_items) {
-        out.push({ id: item.id, label: item.full_path })
-      }
-      if (item.children?.length) {
-        walk(item.children)
-      }
-    })
-  }
-  walk(nodes)
-  return out
-}
-
 /** Keep only nodes that can store items or have storable descendants (preserves tree for display). */
 function filterTreeToStorable(nodes: LocationNode[]): LocationNode[] {
   return nodes
@@ -356,12 +335,6 @@ const compactCellInput =
   "h-7 w-full border-0 border-b border-transparent bg-transparent px-0 text-xs " +
   "focus:border-border focus:ring-0 focus-visible:outline-none";
 
-const getProgressBarColor = (ratio: number): string => {
-  if (ratio >= 1) return "bg-emerald-500"
-  if (ratio > 0) return "bg-amber-500"
-  return "bg-muted-foreground/30"
-}
-
 interface ReceiveActionResponse extends Purchase {
   created_packets?: Array<{
     id: string
@@ -419,11 +392,6 @@ export function PurchaseDetailPage() {
     enabled: Boolean(id),
   })
 
-  const { data: suppliersData } = useQuery<Supplier[] | PaginatedResponse<Supplier>>({
-    queryKey: ["suppliers"],
-    queryFn: () => apiFetch<Supplier[] | PaginatedResponse<Supplier>>("/api/v1/store/supplier/?page_size=1000"),
-  })
-
   const { data: requestData } = useQuery<PurchaseRequest[] | PaginatedResponse<PurchaseRequest>>({
     queryKey: ["purchase-requests", "unassigned", purchaseDetail?.supplier?.id],
     queryFn: () =>
@@ -445,12 +413,7 @@ export function PurchaseDetailPage() {
     enabled: Boolean(id),
   })
 
-  const suppliers = asList(suppliersData)
   const availableRequests = asList(requestData)
-  const locationOptions = useMemo(
-    () => flattenLocationOptions(locationsTreeData || []),
-    [locationsTreeData],
-  )
   const locationsTreeForReceive = useMemo(
     () => filterTreeToStorable(locationsTreeData || []),
     [locationsTreeData],
@@ -1307,11 +1270,6 @@ export function PurchaseDetailPage() {
                   {purchaseDetail.items?.length ? (
                     purchaseDetail.items.map((item) => {
                       const draft = getDraft(item)
-                      const deliveredRatio = item.quantity > 0 ? item.delivered_quantity / item.quantity : 0
-                      const deliveredPercent = Math.min(100, Math.max(0, deliveredRatio * 100))
-                      const stockedBase = Math.max(1, item.delivered_quantity)
-                      const stockedRatio = stockedBase > 0 ? item.stocked_quantity / stockedBase : 0
-                      const stockedPercent = Math.min(100, Math.max(0, stockedRatio * 100))
                       return (
                         <TableRow key={item.id} className="border-border/40 align-top">
                           <TableCell className="min-w-0 px-3 py-2 align-top">

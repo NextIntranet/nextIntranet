@@ -1,7 +1,5 @@
 import matter from "gray-matter"
 
-import manifest from "@documentation/manifest.json"
-
 export type DocumentationHeading = {
   level: number
   text: string
@@ -22,7 +20,19 @@ export type DocumentationManifest = {
   pages: DocumentationPage[]
 }
 
-export const documentationManifest = manifest as DocumentationManifest
+const manifestModules = {
+  ...import.meta.glob("../../../../documentation/manifest.json", {
+    import: "default",
+    eager: true,
+  }),
+  ...import.meta.glob("../../../../../documentation/manifest.json", {
+    import: "default",
+    eager: true,
+  }),
+} as Record<string, DocumentationManifest>
+
+export const documentationManifest: DocumentationManifest =
+  Object.values(manifestModules)[0] ?? { generatedAt: "", pages: [] }
 
 const markdownModules = {
   ...import.meta.glob("../../../../documentation/content/**/*.md", {

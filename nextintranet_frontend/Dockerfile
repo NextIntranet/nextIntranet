@@ -13,6 +13,8 @@ RUN pnpm install --no-frozen-lockfile
 
 # Build
 FROM base AS builder
+ARG VITE_API_URL=
+ARG VITE_WS_URL=
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/packages/core/node_modules ./packages/core/node_modules
 COPY --from=deps /app/packages/app/node_modules ./packages/app/node_modules

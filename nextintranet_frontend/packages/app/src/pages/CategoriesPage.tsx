@@ -245,7 +245,7 @@ export function CategoriesPage() {
     ? parameterTypesRaw
     : parameterTypesRaw?.results || []
 
-  const [ruleDrafts, setRuleDrafts] = useState<RuleDraft[]>([])
+  const [, setRuleDrafts] = useState<RuleDraft[]>([])
   const [newRule, setNewRule] = useState<RuleDraft>({ parameter_type_id: "", value_template: "" })
 
   // Sync own rules into edit drafts when entering edit mode

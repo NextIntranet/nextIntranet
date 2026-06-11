@@ -39,6 +39,7 @@ export interface AgentProfile {
 export type BrowserDeviceType = "web-serial" | "keyboard-wedge" | string
 
 export interface BrowserSerialDeviceParams {
+  [key: string]: unknown
   mode?: "scanner" | "serial"
   baudrate?: number
   portInfo?: {

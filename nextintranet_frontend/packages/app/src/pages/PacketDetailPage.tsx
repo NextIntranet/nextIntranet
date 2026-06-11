@@ -5,7 +5,7 @@ import { type ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tan
 import { apiFetch } from "@nextintranet/core"
 import { Copy, Pencil, Plus, Share2, Trash2 } from "lucide-react"
 import { toast } from "sonner"
-import Select, { type SingleValue, type MultiValue } from "react-select"
+import Select, { type SingleValue } from "react-select"
 import type { StylesConfig } from "react-select"
 
 import { LocationDisplay } from "@/components/LocationDisplay"
@@ -655,9 +655,8 @@ export function PacketDetailPage() {
                 value={IDENTIFIER_SCHEME_OPTIONS.find((o) => o.value === identifierForm.scheme) ?? null}
                 placeholder="Select type"
                 styles={identifierSelectStyles}
-                onChange={(option: SingleValue<{ value: string; label: string }> | MultiValue<{ value: string; label: string }>) => {
-                  const single = Array.isArray(option) ? option[0] : option
-                  setIdentifierForm({ ...identifierForm, scheme: single?.value ?? "" })
+                onChange={(option: SingleValue<{ value: string; label: string }>) => {
+                  setIdentifierForm({ ...identifierForm, scheme: option?.value ?? "" })
                 }}
               />
             </div>

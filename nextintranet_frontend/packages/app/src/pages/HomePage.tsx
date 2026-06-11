@@ -300,7 +300,7 @@ export function HomePage() {
         <CardContent>
           {(metrics?.recent_purchases?.length ?? 0) > 0 ? (
             <ul className="space-y-2">
-              {metrics.recent_purchases.map((p) => (
+              {metrics?.recent_purchases?.map((p) => (
                 <li key={p.id}>
                   <Link
                     to={`/store/purchase/${p.id}`}

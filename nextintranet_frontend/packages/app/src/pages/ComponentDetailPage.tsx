@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
+import { Link, useParams, useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   type ColumnDef,
@@ -232,7 +232,7 @@ interface ComponentUpdatePayload {
   tags?: string[]
 }
 
-const selectStyles: StylesConfig<OptionType, boolean> = {
+const selectStyles: StylesConfig<OptionType, false> = {
   control: (base, state) => ({
     ...base,
     backgroundColor: "hsl(var(--background))",
@@ -284,7 +284,6 @@ const selectStyles: StylesConfig<OptionType, boolean> = {
 export function ComponentDetailPage() {
   const { id } = useParams<{ id: string }>()
   const [searchParams] = useSearchParams()
-  const navigate = useNavigate()
   const [editMode, setEditMode] = useState(false)
   const [editedData, setEditedData] = useState<Partial<Component>>({})
   const [isStackedHistory, setIsStackedHistory] = useState(true)
@@ -1991,7 +1990,7 @@ export function ComponentDetailPage() {
                         options={tagOptionsWithSelected}
                         value={selectedTagOptions}
                         placeholder="Search or create tags"
-                        styles={selectStyles}
+                        styles={selectStyles as unknown as StylesConfig<OptionType, true>}
                         isDisabled={createTagMutation.isPending}
                         onChange={(options: MultiValue<OptionType>) => {
                           const selectedIds = options.map((opt) => opt.value)
@@ -2640,7 +2639,7 @@ export function ComponentDetailPage() {
                         historyConfig[value as keyof ChartConfig]?.label || value
                       }
                     />
-                    {historyPackets.map((packet, index) => {
+                    {historyPackets.map((_packet, index) => {
                       const key = `packet_${index}`
                       return (
                         <Area
@@ -2758,9 +2757,8 @@ export function ComponentDetailPage() {
                 value={IDENTIFIER_SCHEME_OPTIONS.find((o) => o.value === identifierForm.scheme) ?? null}
                 placeholder="Select type"
                 styles={selectStyles}
-                onChange={(option: SingleValue<{ value: string; label: string }> | MultiValue<{ value: string; label: string }>) => {
-                  const single = Array.isArray(option) ? option[0] : option
-                  setIdentifierForm({ ...identifierForm, scheme: single?.value ?? "" })
+                onChange={(option: SingleValue<OptionType>) => {
+                  setIdentifierForm({ ...identifierForm, scheme: option?.value ?? "" })
                 }}
               />
             </div>

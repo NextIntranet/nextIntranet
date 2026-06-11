@@ -155,7 +155,7 @@ export function PrintActions({
 
   const { data: printers = [], isLoading: printersLoading } = useQuery<AgentPrinter[]>({
     queryKey: ["agent-printers", selectedAgentId],
-    queryFn: () => nextIO.print.listPrinters(selectedAgentId),
+    queryFn: () => nextIO.print.listPrinters(selectedAgentId) as Promise<AgentPrinter[]>,
     enabled: Boolean(selectedAgentId),
   })
 

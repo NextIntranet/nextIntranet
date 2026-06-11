@@ -222,13 +222,6 @@ export function LocationsPage() {
     return findNodeById(locationsTree, levelId);
   }, [levelId, locationsTree]);
 
-  const levelParent = useMemo(() => {
-    if (!currentLevel?.parent || !locationsTree) {
-      return null;
-    }
-    return findNodeById(locationsTree, currentLevel.parent);
-  }, [currentLevel?.parent, locationsTree]);
-
   const currentChildren = useMemo(() => {
     if (currentLevel) {
       return currentLevel.children || [];
@@ -629,7 +622,7 @@ export function LocationsPage() {
               >
                 Root
               </Button>
-              {breadcrumbs.map((crumb, index) => (
+              {breadcrumbs.map((crumb) => (
                 <div key={crumb.id} className="flex items-center gap-2">
                   <ChevronRight className="h-4 w-4 text-muted-foreground" />
                   <Button
