@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   CircleDashed,
   ClipboardCheck,
-  Copy,
   Package,
 } from "lucide-react"
 import Select, { type SingleValue, type StylesConfig } from "react-select"
@@ -15,6 +14,7 @@ import { toast } from "sonner"
 
 import { CampaignProgressSummary } from "@/components/CampaignProgressSummary"
 import { ComponentInfoPopover } from "@/components/ComponentInfoPopover"
+import { CopyActions } from "@/components/CopyActions"
 import { LocationDisplay } from "@/components/LocationDisplay"
 import { LocationParentSelect } from "@/components/LocationParentSelect"
 import { PacketInfoPopover } from "@/components/PacketInfoPopover"
@@ -31,7 +31,6 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { copyToClipboard } from "@/lib/clipboard"
 import {
   getInventoryStatusLabel,
   postInventoryOperation,
@@ -778,6 +777,12 @@ export function InventoryPacketListPage() {
                                         {packet.component.name}
                                       </Link>
                                     </ComponentInfoPopover>
+                                    <CopyActions
+                                      size="xs"
+                                      id={packet.component.id}
+                                      linkPath={`/store/component/${packet.component.id}`}
+                                      subject="component"
+                                    />
                                     <PacketInfoPopover packet={packet} openOnHover>
                                       <Link
                                         to={`/store/packet/${packet.id}`}
@@ -801,23 +806,12 @@ export function InventoryPacketListPage() {
                                       {packet.id}
                                     </span>
                                   </PacketInfoPopover>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-4 w-4 shrink-0 text-muted-foreground [&_svg]:size-2.5"
-                                        onClick={() =>
-                                          copyToClipboard(packet.id, "Packet ID copied.")
-                                        }
-                                        aria-label="Copy packet ID"
-                                      >
-                                        <Copy />
-                                      </Button>
-                                    </TooltipTrigger>
-                                    <TooltipContent>Copy packet ID</TooltipContent>
-                                  </Tooltip>
+                                  <CopyActions
+                                    size="xs"
+                                    id={packet.id}
+                                    linkPath={`/store/packet/${packet.id}`}
+                                    subject="packet"
+                                  />
                                 </div>
                               </div>
                             </div>

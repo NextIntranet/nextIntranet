@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
-import { Copy, Link as LinkIcon, Package } from "lucide-react"
+import { Package } from "lucide-react"
 import { Link } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
+import { CopyActions } from "@/components/CopyActions"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { copyToClipboard } from "@/lib/clipboard"
 
 interface PacketInfo {
   id: string
@@ -123,40 +123,18 @@ export function PacketInfoPopover({
             </dd>
           </div>
         </dl>
-        <div className="mt-3 flex items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-7 gap-1.5 px-2 text-xs"
-            onClick={() => copyToClipboard(packet.id, "Packet ID copied.")}
-          >
-            <Copy className="h-3 w-3" />
-            Copy ID
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-7 gap-1.5 px-2 text-xs"
-            onClick={() =>
-              copyToClipboard(
-                `${window.location.origin}/store/packet/${packet.id}`,
-                "Packet link copied.",
-              )
-            }
-          >
-            <LinkIcon className="h-3 w-3" />
-            Copy link
-          </Button>
-        </div>
-        <div className="mt-3">
+        <div className="mt-3 flex items-center justify-between gap-2">
           <Link
             to={`/store/packet/${packet.id}`}
             className="text-sm text-primary hover:underline"
           >
             Open packet detail
           </Link>
+          <CopyActions
+            id={packet.id}
+            linkPath={`/store/packet/${packet.id}`}
+            subject="packet"
+          />
         </div>
       </PopoverContent>
     </Popover>

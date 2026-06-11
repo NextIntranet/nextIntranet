@@ -19,6 +19,25 @@ def validate_code(query_string):
     return result if result else None
 
 
+# Short QR link path printed on labels: <base>/q/<p|l|c>/<uuid>
+SHORT_LINK_RE = re.compile(r"/q/(?P<kind>[plc])/(?P<id>[0-9a-fA-F-]{36})")
+
+SHORT_LINK_MODELS = {
+    "p": Packet,
+    "l": Warehouse,
+    "c": Component,
+}
+
+
+def resolve_short_link(raw_scan):
+    """Resolve a short QR link to its object, or None when not a short link."""
+    match = SHORT_LINK_RE.search(raw_scan or "")
+    if not match:
+        return None
+    model = SHORT_LINK_MODELS[match.group("kind")]
+    return model.objects.filter(id=match.group("id")).first()
+
+
 def _build_result_for_object(obj):
     """Build { type, id, name, link } for scanner response; link is relative path."""
     if isinstance(obj, Component):
@@ -96,8 +115,16 @@ class IdentifierApiView(APIView):
                 response_data["action"]["type"] = "link"
                 response_data["action"]["value"] = link
 
+        # 0) Short QR link printed on labels: <base>/q/<p|l|c>/<uuid>
+        short_obj = resolve_short_link(raw_scan)
+        if short_obj:
+            item = _build_result_for_object(short_obj)
+            if item:
+                results.append(item)
+                _set_action(item["link"])
+
         # 1) Internal match: QR/content with ?component=uuid or ?packet=uuid
-        if decoded_data:
+        if not results and decoded_data:
             if decoded_data.get("packet"):
                 packet = Packet.objects.filter(id=decoded_data.get("packet")).first()
                 if packet:

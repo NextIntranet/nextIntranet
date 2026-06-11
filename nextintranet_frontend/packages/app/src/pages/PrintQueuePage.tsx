@@ -19,6 +19,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Trash2 } from "lucide-react"
 import { ExtensionPoint } from "@/plugins/ExtensionPoint"
 import { PdfPrintDialog } from "@/components/PdfPrintDialog"
 import { cn } from "@/lib/utils"
@@ -224,6 +225,19 @@ export function PrintQueuePage() {
     },
     onError: () => {
       toast.error("Failed to update default queue.")
+    },
+  })
+
+  const deleteItemMutation = useMutation({
+    mutationFn: (itemId: string) =>
+      apiFetch(`/api/v1/print/item/${itemId}/`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["print-queue-items", activeQueueId] })
+      queryClient.invalidateQueries({ queryKey: ["print-queues"] })
+      toast.success("Item removed from queue.")
+    },
+    onError: () => {
+      toast.error("Failed to remove item from queue.")
     },
   })
 
@@ -447,7 +461,15 @@ export function PrintQueuePage() {
               <Link className="text-primary" to="/setting/hardware">
                 Hardware
               </Link>
-              .
+              , or use{" "}
+              <button
+                type="button"
+                className="text-primary hover:underline"
+                onClick={() => setPdfDialogOpen(true)}
+              >
+                Print to PDF
+              </button>{" "}
+              to print on a system printer.
             </div>
           )}
         </CardContent>
@@ -560,24 +582,25 @@ export function PrintQueuePage() {
             <Table className="w-full table-fixed">
               <TableHeader className="bg-muted/40">
                 <TableRow className="border-border/50">
-                  <TableHead className="h-9 w-[18%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableHead className="h-9 w-[16%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Kind
                   </TableHead>
-                  <TableHead className="h-9 w-[36%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableHead className="h-9 w-[34%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Target
                   </TableHead>
-                  <TableHead className="h-9 w-[22%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableHead className="h-9 w-[20%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Status
                   </TableHead>
-                  <TableHead className="h-9 w-[24%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableHead className="h-9 w-[22%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Created
                   </TableHead>
+                  <TableHead className="h-9 w-[8%] px-3" />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {itemsLoading ? (
                   <TableRow className="border-border/40">
-                    <TableCell colSpan={4} className="py-6">
+                    <TableCell colSpan={5} className="py-6">
                       <div className="space-y-2 px-3">
                         <Skeleton className="h-5 w-3/4" />
                         <Skeleton className="h-5 w-2/3" />
@@ -606,12 +629,25 @@ export function PrintQueuePage() {
                         <TableCell className="h-9 px-3 text-sm text-muted-foreground">
                           {new Date(item.created_at).toLocaleString()}
                         </TableCell>
+                        <TableCell className="h-9 px-3 text-right">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                            onClick={() => deleteItemMutation.mutate(item.id)}
+                            disabled={deleteItemMutation.isPending}
+                            aria-label="Remove from queue"
+                            title="Remove from queue"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     )
                   })
                 ) : (
                   <TableRow className="border-border/40">
-                    <TableCell colSpan={4} className="py-6 px-3 text-sm text-muted-foreground">
+                    <TableCell colSpan={5} className="py-6 px-3 text-sm text-muted-foreground">
                       {activeQueueId
                         ? "No items queued for this print queue."
                         : "Select a queue to see its items."}

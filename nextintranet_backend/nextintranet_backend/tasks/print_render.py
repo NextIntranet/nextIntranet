@@ -135,6 +135,7 @@ def _default_label_data(item):
         return {
             "type": component.name if component else "Component",
             "serial": str(item.object_id)[:8],
+            "id": str(item.object_id),
         }
     if (content_type.app_label, content_type.model) == ("nextintranet_warehouse", "warehouse"):
         location = _get_model_instance("nextintranet_warehouse", "Warehouse", item.object_id)
@@ -144,14 +145,25 @@ def _default_label_data(item):
 
 def _location_label_data(location, fallback_id):
     if not location:
-        return {"building": "Location", "room": str(fallback_id)[:8]}
+        return {
+            "building": "Location",
+            "room": str(fallback_id)[:8],
+            "id": str(fallback_id),
+        }
 
     full_path = location.full_path
     if "/" in full_path:
         building, room = full_path.rsplit("/", 1)
     else:
         building, room = full_path, ""
-    return {"building": building, "room": room or location.name}
+    return {
+        "building": building,
+        "room": room or location.name,
+        "full_path": full_path,
+        "name": location.name,
+        "description": location.description or "",
+        "id": str(location.id),
+    }
 
 
 def _get_model_instance(app_label, model_name, object_id):

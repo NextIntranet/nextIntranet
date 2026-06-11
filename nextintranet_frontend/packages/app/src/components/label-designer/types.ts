@@ -100,17 +100,26 @@ export const PLACEHOLDERS: Record<LabelTargetType, PlaceholderOption[]> = {
     { value: "{packet.location}", label: "Packet location" },
     { value: "{packet.count}", label: "Stock count (at print time)" },
     { value: "{packet.barcode_url}", label: "Packet barcode URL" },
+    { value: "{packet.barcode_short}", label: "Packet QR URL (short)" },
     ...NOW_PLACEHOLDERS,
   ],
   location: [
     { value: "{location.building}", label: "Building" },
     { value: "{location.room}", label: "Room" },
     { value: "{location.full_path}", label: "Full path" },
+    { value: "{location.name}", label: "Location name" },
+    { value: "{location.description}", label: "Location description" },
+    { value: "{location.uuid}", label: "Location ID" },
+    { value: "{location.url}", label: "Location URL" },
+    { value: "{location.barcode_short}", label: "Location QR URL (short)" },
     ...NOW_PLACEHOLDERS,
   ],
   component: [
     { value: "{component.type}", label: "Component type" },
     { value: "{component.serial}", label: "Serial number" },
+    { value: "{component.id}", label: "Component ID" },
+    { value: "{component.barcode_url}", label: "Component barcode URL" },
+    { value: "{component.barcode_short}", label: "Component QR URL (short)" },
     ...NOW_PLACEHOLDERS,
   ],
 }
@@ -125,6 +134,7 @@ const SAMPLE_CONTEXTS: Record<LabelTargetType, Record<string, Record<string, str
       location: "Building A/Room 12/Shelf 3",
       count: "100",
       barcode_url: `https://ni.ust.cz/?packet=${SAMPLE_UUID}&component=42`,
+      barcode_short: `https://ni.ust.cz/q/p/${SAMPLE_UUID}`,
     },
     component: {
       name: "Resistor 10k 0805 1%",
@@ -137,12 +147,20 @@ const SAMPLE_CONTEXTS: Record<LabelTargetType, Record<string, Record<string, str
       building: "Building A",
       room: "Room 12",
       full_path: "Building A/Room 12",
+      name: "Room 12",
+      description: "Shelving for SMD reels, row 3",
+      uuid: SAMPLE_UUID,
+      url: `https://ni.ust.cz/store/location/${SAMPLE_UUID}`,
+      barcode_short: `https://ni.ust.cz/q/l/${SAMPLE_UUID}`,
     },
   },
   component: {
     component: {
       type: "Resistor 10k 0805",
       serial: SAMPLE_UUID.slice(0, 8),
+      id: SAMPLE_UUID,
+      barcode_url: `https://ni.ust.cz/?component=${SAMPLE_UUID}`,
+      barcode_short: `https://ni.ust.cz/q/c/${SAMPLE_UUID}`,
     },
   },
 }
@@ -174,9 +192,9 @@ export const resolvePlaceholders = (text: string, labelType: LabelTargetType) =>
   })
 
 const DEFAULT_BARCODE_CONTENT: Record<LabelTargetType, string> = {
-  packet: "{packet.barcode_url}",
-  location: "{location.full_path}",
-  component: "{component.serial}",
+  packet: "{packet.barcode_short}",
+  location: "{location.barcode_short}",
+  component: "{component.barcode_short}",
 }
 
 export const createElement = (

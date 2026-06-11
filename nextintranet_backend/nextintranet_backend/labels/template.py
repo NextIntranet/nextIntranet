@@ -17,7 +17,7 @@ from django.utils import timezone
 
 from nextintranet_backend.labels.base import LabelContentGenerator, DEFAULT_FONT_FAMILY
 
-BARCODE_BASE_URL = "https://ni.ust.cz"
+BARCODE_BASE_URL = os.environ.get("BARCODE_BASE_URL", "https://ni.ust.cz").rstrip("/")
 
 PLACEHOLDER_RE = re.compile(r"\{([a-zA-Z0-9_.]+)\}")
 
@@ -61,6 +61,7 @@ def build_label_context(label_type, data):
                 "location": location,
                 "count": format_count(packet.count) if packet else "",
                 "barcode_url": f"{BARCODE_BASE_URL}/?packet={packet_id}&component={component_id}",
+                "barcode_short": f"{BARCODE_BASE_URL}/q/p/{packet_id}" if packet_id else "",
             },
             "component": {
                 "name": component.name if component else "",
@@ -69,19 +70,29 @@ def build_label_context(label_type, data):
             },
         }
     elif label_type == "location":
+        location_id = data.get("id", "")
         context = {
             "location": {
                 "building": data.get("building", ""),
                 "room": data.get("room", ""),
                 "full_path": data.get("full_path")
                 or "/".join(filter(None, [data.get("building", ""), data.get("room", "")])),
+                "name": data.get("name", ""),
+                "description": data.get("description", ""),
+                "uuid": str(location_id),
+                "url": f"{BARCODE_BASE_URL}/store/location/{location_id}" if location_id else "",
+                "barcode_short": f"{BARCODE_BASE_URL}/q/l/{location_id}" if location_id else "",
             }
         }
     elif label_type == "component":
+        component_id = data.get("id", "")
         context = {
             "component": {
                 "type": data.get("type", ""),
                 "serial": data.get("serial", ""),
+                "id": str(component_id),
+                "barcode_url": f"{BARCODE_BASE_URL}/?component={component_id}" if component_id else "",
+                "barcode_short": f"{BARCODE_BASE_URL}/q/c/{component_id}" if component_id else "",
             }
         }
     else:
@@ -102,6 +113,7 @@ def sample_label_context(label_type):
                 "location": "Building A/Room 12/Shelf 3",
                 "count": "100",
                 "barcode_url": f"{BARCODE_BASE_URL}/?packet={sample_uuid}&component=42",
+                "barcode_short": f"{BARCODE_BASE_URL}/q/p/{sample_uuid}",
             },
             "component": {
                 "name": "Resistor 10k 0805 1%",
@@ -115,6 +127,11 @@ def sample_label_context(label_type):
                 "building": "Building A",
                 "room": "Room 12",
                 "full_path": "Building A/Room 12",
+                "name": "Room 12",
+                "description": "Shelving for SMD reels, row 3",
+                "uuid": sample_uuid,
+                "url": f"{BARCODE_BASE_URL}/store/location/{sample_uuid}",
+                "barcode_short": f"{BARCODE_BASE_URL}/q/l/{sample_uuid}",
             }
         }
     if label_type == "component":
@@ -122,6 +139,9 @@ def sample_label_context(label_type):
             "component": {
                 "type": "Resistor 10k 0805",
                 "serial": sample_uuid[:8],
+                "id": sample_uuid,
+                "barcode_url": f"{BARCODE_BASE_URL}/?component={sample_uuid}",
+                "barcode_short": f"{BARCODE_BASE_URL}/q/c/{sample_uuid}",
             }
         }
     return {}

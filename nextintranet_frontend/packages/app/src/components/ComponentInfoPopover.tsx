@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
-import { Copy, Info, Link as LinkIcon } from "lucide-react"
+import { Info } from "lucide-react"
 import { Link } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
+import { CopyActions } from "@/components/CopyActions"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { copyToClipboard } from "@/lib/clipboard"
 
 interface ComponentInfo {
   id: string
@@ -136,37 +136,15 @@ export function ComponentInfoPopover({
             {component.description}
           </p>
         )}
-        <div className="mt-3 flex items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-7 gap-1.5 px-2 text-xs"
-            onClick={() => copyToClipboard(component.id, "Component ID copied.")}
-          >
-            <Copy className="h-3 w-3" />
-            Copy ID
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-7 gap-1.5 px-2 text-xs"
-            onClick={() =>
-              copyToClipboard(
-                `${window.location.origin}/store/component/${component.id}`,
-                "Component link copied.",
-              )
-            }
-          >
-            <LinkIcon className="h-3 w-3" />
-            Copy link
-          </Button>
-        </div>
-        <div className="mt-3">
+        <div className="mt-3 flex items-center justify-between gap-2">
           <Link to={componentLink} className="text-sm text-primary hover:underline">
             Open component details
           </Link>
+          <CopyActions
+            id={component.id}
+            linkPath={`/store/component/${component.id}`}
+            subject="component"
+          />
         </div>
       </PopoverContent>
     </Popover>

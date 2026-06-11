@@ -21,6 +21,7 @@ import { ForbiddenPage } from './pages/ForbiddenPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { UnauthorizedPage } from './pages/UnauthorizedPage';
 import { PacketDetailPage } from './pages/PacketDetailPage';
+import { QrRedirectPage } from './pages/QrRedirectPage';
 import { PrintQueuePage } from './pages/PrintQueuePage';
 import { HardwarePage } from './pages/HardwarePage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -50,6 +51,7 @@ export function App() {
           }
         >
           <Route index element={<HomePage />} />
+          <Route path="q/:kind/:id" element={<QrRedirectPage />} />
           <Route path="docs/*" element={<DocsPage />} />
           <Route path="store" element={<StorePage />} />
           <Route

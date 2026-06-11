@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { apiFetch } from "@nextintranet/core"
-import { Download, Printer } from "lucide-react"
+import { Download, ExternalLink, Printer } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -234,6 +234,16 @@ export function PdfPrintDialog({
     }
   }, [open, setPdfBlob])
 
+  const handleOpenInTab = () => {
+    if (!pdfUrl) {
+      return
+    }
+    const win = window.open(pdfUrl, "_blank")
+    if (!win) {
+      toast.error("Pop-up was blocked. Use Download instead.")
+    }
+  }
+
   const handlePrint = () => {
     const frame = iframeRef.current
     if (!frame?.contentWindow) {
@@ -244,7 +254,9 @@ export function PdfPrintDialog({
       frame.contentWindow.focus()
       frame.contentWindow.print()
     } catch {
-      toast.error("Failed to open the print dialog. Use Download instead.")
+      // Embedded browsers (e.g. Electron) often cannot print a PDF iframe;
+      // fall back to the native viewer in a new tab.
+      handleOpenInTab()
     }
   }
 
@@ -433,6 +445,10 @@ export function PdfPrintDialog({
           <Button variant="outline" onClick={handleDownload} disabled={!pdfUrl}>
             <Download className="mr-1.5 h-4 w-4" />
             Download
+          </Button>
+          <Button variant="outline" onClick={handleOpenInTab} disabled={!pdfUrl}>
+            <ExternalLink className="mr-1.5 h-4 w-4" />
+            Open
           </Button>
           <Button onClick={handlePrint} disabled={!pdfUrl || generating}>
             <Printer className="mr-1.5 h-4 w-4" />
