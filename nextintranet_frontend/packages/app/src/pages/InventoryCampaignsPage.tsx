@@ -8,7 +8,10 @@ import Select, { type MultiValue, type StylesConfig } from "react-select"
 
 import { CampaignProgressSummary } from "@/components/CampaignProgressSummary"
 import { Button } from "@/components/ui/button"
-import { type StocktakingProgress } from "@/lib/stocktaking"
+import {
+  STOCKTAKING_PROGRESS_REFETCH_MS,
+  type StocktakingProgress,
+} from "@/lib/stocktaking"
 import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -133,6 +136,8 @@ export function InventoryCampaignsPage() {
     queryKey: ["stocktaking"],
     queryFn: () =>
       apiFetch<Stocktaking[] | PaginatedStocktaking>("/api/v1/store/stocktaking/?page_size=1000"),
+    refetchInterval: STOCKTAKING_PROGRESS_REFETCH_MS,
+    refetchIntervalInBackground: true,
   })
 
   const stocktakings = Array.isArray(stocktakingData)
@@ -143,6 +148,8 @@ export function InventoryCampaignsPage() {
     queryKey: ["stocktaking", id],
     queryFn: () => apiFetch<Stocktaking>(`/api/v1/store/stocktaking/${id}/`),
     enabled: !!id,
+    refetchInterval: STOCKTAKING_PROGRESS_REFETCH_MS,
+    refetchIntervalInBackground: true,
   })
 
   const { data: usersData } = useQuery<UserAdmin[] | PaginatedUsers>({

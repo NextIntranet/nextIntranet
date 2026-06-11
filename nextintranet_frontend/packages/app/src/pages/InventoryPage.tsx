@@ -33,7 +33,10 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { postInventoryOperation } from "@/lib/inventory"
-import { type StocktakingProgress } from "@/lib/stocktaking"
+import {
+  STOCKTAKING_PROGRESS_REFETCH_MS,
+  type StocktakingProgress,
+} from "@/lib/stocktaking"
 import { getOperationLabel } from "@/lib/stockOperations"
 import { resolvePacketIdFromScan } from "@/lib/resolvePacketIdFromScan"
 
@@ -239,6 +242,8 @@ export function InventoryPage() {
       apiFetch<StocktakingCampaign[] | { results: StocktakingCampaign[] }>(
         "/api/v1/store/stocktaking/?is_active=true&page_size=1",
       ),
+    refetchInterval: STOCKTAKING_PROGRESS_REFETCH_MS,
+    refetchIntervalInBackground: true,
   })
 
   const activeCampaign = Array.isArray(activeCampaigns)

@@ -34,7 +34,10 @@ import {
   postInventoryOperation,
   type PaginatedResponse,
 } from "@/lib/inventory"
-import { type StocktakingProgress } from "@/lib/stocktaking"
+import {
+  STOCKTAKING_PROGRESS_REFETCH_MS,
+  type StocktakingProgress,
+} from "@/lib/stocktaking"
 
 interface StocktakingCampaign {
   id: string
@@ -333,6 +336,8 @@ export function InventoryPacketListPage() {
       apiFetch<StocktakingCampaign[] | PaginatedResponse<StocktakingCampaign>>(
         "/api/v1/store/stocktaking/?page_size=1000",
       ),
+    refetchInterval: STOCKTAKING_PROGRESS_REFETCH_MS,
+    refetchIntervalInBackground: true,
   })
 
   const campaigns = Array.isArray(campaignsData)

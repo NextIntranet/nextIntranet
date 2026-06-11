@@ -15,7 +15,8 @@ def get_stocktaking_progress_map(campaign_ids):
     if not campaign_ids:
         return {}
 
-    total_packets = Packet.objects.filter(is_active=True).count()
+    total_active_packets = Packet.objects.filter(is_active=True).count()
+    total_inactive_packets = Packet.objects.filter(is_active=False).count()
     inventoried_rows = (
         StockOperation.objects.filter(
             operation_type="inventory",
@@ -32,10 +33,15 @@ def get_stocktaking_progress_map(campaign_ids):
     for campaign_id in campaign_ids:
         campaign_key = str(campaign_id)
         inventoried = inventoried_by_id.get(campaign_key, 0)
-        pending = max(0, total_packets - inventoried)
-        percent = round(inventoried / total_packets * 100) if total_packets else 0
+        pending = max(0, total_active_packets - inventoried)
+        percent = (
+            round(inventoried / total_active_packets * 100)
+            if total_active_packets
+            else 0
+        )
         result[campaign_key] = {
-            "total_packets": total_packets,
+            "total_packets": total_active_packets,
+            "inactive_packets": total_inactive_packets,
             "inventoried_packets": inventoried,
             "pending_packets": pending,
             "progress_percent": percent,
@@ -43,9 +49,10 @@ def get_stocktaking_progress_map(campaign_ids):
     return result
 
 
-def empty_stocktaking_progress(total_packets=0):
+def empty_stocktaking_progress(total_packets=0, inactive_packets=0):
     return {
         "total_packets": total_packets,
+        "inactive_packets": inactive_packets,
         "inventoried_packets": 0,
         "pending_packets": total_packets,
         "progress_percent": 0,
@@ -54,6 +61,7 @@ def empty_stocktaking_progress(total_packets=0):
 
 class StocktakingProgressSerializer(serializers.Serializer):
     total_packets = serializers.IntegerField()
+    inactive_packets = serializers.IntegerField()
     inventoried_packets = serializers.IntegerField()
     pending_packets = serializers.IntegerField()
     progress_percent = serializers.IntegerField()
@@ -97,10 +105,11 @@ class StocktakingSerializer(serializers.ModelSerializer):
 
     def get_progress(self, instance):
         progress_map = self.context.get("progress_map", {})
-        total_packets = self.context.get("total_active_packet_count", 0)
+        total_active_packets = self.context.get("total_active_packet_count", 0)
+        total_inactive_packets = self.context.get("total_inactive_packet_count", 0)
         return progress_map.get(
             str(instance.pk),
-            empty_stocktaking_progress(total_packets),
+            empty_stocktaking_progress(total_active_packets, total_inactive_packets),
         )
 
     def validate(self, attrs):
@@ -128,8 +137,12 @@ class StocktakingViewSet(viewsets.ModelViewSet):
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
-        total_active_packet_count = Packet.objects.filter(is_active=True).count()
-        context["total_active_packet_count"] = total_active_packet_count
+        context["total_active_packet_count"] = Packet.objects.filter(
+            is_active=True
+        ).count()
+        context["total_inactive_packet_count"] = Packet.objects.filter(
+            is_active=False
+        ).count()
 
         if self.action in ("list", "retrieve"):
             if self.action == "retrieve":
