@@ -397,6 +397,21 @@ export function PacketOperationSheet({
                 onChange={(e) =>
                   setFormState({ ...formState, quantity: e.target.value })
                 }
+                onBlur={isServiceOperation ? () => {
+                  const raw = formState.quantity.trim()
+                  if (raw === "") return
+                  if (raw.startsWith("=")) {
+                    const v = evalMathExpr(raw.slice(1))
+                    if (v !== null && `=${v}` !== raw) {
+                      setFormState((s) => ({ ...s, quantity: `=${v}` }))
+                    }
+                  } else {
+                    const v = evalMathExpr(raw)
+                    if (v !== null && String(v) !== raw) {
+                      setFormState((s) => ({ ...s, quantity: String(v) }))
+                    }
+                  }
+                } : undefined}
                 placeholder={isServiceOperation ? "-5 or =10 or 50+50" : "0"}
               />
               {isServiceOperation && (

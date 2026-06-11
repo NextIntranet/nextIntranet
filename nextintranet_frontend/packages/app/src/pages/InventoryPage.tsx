@@ -875,6 +875,15 @@ export function InventoryPage() {
                         inputMode="text"
                         value={newCount}
                         onChange={(e) => setNewCount(e.target.value)}
+                        onBlur={() => {
+                          const raw = newCount.trim()
+                          if (raw === "" || raw.startsWith("+") || raw.startsWith("-")) return
+                          const expr = raw.startsWith("=") ? raw.slice(1) : raw
+                          const v = evalMathExpr(expr)
+                          if (v !== null && v >= 0 && raw !== String(v)) {
+                            setNewCount(String(v))
+                          }
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
                             e.preventDefault()
