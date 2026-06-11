@@ -33,6 +33,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { postInventoryOperation } from "@/lib/inventory"
+import { evalMathExpr } from "@/lib/utils"
 import {
   STOCKTAKING_PROGRESS_REFETCH_MS,
   type StocktakingProgress,
@@ -342,9 +343,23 @@ export function InventoryPage() {
 
   // DRF serializes the Decimal count as a string, so coerce before math.
   const currentCount = Number(selectedPacket?.count ?? 0)
-  const parsedNewCount = newCount.trim() === "" ? null : Number(newCount)
+  const parseNewCount = (): number | null => {
+    const raw = newCount.trim()
+    if (raw === "") return null
+    // Explicit = prefix or bare number/expression → absolute count
+    const absExpr = raw.startsWith("=") ? raw.slice(1) : raw
+    if (!raw.startsWith("+") && !raw.startsWith("-")) {
+      const v = evalMathExpr(absExpr)
+      return v !== null && v >= 0 ? v : null
+    }
+    // Leading + or - → relative delta
+    const v = evalMathExpr(raw)
+    if (v === null) return null
+    return currentCount + v
+  }
+  const parsedNewCount = parseNewCount()
   const diff =
-    parsedNewCount === null || Number.isNaN(parsedNewCount)
+    parsedNewCount === null
       ? null
       : parsedNewCount - currentCount
 
@@ -856,7 +871,8 @@ export function InventoryPage() {
                       </label>
                       <Input
                         ref={countInputRef}
-                        type="number"
+                        type="text"
+                        inputMode="text"
                         value={newCount}
                         onChange={(e) => setNewCount(e.target.value)}
                         onKeyDown={(e) => {
@@ -867,10 +883,13 @@ export function InventoryPage() {
                             }
                           }
                         }}
-                        placeholder="Enter current count"
+                        placeholder="100 or -5 or 50+50"
                         className="h-14 text-lg font-semibold"
                         disabled={false}
                       />
+                      <p className="text-xs text-muted-foreground">
+                        Enter the physical count. Use -5 to subtract or +5 to add relative to recorded. Expressions like 50+50 are evaluated as absolute count.
+                      </p>
                     </div>
                   </div>
                   <div className="rounded-lg border border-border/70 bg-muted/20 px-4 py-3 text-sm">
