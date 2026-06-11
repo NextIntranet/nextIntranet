@@ -6,6 +6,10 @@ from nextintranet_backend.labels.base import (
 )
 
 
+A4_WIDTH_MM = 210
+A4_HEIGHT_MM = 297
+
+
 class A4SheetLabelGenerator(LabelFormatGenerator):
     """Generator for multiple labels on an A4 sheet."""
     
@@ -36,6 +40,33 @@ class A4SheetLabelGenerator(LabelFormatGenerator):
         print(f"  Show borders: {show_borders}")
         print(f"  Page margins: left={page_margin_left}mm, top={page_margin_top}mm, right={page_margin_right}mm, bottom={page_margin_bottom}mm")
         print(f"  Skipping first {self.skip_labels} labels")
+
+    def _grid_size_mm(self):
+        grid_w = self.columns * self.width_mm + max(0, self.columns - 1) * self.spacing_h
+        grid_h = self.rows * self.height_mm + max(0, self.rows - 1) * self.spacing_v
+        return grid_w, grid_h
+
+    def _compute_grid_origin(self):
+        """Return top-left origin for the label grid on the A4 page."""
+        has_custom_margins = any([
+            self.margin_left,
+            self.margin_top,
+            self.page_margin_left,
+            self.page_margin_top,
+            self.page_margin_right,
+            self.page_margin_bottom,
+        ])
+        if has_custom_margins:
+            return (
+                self.page_margin_left + self.margin_left,
+                self.page_margin_top + self.margin_top,
+            )
+
+        grid_w, grid_h = self._grid_size_mm()
+        return (
+            (A4_WIDTH_MM - grid_w) / 2,
+            (A4_HEIGHT_MM - grid_h) / 2,
+        )
     
     def _create_pdf(self):
         """Create a PDF document for A4 sheet."""
@@ -56,6 +87,9 @@ class A4SheetLabelGenerator(LabelFormatGenerator):
         
         self._create_pdf()
         self.pdf.add_page()
+
+        origin_x, origin_y = self._compute_grid_origin()
+        print(f"A4SheetLabelGenerator: Grid origin: ({origin_x},{origin_y}) mm")
         
         # Calculate positions
         item_index = 0
@@ -97,9 +131,8 @@ class A4SheetLabelGenerator(LabelFormatGenerator):
                     if item_index >= total_items:
                         break
                     
-                    # Calculate position for this label with page margins
-                    x = self.page_margin_left + self.margin_left + col * (self.width_mm + self.spacing_h)
-                    y = self.page_margin_top + self.margin_top + row * (self.height_mm + self.spacing_v)
+                    x = origin_x + col * (self.width_mm + self.spacing_h)
+                    y = origin_y + row * (self.height_mm + self.spacing_v)
                     
                     print(f"Label position [{row+1},{col+1}]: ({x},{y}) mm")
                     

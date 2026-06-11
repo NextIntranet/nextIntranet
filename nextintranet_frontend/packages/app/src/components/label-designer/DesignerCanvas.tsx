@@ -156,6 +156,11 @@ export function DesignerCanvas({
     switch (element.type) {
       case "text": {
         const fontSizePx = (element.font_size ?? 10) * PT_TO_MM * pxPerMm
+        const lineHeightMm = element.line_height ?? (element.font_size ?? 10) * 0.45
+        const maxLines =
+          element.multiline && element.h > 0
+            ? Math.max(1, Math.floor(element.h / lineHeightMm))
+            : undefined
         const align =
           element.align === "C" ? "center" : element.align === "R" ? "right" : "left"
         return (
@@ -168,6 +173,10 @@ export function DesignerCanvas({
               color: rgbToCss(element.color),
               whiteSpace: element.multiline ? "pre-wrap" : "nowrap",
               wordBreak: element.multiline ? "break-word" : undefined,
+              textOverflow: element.multiline ? undefined : "ellipsis",
+              display: maxLines ? "-webkit-box" : undefined,
+              WebkitLineClamp: maxLines,
+              WebkitBoxOrient: maxLines ? "vertical" : undefined,
             }}
           >
             {resolvePlaceholders(element.content ?? "", labelType)}

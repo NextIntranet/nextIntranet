@@ -79,9 +79,8 @@ class LabelGeneratorFactory:
             )
         elif format_type == 'a4_3x7':
             print("LabelGeneratorFactory: Creating A4SheetLabelGenerator (3x7)")
-            # Retrieve margin settings with more appropriate defaults for 3x7 layout
-            margin_left_mm = kwargs.get('margin_left_mm', 3)
-            margin_top_mm = kwargs.get('margin_top_mm', 3)
+            margin_left_mm = kwargs.get('margin_left_mm', 0)
+            margin_top_mm = kwargs.get('margin_top_mm', 0)
             spacing_h_mm = kwargs.get('spacing_h_mm', 0)
             spacing_v_mm = kwargs.get('spacing_v_mm', 0)
 
@@ -103,10 +102,10 @@ class LabelGeneratorFactory:
                 color_mode=color_mode,
                 skip_labels=skip_labels,
                 show_borders=show_borders,
-                page_margin_left=kwargs.get('page_margin_left', 3),   # Default 5mm page margin
-                page_margin_top=kwargs.get('page_margin_top', 3),    # Default 10mm page margin
-                page_margin_right=kwargs.get('page_margin_right', 3), # Default 5mm page margin
-                page_margin_bottom=kwargs.get('page_margin_bottom', 3) # Default 10mm page margin
+                page_margin_left=kwargs.get('page_margin_left', 0),
+                page_margin_top=kwargs.get('page_margin_top', 0),
+                page_margin_right=kwargs.get('page_margin_right', 0),
+                page_margin_bottom=kwargs.get('page_margin_bottom', 0),
             )
         elif format_type == 'a4_4x10':
             print("LabelGeneratorFactory: Creating A4SheetLabelGenerator (4x10)")

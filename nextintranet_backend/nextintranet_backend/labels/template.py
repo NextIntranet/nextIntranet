@@ -11,6 +11,7 @@ import os
 import re
 import tempfile
 import uuid as uuid_module
+from contextlib import nullcontext
 
 import treepoem
 from django.utils import timezone
@@ -208,6 +209,66 @@ class TemplateLabelGenerator(LabelContentGenerator):
             except Exception as exc:
                 print(f"TemplateLabelGenerator: Failed to render element {element.get('id')}: {exc}")
 
+    def _truncate_to_width(self, pdf, text, width, ellipsis="..."):
+        if width <= 0 or not text:
+            return text
+        if pdf.get_string_width(text) <= width:
+            return text
+        ellipsis_width = pdf.get_string_width(ellipsis)
+        if ellipsis_width >= width:
+            return ellipsis
+        lo, hi = 0, len(text)
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if pdf.get_string_width(text[:mid]) + ellipsis_width <= width:
+                lo = mid
+            else:
+                hi = mid - 1
+        return text[:lo] + ellipsis
+
+    def _wrap_text_lines(self, pdf, text, width, align):
+        if width <= 0:
+            return [text] if text else []
+        return pdf.multi_cell(
+            width,
+            1,
+            text or "",
+            dry_run=True,
+            output="LINES",
+            align=align,
+        ) or []
+
+    def _limit_lines_to_height(self, pdf, lines, width, max_height, line_height):
+        if not lines:
+            return lines
+        if max_height <= 0 or line_height <= 0:
+            return lines
+        max_lines = max(1, int(max_height // line_height))
+        if len(lines) <= max_lines:
+            return lines
+        trimmed = lines[:max_lines]
+        trimmed[-1] = self._truncate_to_width(pdf, f"{trimmed[-1].rstrip()}...", width)
+        return trimmed
+
+    def _fit_font_size(self, pdf, style, font_size, content, width, height, multiline, line_height, align):
+        min_size = 3.0
+        while font_size >= min_size:
+            pdf.set_font(DEFAULT_FONT_FAMILY, style, font_size)
+            if multiline:
+                lines = self._wrap_text_lines(pdf, content, width, align)
+                if height > 0 and len(lines) * line_height > height:
+                    font_size -= 0.5
+                    continue
+                return font_size, lines
+            if pdf.get_string_width(content) <= width:
+                return font_size, None
+            font_size -= 0.5
+        pdf.set_font(DEFAULT_FONT_FAMILY, style, min_size)
+        if multiline:
+            lines = self._wrap_text_lines(pdf, content, width, align)
+            return min_size, self._limit_lines_to_height(pdf, lines, width, height, line_height)
+        return min_size, None
+
     def _color(self, element, default=(0, 0, 0)):
         color = element.get("color")
         if (
@@ -227,6 +288,7 @@ class TemplateLabelGenerator(LabelContentGenerator):
         font_size = float(element.get("font_size", 10))
         style = "B" if element.get("bold") else ""
         align = element.get("align", "L")
+        multiline = bool(element.get("multiline"))
         max_chars = element.get("max_chars")
         if isinstance(max_chars, (int, float)) and max_chars > 0:
             max_chars = int(max_chars)
@@ -234,20 +296,46 @@ class TemplateLabelGenerator(LabelContentGenerator):
                 content = content[:max_chars] + "..."
 
         pdf.set_text_color(*self._color(element))
-        pdf.set_font(DEFAULT_FONT_FAMILY, style, font_size)
+        line_height = float(element.get("line_height", font_size * 0.45))
+        wrapped_lines = None
 
         if element.get("fit"):
-            # Shrink the font until the text fits the element width.
-            while font_size > 3 and pdf.get_string_width(content) > w:
-                font_size -= 0.5
-                pdf.set_font(DEFAULT_FONT_FAMILY, style, font_size)
-
-        pdf.set_xy(x, y)
-        if element.get("multiline"):
+            font_size, wrapped_lines = self._fit_font_size(
+                pdf,
+                style,
+                font_size,
+                content,
+                w,
+                h,
+                multiline,
+                line_height,
+                align,
+            )
             line_height = float(element.get("line_height", font_size * 0.45))
-            pdf.multi_cell(w, line_height, content, align=align)
+            if multiline:
+                wrapped_lines = self._limit_lines_to_height(
+                    pdf, wrapped_lines or [], w, h, line_height
+                )
+            else:
+                content = self._truncate_to_width(pdf, content, w)
         else:
-            pdf.cell(w, h or font_size * 0.5, content, 0, 0, align)
+            pdf.set_font(DEFAULT_FONT_FAMILY, style, font_size)
+            if multiline:
+                wrapped_lines = self._wrap_text_lines(pdf, content, w, align)
+                wrapped_lines = self._limit_lines_to_height(pdf, wrapped_lines, w, h, line_height)
+            else:
+                content = self._truncate_to_width(pdf, content, w)
+
+        clip_h = h if h > 0 else (line_height if multiline else font_size * 0.5)
+        clip_context = pdf.rect_clip(x, y, w, clip_h) if w > 0 and clip_h > 0 else nullcontext()
+
+        with clip_context:
+            pdf.set_xy(x, y)
+            if multiline:
+                render_text = "\n".join(wrapped_lines or [])
+                pdf.multi_cell(w, line_height, render_text, align=align)
+            else:
+                pdf.cell(w, clip_h, content, 0, 0, align)
 
     def _render_barcode(self, pdf, element, context, x, y, w, h):
         content = resolve_placeholders(element.get("content", ""), context)

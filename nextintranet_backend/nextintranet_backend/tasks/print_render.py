@@ -20,16 +20,46 @@ LABEL_MODEL_MAP = {
 }
 
 FORMAT_DEFAULTS = {
-    "width_mm": 63.5,
-    "height_mm": 38.1,
-    "margin_left_mm": 10,
-    "margin_top_mm": 10,
-    "spacing_h_mm": 5,
-    "spacing_v_mm": 0,
-    "page_margin_left": 0,
-    "page_margin_top": 0,
-    "page_margin_right": 0,
-    "page_margin_bottom": 0,
+    "single": {
+        "width_mm": 63.5,
+        "height_mm": 38.1,
+    },
+    "a4_2x7": {
+        "width_mm": 63.5,
+        "height_mm": 38.1,
+        "margin_left_mm": 10,
+        "margin_top_mm": 10,
+        "spacing_h_mm": 5,
+        "spacing_v_mm": 0,
+        "page_margin_left": 0,
+        "page_margin_top": 0,
+        "page_margin_right": 0,
+        "page_margin_bottom": 0,
+    },
+    "a4_3x7": {
+        "width_mm": 70,
+        "height_mm": 42.3,
+        "margin_left_mm": 0,
+        "margin_top_mm": 0,
+        "spacing_h_mm": 0,
+        "spacing_v_mm": 0,
+        "page_margin_left": 0,
+        "page_margin_top": 0,
+        "page_margin_right": 0,
+        "page_margin_bottom": 0,
+    },
+    "a4_4x10": {
+        "width_mm": 48,
+        "height_mm": 25,
+        "margin_left_mm": 10,
+        "margin_top_mm": 15,
+        "spacing_h_mm": 0,
+        "spacing_v_mm": 0,
+        "page_margin_left": 0,
+        "page_margin_top": 0,
+        "page_margin_right": 0,
+        "page_margin_bottom": 0,
+    },
 }
 
 
@@ -98,12 +128,14 @@ def cleanup_expired_print_files():
 
 
 def _build_format_params(payload):
+    format_type = payload.get("format") or "single"
+    defaults = FORMAT_DEFAULTS.get(format_type, FORMAT_DEFAULTS["single"])
     params = {
         "skip_labels": int(payload.get("skip_labels", 0)),
         "show_borders": bool(payload.get("show_borders", True)),
         "color_mode": payload.get("color_mode", "color"),
     }
-    for key, default in FORMAT_DEFAULTS.items():
+    for key, default in defaults.items():
         value = payload.get(key, default)
         params[key] = float(value)
     return params
