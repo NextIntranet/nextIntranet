@@ -109,6 +109,9 @@ else
     $DC up -d
 fi
 
+echo "      Restartuji nginx (obnova DNS rozlišení)..."
+$DC restart nginx
+
 echo ""
 echo "=== Aktualizace dokončena ==="
 $DC ps
