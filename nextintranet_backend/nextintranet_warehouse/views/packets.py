@@ -227,7 +227,7 @@ class PacketListCreateAPIView(generics.ListCreateAPIView):
 
     def get_queryset(self):
         component = get_object_or_404(Component, pk=self.kwargs.get('pk'))
-        return Packet.objects.filter(component=component)
+        return Packet.objects.filter(component=component).order_by('-is_active', '-created_at')
     
     def post(self, request, pk, *args, **kwargs):
         component = get_object_or_404(Component, pk=pk)

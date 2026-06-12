@@ -843,6 +843,16 @@ export function ComponentDetailPage() {
     setEditedData({})
   }
 
+  const openNewPacketSheet = () => {
+    setPacketForm({
+      locationId: defaultPacketLocationId,
+      count: "",
+      description: "",
+      isActive: true,
+    })
+    setPacketSheetOpen(true)
+  }
+
   const handleCreatePacket = () => {
     const countValue = packetForm.count.trim() === "" ? 0 : Number(packetForm.count)
     if (!id || !packetForm.locationId || Number.isNaN(countValue)) {
@@ -1103,16 +1113,48 @@ export function ComponentDetailPage() {
     }
     return rawValue.trim()
   }
+  const sortedPackets = useMemo(() => {
+    const packets = component?.packets ?? []
+    return [...packets].sort((a, b) => {
+      const aActive = a.is_active !== false
+      const bActive = b.is_active !== false
+      if (aActive !== bActive) {
+        return aActive ? -1 : 1
+      }
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    })
+  }, [component?.packets])
+
+  const defaultPacketLocationId = useMemo(() => {
+    const packetsWithLocation = sortedPackets.filter((packet) => packet.location?.id)
+    if (!packetsWithLocation.length) {
+      return ""
+    }
+    const mostRecentlyUsed = [...packetsWithLocation].sort((a, b) => {
+      const aTime = a.last_used_at
+        ? new Date(a.last_used_at).getTime()
+        : new Date(a.created_at).getTime()
+      const bTime = b.last_used_at
+        ? new Date(b.last_used_at).getTime()
+        : new Date(b.created_at).getTime()
+      return bTime - aTime
+    })[0]
+    return mostRecentlyUsed.location?.id ?? ""
+  }, [sortedPackets])
+
   const packetOptions = useMemo(
     () =>
-      (component?.packets ?? []).map((packet) => ({
+      sortedPackets.map((packet) => ({
         id: packet.id,
         label: packet.location?.full_path || packet.id,
         locationId: packet.location?.id || null,
         count: packet.count ?? null,
       })),
-    [component?.packets],
+    [sortedPackets],
   )
+
+  const inactivePacketClass = (packet: ComponentPacket) =>
+    packet.is_active === false ? "text-muted-foreground line-through" : ""
 
   const documentTypeOptions = [
     { value: "datasheet", label: "Datasheet" },
@@ -1171,12 +1213,16 @@ export function ComponentDetailPage() {
         accessorKey: "id",
         header: "Packet",
         cell: ({ row }) => (
-          <div className="flex min-w-0 items-center gap-2">
+          <div className={`flex min-w-0 items-center gap-2 ${inactivePacketClass(row.original)}`}>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Link
                   to={`/store/packet/${row.original.id}`}
-                  className="min-w-0 truncate text-primary hover:underline"
+                  className={`min-w-0 truncate hover:underline ${
+                    row.original.is_active === false
+                      ? "text-muted-foreground line-through"
+                      : "text-primary"
+                  }`}
                 >
                   {row.original.id}
                 </Link>
@@ -1203,7 +1249,11 @@ export function ComponentDetailPage() {
               <TooltipTrigger asChild>
                 <Link
                   to={`/store/location/${row.original.location.id}`}
-                  className="block truncate text-primary hover:underline"
+                  className={`block truncate hover:underline ${
+                    row.original.is_active === false
+                      ? "text-muted-foreground line-through"
+                      : "text-primary"
+                  }`}
                 >
                   {row.original.location.full_path}
                 </Link>
@@ -1217,16 +1267,15 @@ export function ComponentDetailPage() {
       {
         accessorKey: "count",
         header: "Count",
+        cell: ({ row }) => (
+          <span className={inactivePacketClass(row.original)}>{row.original.count}</span>
+        ),
       },
       {
         id: "status",
         header: "Status",
         cell: ({ row }) => (
-          <span
-            className={
-              row.original.is_active === false ? "text-muted-foreground" : "text-foreground"
-            }
-          >
+          <span className={inactivePacketClass(row.original) || "text-foreground"}>
             {row.original.is_active === false ? "Inactive" : "Active"}
           </span>
         ),
@@ -1240,7 +1289,7 @@ export function ComponentDetailPage() {
             ? new Date(row.original.last_used_at).toLocaleDateString()
             : "—"
           return (
-            <span className="whitespace-nowrap text-muted-foreground">
+            <span className={`whitespace-nowrap ${inactivePacketClass(row.original) || "text-muted-foreground"}`}>
               {created}
               <span className="text-foreground/40"> / </span>
               {lastUsed}
@@ -1548,7 +1597,7 @@ export function ComponentDetailPage() {
   ])
 
   const packetsTable = useReactTable({
-    data: component?.packets ?? [],
+    data: sortedPackets,
     columns: packetColumns,
     getCoreRowModel: getCoreRowModel(),
   })
@@ -2256,7 +2305,7 @@ export function ComponentDetailPage() {
                   <Button
                     size="sm"
                     variant="secondary"
-                    onClick={() => setPacketSheetOpen(true)}
+                    onClick={openNewPacketSheet}
                     className="gap-2"
                   >
                     <Plus className="h-4 w-4" />
@@ -2270,9 +2319,12 @@ export function ComponentDetailPage() {
                 table: packetsTable,
                 emptyMessage: "No packets available.",
                 getRowClassName: (row) =>
-                  highlightPacketId && row.original.id === highlightPacketId
-                    ? "bg-amber-100/90 shadow-[inset_0_0_0_2px_rgba(251,191,36,0.85)]"
-                    : undefined,
+                  cn(
+                    row.original.is_active === false && "bg-muted/20 opacity-70",
+                    highlightPacketId &&
+                      row.original.id === highlightPacketId &&
+                      "bg-amber-100/90 shadow-[inset_0_0_0_2px_rgba(251,191,36,0.85)]",
+                  ) || undefined,
               })
             ) : (
               <p className="rounded-lg border border-border/70 bg-muted/30 px-4 py-3 text-sm text-muted-foreground">

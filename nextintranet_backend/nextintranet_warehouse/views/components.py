@@ -539,7 +539,10 @@ class ComponentDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
         return Component.objects.prefetch_related(
             Prefetch(
                 'packets',
-                queryset=Packet.objects.select_related('location', 'last_operation'),
+                queryset=Packet.objects.select_related('location', 'last_operation').order_by(
+                    '-is_active',
+                    '-created_at',
+                ),
             ),
             'documents',
         )
