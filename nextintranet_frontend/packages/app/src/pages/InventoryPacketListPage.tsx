@@ -13,6 +13,7 @@ import Select, { type SingleValue, type StylesConfig } from "react-select"
 import { toast } from "sonner"
 
 import { CampaignProgressSummary } from "@/components/CampaignProgressSummary"
+import { CelebrationOverlay } from "@/components/CelebrationOverlay"
 import { ComponentInfoPopover } from "@/components/ComponentInfoPopover"
 import { CopyActions } from "@/components/CopyActions"
 import { LocationDisplay } from "@/components/LocationDisplay"
@@ -31,6 +32,11 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import {
+  getInventorySessionCount,
+  incrementInventoryCount,
+  playFanfare,
+} from "@/lib/celebration"
 import {
   getInventoryStatusLabel,
   postInventoryOperation,
@@ -321,8 +327,10 @@ export function InventoryPacketListPage() {
   const [selectedCampaignId, setSelectedCampaignId] = useState(
     () => searchParams.get("campaign") ?? "",
   )
-  const [locationId, setLocationId] = useState("")
+  const [locationId, setLocationId] = useState(() => searchParams.get("location") ?? "")
   const [locationInitialized, setLocationInitialized] = useState(false)
+  const [sessionCount, setSessionCount] = useState(getInventorySessionCount)
+  const [celebration, setCelebration] = useState(0)
   const [componentSearch, setComponentSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>("all")
@@ -376,11 +384,36 @@ export function InventoryPacketListPage() {
     if (user === undefined || locationInitialized) {
       return
     }
-    if (homeLocationId) {
+    // A location passed in the URL takes precedence over the home location.
+    if (homeLocationId && !locationId) {
       setLocationId(homeLocationId)
     }
     setLocationInitialized(true)
-  }, [user, homeLocationId, locationInitialized])
+  }, [user, homeLocationId, locationInitialized, locationId])
+
+  // Keep the location filter in the URL so views can be linked and shared.
+  useEffect(() => {
+    if (!locationInitialized) {
+      return
+    }
+    const locationParam = locationId.trim()
+    setSearchParams(
+      (prev) => {
+        const current = prev.get("location") ?? ""
+        if (locationParam === current) {
+          return prev
+        }
+        const next = new URLSearchParams(prev)
+        if (locationParam) {
+          next.set("location", locationParam)
+        } else {
+          next.delete("location")
+        }
+        return next
+      },
+      { replace: true },
+    )
+  }, [locationId, locationInitialized, setSearchParams])
 
   useEffect(() => {
     const campaignParam = searchParams.get("campaign")
@@ -542,12 +575,21 @@ export function InventoryPacketListPage() {
       queryClient.invalidateQueries({ queryKey: ["stocktaking"] })
       queryClient.invalidateQueries({ queryKey: ["stocktaking-detail"] })
       queryClient.invalidateQueries({ queryKey: ["stocktaking-active"] })
+      queryClient.invalidateQueries({ queryKey: ["stocktaking-location-progress"] })
       setRowCounts((prev) => {
         const next = { ...prev }
         delete next[variables.packetId]
         return next
       })
-      toast.success("Inventory recorded.")
+      const { count, milestone } = incrementInventoryCount()
+      setSessionCount(count)
+      if (milestone) {
+        setCelebration((key) => key + 1)
+        playFanfare()
+        toast.success(`🎉 ${count} packets inventoried this session — great job!`)
+      } else {
+        toast.success("Inventory recorded.")
+      }
     },
     onError: () => {
       toast.error("Failed to record inventory. Please try again.")
@@ -587,16 +629,32 @@ export function InventoryPacketListPage() {
               {selectedCampaign.is_active ? " · Open" : " · Closed"}
             </p>
           )}
+          {sessionCount > 0 && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              This session: <span className="font-medium text-foreground">{sessionCount}</span> inventoried
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" variant="outline" asChild>
             <Link to="/store/inventory-campaign">Inventory campaigns</Link>
           </Button>
           <Button size="sm" variant="outline" asChild>
+            <Link
+              to={`/store/inventory/status${
+                selectedCampaignId.trim() ? `?campaign=${selectedCampaignId.trim()}` : ""
+              }`}
+            >
+              Packet status
+            </Link>
+          </Button>
+          <Button size="sm" variant="outline" asChild>
             <Link to="/store/inventory">Do inventory</Link>
           </Button>
         </div>
       </div>
+
+      <CelebrationOverlay trigger={celebration} />
 
       {selectedCampaignId.trim() ? (
         <div className="mt-4 rounded-lg border border-border/70 bg-muted/20 px-4 py-3">

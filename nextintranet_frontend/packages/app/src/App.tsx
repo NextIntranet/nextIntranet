@@ -8,6 +8,7 @@ import { SuppliersPage } from './pages/SuppliersPage';
 import { CategoriesPage } from './pages/CategoriesPage';
 import { ParameterTypesPage } from './pages/ParameterTypesPage';
 import { InventoryCampaignsPage } from './pages/InventoryCampaignsPage';
+import { InventoryLocationStatusPage } from './pages/InventoryLocationStatusPage';
 import { InventoryPacketListPage } from './pages/InventoryPacketListPage';
 import { InventoryPage } from './pages/InventoryPage';
 import { ReservationsPage } from './pages/ReservationsPage';
@@ -133,6 +134,14 @@ export function App() {
             element={
               <RequirePermission area="warehouse" minLevel="read">
                 <InventoryPacketListPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="store/inventory/status"
+            element={
+              <RequirePermission area="warehouse" minLevel="read">
+                <InventoryLocationStatusPage />
               </RequirePermission>
             }
           />

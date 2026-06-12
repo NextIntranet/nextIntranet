@@ -1,7 +1,9 @@
 from django.db.models import Count
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import serializers, viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
 from nextintranet_backend.models.user import User
 from nextintranet_backend.routers import NoFormatSuffixRouter as DefaultRouter
@@ -155,6 +157,54 @@ class StocktakingViewSet(viewsets.ModelViewSet):
             context["progress_map"] = get_stocktaking_progress_map(campaign_ids)
 
         return context
+
+    @action(detail=True, methods=["get"], url_path="location-progress")
+    def location_progress(self, request, pk=None):
+        """
+        Per-location inventory stats for one campaign. Counts are exact per
+        location (no subtree aggregation) — the client rolls them up along
+        the location tree.
+        """
+        self.get_object()  # 404 for unknown campaigns
+
+        stats = {}
+
+        def entry(location_id):
+            key = str(location_id) if location_id else None
+            if key not in stats:
+                stats[key] = {
+                    "location_id": key,
+                    "total_packets": 0,
+                    "inactive_packets": 0,
+                    "inventoried_packets": 0,
+                }
+            return stats[key]
+
+        active_rows = (
+            Packet.objects.filter(is_active=True)
+            .values("location")
+            .annotate(total=Count("id"))
+        )
+        for row in active_rows:
+            entry(row["location"])["total_packets"] = row["total"]
+
+        inactive_rows = (
+            Packet.objects.filter(is_active=False)
+            .values("location")
+            .annotate(total=Count("id"))
+        )
+        for row in inactive_rows:
+            entry(row["location"])["inactive_packets"] = row["total"]
+
+        inventoried_rows = (
+            StockOperation.objects.filter(operation_type="inventory", reference=pk)
+            .values("packet__location")
+            .annotate(done=Count("packet", distinct=True))
+        )
+        for row in inventoried_rows:
+            entry(row["packet__location"])["inventoried_packets"] = row["done"]
+
+        return Response({"locations": list(stats.values())})
 
 
 StocktakingRouter = DefaultRouter(trailing_slash=True)

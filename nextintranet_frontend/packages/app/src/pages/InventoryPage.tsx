@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiFetch, nextIO } from "@nextintranet/core"
 import { toast } from "sonner"
 
+import { CelebrationOverlay } from "@/components/CelebrationOverlay"
 import { ComponentInfoPopover } from "@/components/ComponentInfoPopover"
 import { CampaignProgressSummary } from "@/components/CampaignProgressSummary"
 import { LocationDisplay } from "@/components/LocationDisplay"
@@ -32,6 +33,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  getInventorySessionCount,
+  incrementInventoryCount,
+  playAlertTone,
+  playFanfare,
+  playSuccessTone,
+} from "@/lib/celebration"
 import { postInventoryOperation } from "@/lib/inventory"
 import {
   STOCKTAKING_PROGRESS_REFETCH_MS,
@@ -100,65 +108,6 @@ interface PaginatedStockOperations {
   results: StockOperation[]
 }
 
-const playAlertTone = () => {
-  if (typeof window === "undefined") {
-    return
-  }
-  const AudioContext =
-    window.AudioContext ||
-    (window as Window & { webkitAudioContext?: typeof window.AudioContext })
-      .webkitAudioContext
-  if (!AudioContext) {
-    return
-  }
-  try {
-    const context = new AudioContext()
-    const oscillator = context.createOscillator()
-    const gain = context.createGain()
-    oscillator.type = "triangle"
-    oscillator.frequency.value = 880
-    gain.gain.value = 0.08
-    oscillator.connect(gain)
-    gain.connect(context.destination)
-    oscillator.start()
-    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.25)
-    oscillator.stop(context.currentTime + 0.27)
-    oscillator.onended = () => {
-      context.close()
-    }
-  } catch {}
-}
-
-const playSuccessTone = () => {
-  if (typeof window === "undefined") {
-    return
-  }
-  const AudioContext =
-    window.AudioContext ||
-    (window as Window & { webkitAudioContext?: typeof window.AudioContext })
-      .webkitAudioContext
-  if (!AudioContext) {
-    return
-  }
-  try {
-    const context = new AudioContext()
-    const oscillator = context.createOscillator()
-    const gain = context.createGain()
-    oscillator.type = "sine"
-    oscillator.frequency.setValueAtTime(660, context.currentTime)
-    oscillator.frequency.setValueAtTime(990, context.currentTime + 0.12)
-    gain.gain.value = 0.08
-    oscillator.connect(gain)
-    gain.connect(context.destination)
-    oscillator.start()
-    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.3)
-    oscillator.stop(context.currentTime + 0.32)
-    oscillator.onended = () => {
-      context.close()
-    }
-  } catch {}
-}
-
 type StatusBanner = {
   type: "success" | "error" | "info" | "warning"
   text: string
@@ -207,6 +156,8 @@ export function InventoryPage() {
   const [description, setDescription] = useState("")
   const [showInventoriedWarning, setShowInventoriedWarning] = useState(false)
   const [statusBanner, setStatusBanner] = useState<StatusBanner | null>(null)
+  const [sessionCount, setSessionCount] = useState(getInventorySessionCount)
+  const [celebration, setCelebration] = useState(0)
 
   const notePacketLoaded = (packetId: string, componentName?: string) => {
     const alreadyInventoried =
@@ -494,8 +445,18 @@ export function InventoryPage() {
         queryKey: ["packet-operations-preview", variables.packet],
       })
       queryClient.invalidateQueries({ queryKey: ["stocktaking"] })
+      queryClient.invalidateQueries({ queryKey: ["stocktaking-detail"] })
       queryClient.invalidateQueries({ queryKey: ["stocktaking-active"] })
-      playSuccessTone()
+      queryClient.invalidateQueries({ queryKey: ["stocktaking-location-progress"] })
+      const { count, milestone } = incrementInventoryCount()
+      setSessionCount(count)
+      if (milestone) {
+        setCelebration((key) => key + 1)
+        playFanfare()
+        toast.success(`🎉 ${count} packets inventoried this session — great job!`)
+      } else {
+        playSuccessTone()
+      }
       setStatusBanner({ type: "success", text: "Inventory recorded." })
       setNewCount(String(variables.absoluteQuantity))
       setDescription("")
@@ -769,12 +730,18 @@ export function InventoryPage() {
 
   return (
     <div className="w-full px-4 py-6 lg:px-6">
+      <CelebrationOverlay trigger={celebration} />
       <div className="flex flex-col gap-1">
         <h1 className="text-2xl font-semibold text-foreground">Inventory</h1>
         <p className="text-sm text-muted-foreground">
           Record actual counts per packet and location. With an active campaign, progress is
           tracked per campaign; without one, counts are saved as ad-hoc inventory.
         </p>
+        {sessionCount > 0 && (
+          <p className="text-xs text-muted-foreground">
+            This session: <span className="font-medium text-foreground">{sessionCount}</span> inventoried
+          </p>
+        )}
       </div>
 
       {activeCampaign ? (
@@ -784,16 +751,28 @@ export function InventoryPage() {
             variant="full"
             label={`Inventoried in ${activeCampaign.name}`}
             headerAction={
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-6 shrink-0 px-2 text-xs text-muted-foreground hover:text-foreground"
-                asChild
-              >
-                <Link to={`/store/inventory/packets?campaign=${activeCampaign.id}`}>
-                  Packet list
-                </Link>
-              </Button>
+              <span className="flex shrink-0 items-center gap-1">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 shrink-0 px-2 text-xs text-muted-foreground hover:text-foreground"
+                  asChild
+                >
+                  <Link to={`/store/inventory/packets?campaign=${activeCampaign.id}`}>
+                    Packet list
+                  </Link>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 shrink-0 px-2 text-xs text-muted-foreground hover:text-foreground"
+                  asChild
+                >
+                  <Link to={`/store/inventory/status?campaign=${activeCampaign.id}`}>
+                    Packet status
+                  </Link>
+                </Button>
+              </span>
             }
           />
         </div>
