@@ -23,6 +23,7 @@ def get_stocktaking_progress_map(campaign_ids):
         StockOperation.objects.filter(
             operation_type="inventory",
             reference__in=campaign_ids,
+            packet__is_active=True,
         )
         .values("reference")
         .annotate(inventoried=Count("packet", distinct=True))
@@ -197,7 +198,11 @@ class StocktakingViewSet(viewsets.ModelViewSet):
             entry(row["location"])["inactive_packets"] = row["total"]
 
         inventoried_rows = (
-            StockOperation.objects.filter(operation_type="inventory", reference=pk)
+            StockOperation.objects.filter(
+                operation_type="inventory",
+                reference=pk,
+                packet__is_active=True,
+            )
             .values("packet__location")
             .annotate(done=Count("packet", distinct=True))
         )
