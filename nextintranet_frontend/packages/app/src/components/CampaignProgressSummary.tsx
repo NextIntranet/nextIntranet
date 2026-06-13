@@ -45,9 +45,9 @@ const getProgressSegments = (stats: StocktakingProgress) => {
     safeDone,
     safePending,
     barTotal,
-    inventoriedWidth: (safeDone / barTotal) * 100,
+    inventoriedWidth: (safeInventoried / barTotal) * 100,
     pendingWidth: (safePending / barTotal) * 100,
-    inactiveWidth: 0,
+    inactiveWidth: (safeInactive / barTotal) * 100,
   }
 }
 
