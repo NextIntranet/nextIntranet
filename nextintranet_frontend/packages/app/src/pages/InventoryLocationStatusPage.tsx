@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { apiFetch } from "@nextintranet/core"
-import { ChevronRight, ClipboardList } from "lucide-react"
+import { ChevronRight, ChevronsDown, ChevronsRight, ChevronsUp, ClipboardList } from "lucide-react"
 import Select, { type SingleValue, type StylesConfig } from "react-select"
 
 import { useHotkeys } from "@/lib/hotkeys"
@@ -273,6 +273,22 @@ export function InventoryLocationStatusPage() {
     return ids
   }
 
+  const collectSubtreeIds = (node: LocationNode): string[] => {
+    const ids = [node.id]
+    if (node.children?.length) {
+      for (const child of node.children) ids.push(...collectSubtreeIds(child))
+    }
+    return ids
+  }
+
+  const expandSubtree = (node: LocationNode) => {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      for (const id of collectSubtreeIds(node)) next.add(id)
+      return next
+    })
+  }
+
   useHotkeys([
     {
       keys: "e",
@@ -349,21 +365,40 @@ export function InventoryLocationStatusPage() {
               <span className="text-[11px] text-muted-foreground">No packets</span>
             )}
           </div>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Link
-                to={packetListLink(node.id)}
-                className={cn(
-                  "inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground",
-                  !hasPackets && "pointer-events-none",
-                )}
-                aria-label={`Open packet list for ${node.full_path}`}
-              >
-                <ClipboardList className="h-3.5 w-3.5" />
-              </Link>
-            </TooltipTrigger>
-            <TooltipContent>Open in packet list</TooltipContent>
-          </Tooltip>
+          <div className="flex w-14 shrink-0 justify-end gap-0.5">
+            {hasChildren ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => expandSubtree(node)}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                    aria-label={`Expand all nested under ${node.full_path}`}
+                  >
+                    <ChevronsRight className="h-3.5 w-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Expand all nested</TooltipContent>
+              </Tooltip>
+            ) : (
+              <span className="w-6" />
+            )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Link
+                  to={packetListLink(node.id)}
+                  className={cn(
+                    "inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground",
+                    !hasPackets && "pointer-events-none",
+                  )}
+                  aria-label={`Open packet list for ${node.full_path}`}
+                >
+                  <ClipboardList className="h-3.5 w-3.5" />
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent>Open in packet list</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
         {hasChildren && isExpanded
           ? node.children!.map((child) => renderNode(child, depth + 1))
@@ -430,7 +465,36 @@ export function InventoryLocationStatusPage() {
                 <span className="w-56 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground sm:w-72">
                   Progress
                 </span>
-                <span className="w-6 shrink-0" />
+                <div className="flex w-14 shrink-0 justify-end gap-0.5">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setExpanded(new Set(collectAllIds(locationsTree ?? [])))
+                        }
+                        className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                        aria-label="Expand all"
+                      >
+                        <ChevronsDown className="h-3.5 w-3.5" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Expand all</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={() => setExpanded(new Set())}
+                        className="inline-flex h-6 w-6 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
+                        aria-label="Collapse all"
+                      >
+                        <ChevronsUp className="h-3.5 w-3.5" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Collapse all</TooltipContent>
+                  </Tooltip>
+                </div>
               </div>
               {locationsLoading || (progressLoading && !locationProgress) ? (
                 <div className="space-y-2 p-4">
@@ -472,7 +536,7 @@ export function InventoryLocationStatusPage() {
                           label=""
                         />
                       </div>
-                      <span className="w-6 shrink-0" />
+                      <span className="w-14 shrink-0" />
                     </div>
                   ) : null}
                 </>
