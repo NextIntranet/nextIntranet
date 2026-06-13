@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/sidebar"
 import { SearchModal } from "@/components/SearchModal"
 import { useRealtimeConnectionState } from "@nextintranet/core"
+import { useHotkeys } from "@/lib/hotkeys"
 import { cn } from "@/lib/utils"
 
 interface UserMe {
@@ -74,24 +75,21 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     })
   }, [me])
 
-  useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
-      if (event.key === "/" && !searchOpen) {
-        const target = event.target as HTMLElement | null
-        const isInput =
-          target &&
-          (target.tagName === "INPUT" ||
-            target.tagName === "TEXTAREA" ||
-            target.isContentEditable)
-        if (!isInput) {
-          event.preventDefault()
-          setSearchOpen(true)
-        }
-      }
-    }
-    window.addEventListener("keydown", handler)
-    return () => window.removeEventListener("keydown", handler)
-  }, [searchOpen])
+  useHotkeys([
+    {
+      keys: "/",
+      description: "Open search",
+      group: "Global",
+      handler: () => setSearchOpen(true),
+    },
+    {
+      keys: "ctrl+k",
+      description: "Open search",
+      group: "Global",
+      handler: () => setSearchOpen(true),
+      allowInInput: true,
+    },
+  ])
 
   const hasPermission = (area: string, minLevel: keyof typeof permissionRank) => {
     if (me?.is_superuser) {

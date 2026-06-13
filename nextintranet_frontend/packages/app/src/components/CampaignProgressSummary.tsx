@@ -19,7 +19,9 @@ const getProgressSegments = (stats: StocktakingProgress) => {
   const safeActive = Math.max(0, stats.total_packets)
   const safeInactive = Math.max(0, stats.inactive_packets ?? 0)
   const safeInventoried = Math.max(0, Math.min(stats.inventoried_packets, safeActive))
-  const safePending = Math.max(0, stats.pending_packets)
+  // Inactive packets count as done.
+  const safeDone = safeInventoried + safeInactive
+  const safePending = Math.max(0, safeActive - safeInventoried)
   const barTotal = safeActive + safeInactive
 
   if (barTotal <= 0) {
@@ -27,7 +29,9 @@ const getProgressSegments = (stats: StocktakingProgress) => {
       safeActive,
       safeInactive,
       safeInventoried,
+      safeDone,
       safePending,
+      barTotal,
       inventoriedWidth: 0,
       pendingWidth: 0,
       inactiveWidth: 0,
@@ -38,10 +42,12 @@ const getProgressSegments = (stats: StocktakingProgress) => {
     safeActive,
     safeInactive,
     safeInventoried,
+    safeDone,
     safePending,
-    inventoriedWidth: (safeInventoried / barTotal) * 100,
+    barTotal,
+    inventoriedWidth: (safeDone / barTotal) * 100,
     pendingWidth: (safePending / barTotal) * 100,
-    inactiveWidth: (safeInactive / barTotal) * 100,
+    inactiveWidth: 0,
   }
 }
 
@@ -93,9 +99,8 @@ export function CampaignProgressSummary({
   variant = "compact",
 }: CampaignProgressSummaryProps) {
   const stats = progress ?? emptyStocktakingProgress()
-  const { safeActive, safeInactive, safeInventoried, safePending } =
-    getProgressSegments(stats)
-  const percent = safeActive > 0 ? stats.progress_percent : 0
+  const { safeInactive, safeDone, safePending, barTotal } = getProgressSegments(stats)
+  const percent = barTotal > 0 ? Math.round((safeDone / barTotal) * 100) : 0
 
   if (variant === "full") {
     return (
@@ -106,7 +111,7 @@ export function CampaignProgressSummary({
             {headerAction}
           </div>
           <span className="text-sm tabular-nums text-muted-foreground">
-            {loading ? "…" : `${percent}%`}
+            {loading ? "…" : `${percent} %`}
           </span>
         </div>
         <CampaignProgressBar stats={stats} loading={loading} />
@@ -114,7 +119,7 @@ export function CampaignProgressSummary({
           <span>
             Done:{" "}
             <span className="font-medium text-foreground tabular-nums">
-              {loading ? "…" : safeInventoried.toLocaleString()}
+              {loading ? "…" : safeDone.toLocaleString()}
             </span>
           </span>
           <span>
@@ -125,16 +130,16 @@ export function CampaignProgressSummary({
           </span>
           {safeInactive > 0 ? (
             <span>
-              Inactive:{" "}
+              Incl. inactive:{" "}
               <span className="font-medium text-foreground tabular-nums">
                 {loading ? "…" : safeInactive.toLocaleString()}
               </span>
             </span>
           ) : null}
           <span>
-            Active total:{" "}
+            Total:{" "}
             <span className="font-medium text-foreground tabular-nums">
-              {loading ? "…" : safeActive.toLocaleString()}
+              {loading ? "…" : barTotal.toLocaleString()}
             </span>
           </span>
         </div>
@@ -147,8 +152,8 @@ export function CampaignProgressSummary({
       <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
         <span className="truncate">{label}</span>
         <span className="shrink-0 tabular-nums">
-          {loading ? "…" : `${safeInventoried} / ${safeActive}`}
-          {!loading && safeActive > 0 ? ` (${percent}%)` : ""}
+          {loading ? "…" : `${safeDone} / ${barTotal}`}
+          {!loading && barTotal > 0 ? ` (${percent}%)` : ""}
         </span>
       </div>
       <CampaignProgressBar stats={stats} loading={loading} />

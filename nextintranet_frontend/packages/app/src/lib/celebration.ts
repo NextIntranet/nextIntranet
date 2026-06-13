@@ -1,5 +1,5 @@
 const SESSION_COUNT_KEY = "inventory-session-count"
-export const CELEBRATION_MILESTONE = 50
+const SESSION_NEXT_MILESTONE_KEY = "inventory-next-milestone"
 
 export const getInventorySessionCount = (): number => {
   if (typeof window === "undefined") {
@@ -10,9 +10,25 @@ export const getInventorySessionCount = (): number => {
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0
 }
 
+const getNextMilestone = (): number => {
+  const raw = window.sessionStorage.getItem(SESSION_NEXT_MILESTONE_KEY)
+  const value = Number(raw)
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0
+}
+
+const scheduleNextMilestone = (afterCount: number) => {
+  const gap = 15 + Math.floor(Math.random() * 26) // 15–40
+  try {
+    window.sessionStorage.setItem(SESSION_NEXT_MILESTONE_KEY, String(afterCount + gap))
+  } catch {
+    // best-effort
+  }
+}
+
 /**
  * Bump the per-browser-session counter of recorded inventories. Returns the
- * new count and whether a celebration milestone (every 50 items) was hit.
+ * new count and whether a celebration milestone was hit. Milestones fire at
+ * random intervals of 15–40 scans.
  */
 export const incrementInventoryCount = (): { count: number; milestone: boolean } => {
   const count = getInventorySessionCount() + 1
@@ -21,7 +37,20 @@ export const incrementInventoryCount = (): { count: number; milestone: boolean }
   } catch {
     // Counting is best-effort; never block the inventory flow.
   }
-  return { count, milestone: count % CELEBRATION_MILESTONE === 0 }
+
+  const nextMilestone = getNextMilestone()
+  if (nextMilestone === 0) {
+    // First scan — pick the first milestone.
+    scheduleNextMilestone(count)
+    return { count, milestone: false }
+  }
+
+  if (count >= nextMilestone) {
+    scheduleNextMilestone(count)
+    return { count, milestone: true }
+  }
+
+  return { count, milestone: false }
 }
 
 const getAudioContext = (): AudioContext | null => {
@@ -83,23 +112,29 @@ export const playSuccessTone = () => {
   }
 }
 
-/** Short ascending fanfare for celebration milestones (C5-E5-G5-C6 + chord). */
+/** Full ascending fanfare: C5-E5-G5 run, held C6 major chord + bass, then a triumphant sting. */
 export const playFanfare = () => {
   const context = getAudioContext()
   if (!context) {
     return
   }
   const master = context.createGain()
-  master.gain.value = 0.12
+  master.gain.value = 0.22
   master.connect(context.destination)
 
-  const note = (frequency: number, start: number, duration: number) => {
+  const note = (
+    frequency: number,
+    start: number,
+    duration: number,
+    type: OscillatorType = "triangle",
+    gainScale = 1,
+  ) => {
     const oscillator = context.createOscillator()
     const gain = context.createGain()
-    oscillator.type = "triangle"
+    oscillator.type = type
     oscillator.frequency.value = frequency
     gain.gain.setValueAtTime(0.0001, context.currentTime + start)
-    gain.gain.exponentialRampToValueAtTime(1, context.currentTime + start + 0.02)
+    gain.gain.exponentialRampToValueAtTime(gainScale, context.currentTime + start + 0.02)
     gain.gain.exponentialRampToValueAtTime(
       0.0001,
       context.currentTime + start + duration,
@@ -110,15 +145,29 @@ export const playFanfare = () => {
     oscillator.stop(context.currentTime + start + duration + 0.05)
   }
 
-  // C5, E5, G5 run + closing C6 major chord.
-  note(523.25, 0, 0.18)
-  note(659.25, 0.14, 0.18)
-  note(783.99, 0.28, 0.18)
-  note(1046.5, 0.42, 0.6)
-  note(659.25, 0.42, 0.6)
-  note(783.99, 0.42, 0.6)
+  // Rising run: C5 → E5 → G5
+  note(523.25, 0, 0.16)
+  note(659.25, 0.13, 0.16)
+  note(783.99, 0.26, 0.16)
+
+  // Held C6 major chord
+  note(1046.5, 0.40, 0.7)
+  note(783.99, 0.40, 0.7)
+  note(659.25, 0.40, 0.7)
+
+  // Bass punch
+  note(130.81, 0.40, 0.4, "sine", 0.8)
+
+  // Triumphant sting (E6 flash)
+  note(1318.5, 0.48, 0.25, "sine", 0.6)
+
+  // Resolution chord
+  note(1046.5, 1.15, 0.55)
+  note(830.61, 1.15, 0.55)
+  note(659.25, 1.15, 0.55)
+  note(523.25, 1.15, 0.55)
 
   window.setTimeout(() => {
     context.close()
-  }, 1400)
+  }, 2200)
 }

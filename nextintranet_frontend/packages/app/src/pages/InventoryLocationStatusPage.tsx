@@ -5,6 +5,7 @@ import { apiFetch } from "@nextintranet/core"
 import { ChevronRight, ClipboardList } from "lucide-react"
 import Select, { type SingleValue, type StylesConfig } from "react-select"
 
+import { useHotkeys } from "@/lib/hotkeys"
 import { CampaignProgressSummary } from "@/components/CampaignProgressSummary"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -259,6 +260,37 @@ export function InventoryLocationStatusPage() {
       return next
     })
   }
+
+  const collectAllIds = (nodes: LocationNode[]): string[] => {
+    const ids: string[] = []
+    const walk = (items: LocationNode[]) => {
+      for (const node of items) {
+        ids.push(node.id)
+        if (node.children?.length) walk(node.children)
+      }
+    }
+    walk(nodes)
+    return ids
+  }
+
+  useHotkeys([
+    {
+      keys: "e",
+      description: "Expand all locations",
+      group: "Packet status",
+      handler: () => {
+        if (locationsTree?.length) {
+          setExpanded(new Set(collectAllIds(locationsTree)))
+        }
+      },
+    },
+    {
+      keys: "c",
+      description: "Collapse all locations",
+      group: "Packet status",
+      handler: () => setExpanded(new Set()),
+    },
+  ])
 
   const packetListLink = (locationId?: string) => {
     const params = new URLSearchParams()

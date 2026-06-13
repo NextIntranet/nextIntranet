@@ -1,8 +1,8 @@
 import { useEffect, useRef } from "react"
 
-const COLORS = ["#22c55e", "#3b82f6", "#f59e0b", "#ef4444", "#a855f7", "#06b6d4", "#eab308"]
-const PARTICLES_PER_BURST = 80
-const DURATION_MS = 2600
+const COLORS = ["#22c55e", "#3b82f6", "#f59e0b", "#ef4444", "#a855f7", "#06b6d4", "#eab308", "#f97316", "#ec4899"]
+const PARTICLES_PER_BURST = 150
+const DURATION_MS = 3600
 
 interface Particle {
   x: number
@@ -18,17 +18,17 @@ interface Particle {
 
 const spawnBurst = (height: number, originX: number): Particle[] =>
   Array.from({ length: PARTICLES_PER_BURST }, () => {
-    const angle = -Math.PI / 2 + (Math.random() - 0.5) * (Math.PI / 2)
-    const speed = 9 + Math.random() * 9
+    const angle = -Math.PI / 2 + (Math.random() - 0.5) * (Math.PI * 0.65)
+    const speed = 11 + Math.random() * 13
     return {
       x: originX,
       y: height + 10,
       vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed - 4,
-      size: 5 + Math.random() * 6,
+      vy: Math.sin(angle) * speed - 5,
+      size: 6 + Math.random() * 8,
       color: COLORS[Math.floor(Math.random() * COLORS.length)],
       rotation: Math.random() * Math.PI * 2,
-      rotationSpeed: (Math.random() - 0.5) * 0.4,
+      rotationSpeed: (Math.random() - 0.5) * 0.5,
       shape: Math.random() > 0.5 ? "rect" : "circle",
     }
   })
@@ -54,9 +54,11 @@ export function CelebrationOverlay({ trigger }: CelebrationOverlayProps) {
     canvas.height = window.innerHeight
 
     const particles = [
-      ...spawnBurst(canvas.height, canvas.width * 0.2),
+      ...spawnBurst(canvas.height, canvas.width * 0.1),
+      ...spawnBurst(canvas.height, canvas.width * 0.3),
       ...spawnBurst(canvas.height, canvas.width * 0.5),
-      ...spawnBurst(canvas.height, canvas.width * 0.8),
+      ...spawnBurst(canvas.height, canvas.width * 0.7),
+      ...spawnBurst(canvas.height, canvas.width * 0.9),
     ]
     const startedAt = performance.now()
     let frame = 0
@@ -67,7 +69,7 @@ export function CelebrationOverlay({ trigger }: CelebrationOverlayProps) {
       if (elapsed > DURATION_MS) {
         return
       }
-      const fade = elapsed > DURATION_MS - 600 ? (DURATION_MS - elapsed) / 600 : 1
+      const fade = elapsed > DURATION_MS - 900 ? (DURATION_MS - elapsed) / 900 : 1
       for (const particle of particles) {
         particle.x += particle.vx
         particle.y += particle.vy

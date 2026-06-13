@@ -46,6 +46,7 @@ import {
   type StocktakingProgress,
 } from "@/lib/stocktaking"
 import { getOperationLabel } from "@/lib/stockOperations"
+import { useHotkeys } from "@/lib/hotkeys"
 import { resolvePacketIdFromScan } from "@/lib/resolvePacketIdFromScan"
 
 interface LocationNode {
@@ -137,6 +138,8 @@ const flattenLocations = (nodes: LocationNode[]) => {
 export function InventoryPage() {
   const queryClient = useQueryClient()
   const countInputRef = useRef<HTMLInputElement>(null)
+  const scanPacketInputRef = useRef<HTMLInputElement>(null)
+  const scanLocationInputRef = useRef<HTMLInputElement>(null)
   const lastScanRef = useRef<{ text: string; ts: number } | null>(null)
   const [searchParams, setSearchParams] = useSearchParams()
   const [selectedLocationId, setSelectedLocationId] = useState(
@@ -158,6 +161,33 @@ export function InventoryPage() {
   const [statusBanner, setStatusBanner] = useState<StatusBanner | null>(null)
   const [sessionCount, setSessionCount] = useState(getInventorySessionCount)
   const [celebration, setCelebration] = useState(0)
+
+  useHotkeys([
+    {
+      keys: "s",
+      description: "Focus scan packet input",
+      group: "Do inventory",
+      handler: () => {
+        scanPacketInputRef.current?.focus()
+        scanPacketInputRef.current?.select()
+      },
+    },
+    {
+      keys: "l",
+      description: "Focus scan location input",
+      group: "Do inventory",
+      handler: () => {
+        scanLocationInputRef.current?.focus()
+        scanLocationInputRef.current?.select()
+      },
+    },
+    {
+      keys: "t",
+      description: "Toggle location check",
+      group: "Do inventory",
+      handler: () => setLocationCheckEnabled((prev) => !prev),
+    },
+  ])
 
   const notePacketLoaded = (packetId: string, componentName?: string) => {
     const alreadyInventoried =
@@ -1100,6 +1130,7 @@ export function InventoryPage() {
                 <label className="text-sm font-medium text-foreground">Scan location</label>
                 <div className="flex gap-2">
                   <Input
+                    ref={scanLocationInputRef}
                     value={locationScanValue}
                     onChange={(e) => setLocationScanValue(e.target.value)}
                     onKeyDown={(e) => {
@@ -1172,6 +1203,7 @@ export function InventoryPage() {
                 <label className="text-sm font-medium text-foreground">Scan packet</label>
                 <div className="flex gap-2">
                   <Input
+                    ref={scanPacketInputRef}
                     value={packetScanValue}
                     onChange={(e) => setPacketScanValue(e.target.value)}
                     onKeyDown={(e) => {

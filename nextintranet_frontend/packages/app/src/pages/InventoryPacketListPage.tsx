@@ -37,6 +37,7 @@ import {
   incrementInventoryCount,
   playFanfare,
 } from "@/lib/celebration"
+import { useHotkeys } from "@/lib/hotkeys"
 import {
   getInventoryStatusLabel,
   postInventoryOperation,
@@ -338,6 +339,7 @@ export function InventoryPacketListPage() {
   const [rowCounts, setRowCounts] = useState<Record<string, string>>({})
   const [pendingPacketId, setPendingPacketId] = useState<string | null>(null)
   const [pendingTogglePacketId, setPendingTogglePacketId] = useState<string | null>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   const { data: locationsTree, isLoading: locationsLoading } = useQuery<LocationNode[]>({
     queryKey: ["locations-tree"],
@@ -505,6 +507,38 @@ export function InventoryPacketListPage() {
     pageOptions.find((option) => option.value === String(page)) ?? pageOptions[0]
 
   const selectedCampaign = campaigns.find((campaign) => campaign.id === selectedCampaignId)
+
+  useHotkeys([
+    {
+      keys: "f",
+      description: "Focus component search",
+      group: "Packet list",
+      handler: () => {
+        searchInputRef.current?.focus()
+        searchInputRef.current?.select()
+      },
+    },
+    {
+      keys: "n",
+      description: "Next page",
+      group: "Packet list",
+      handler: () => {
+        if (page < totalPages) {
+          setPage((current) => Math.min(totalPages, current + 1))
+        }
+      },
+    },
+    {
+      keys: "p",
+      description: "Previous page",
+      group: "Packet list",
+      handler: () => {
+        if (hasPreviousPage) {
+          setPage((current) => Math.max(1, current - 1))
+        }
+      },
+    },
+  ])
 
   const campaignOptions: CampaignOption[] = campaigns.map((campaign) => ({
     value: campaign.id,
@@ -701,6 +735,7 @@ export function InventoryPacketListPage() {
         <div className="space-y-2">
           <label className="text-sm font-medium text-foreground">Component search</label>
           <Input
+            ref={searchInputRef}
             value={componentSearch}
             onChange={(e) => setComponentSearch(e.target.value)}
             placeholder="Filter by component name"
