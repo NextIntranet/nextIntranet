@@ -34,6 +34,7 @@ from .views.supplier import SupplierRouter, SupplierRelationRouter, ComponentSup
 from .views.locations import LocationRouter
 from .views.parameters import ParameterRouter, ParameterTypeRouter
 from .views.stocktaking_api import StocktakingRouter
+from .views.stocktaking_report import StocktakingReportView
 from .views.stockOperation import StockOperationRouter
 from .views.purchase_requests import PurchaseRequestListAPIView, PurchaseRequestDetailAPIView
 from .views.purchases import (
@@ -81,6 +82,7 @@ urlpatterns = [
 # ParameterType
     path('parameterTypes/', include(ParameterTypeRouter.urls), name='api_warehouse_parameter_types'),
     path('stocktaking/', include(StocktakingRouter.urls), name='api_warehouse_stocktaking'),
+    path('stocktaking/<uuid:pk>/report/', StocktakingReportView.as_view(), name='api_warehouse_stocktaking_report'),
 
     path('positions/', WarehousePositionsListAPIView.as_view(), name='api_warehouse_positions'), # deprecated
     path('locations/tree/', WarehousePositionsTreeAPIView.as_view(), name='api_warehouse_locations_tree'),

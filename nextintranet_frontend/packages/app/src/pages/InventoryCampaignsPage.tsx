@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react"
 import { useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { apiFetch } from "@nextintranet/core"
-import { Pencil, Plus } from "lucide-react"
+import { apiFetch, getApiConfig } from "@nextintranet/core"
+import { FileDown, Pencil, Plus } from "lucide-react"
 import { toast } from "sonner"
 import Select, { type MultiValue, type StylesConfig } from "react-select"
 
@@ -116,6 +116,13 @@ export function InventoryCampaignsPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [createOpen, setCreateOpen] = useState(false)
+  const [reportOpen, setReportOpen] = useState(false)
+  const [reportOpts, setReportOpts] = useState({
+    showAll: false,
+    showPackets: false,
+    uninventoried: "alert" as "show" | "alert" | "hide",
+  })
+  const [reportLoading, setReportLoading] = useState(false)
 
   const mode: EditMode = searchParams.get("mode") === "edit" ? "edit" : "detail"
 
@@ -254,6 +261,42 @@ export function InventoryCampaignsPage() {
 
   const handleOpen = (stocktakingId: string) => {
     navigate(`/store/inventory-campaign/${stocktakingId}`)
+  }
+
+  const handleDownloadReport = async () => {
+    if (!id) return
+    setReportLoading(true)
+    try {
+      const params = new URLSearchParams({
+        show_all: String(reportOpts.showAll),
+        show_packets: String(reportOpts.showPackets),
+        uninventoried: reportOpts.uninventoried,
+      })
+      const cfg = getApiConfig()
+      const token = cfg.getToken()
+      const response = await fetch(
+        `${cfg.baseUrl}/api/v1/store/stocktaking/${id}/report/?${params}`,
+        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+      )
+      if (!response.ok) {
+        toast.error("Nepodařilo se vygenerovat report.")
+        return
+      }
+      const blob = await response.blob()
+      const objectUrl = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = objectUrl
+      a.download = `inventura-${new Date().toISOString().slice(0, 10)}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(objectUrl)
+      setReportOpen(false)
+    } catch {
+      toast.error("Chyba při stahování reportu.")
+    } finally {
+      setReportLoading(false)
+    }
   }
 
   const handleCloseSheet = () => {
@@ -498,6 +541,69 @@ export function InventoryCampaignsPage() {
                   >
                     View packet list
                   </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full gap-2"
+                    onClick={() => setReportOpen((v) => !v)}
+                  >
+                    <FileDown className="h-4 w-4" />
+                    Stáhnout report
+                  </Button>
+                  {reportOpen && (
+                    <div className="space-y-3 rounded-lg border border-border/70 bg-muted/20 px-4 py-3">
+                      <p className="text-xs font-semibold uppercase text-muted-foreground">
+                        Nastavení reportu
+                      </p>
+                      <label className="flex items-center justify-between text-sm text-foreground">
+                        <span>Zobrazit všechny položky (i nulové)</span>
+                        <Switch
+                          checked={reportOpts.showAll}
+                          onCheckedChange={(v) => setReportOpts({ ...reportOpts, showAll: v })}
+                        />
+                      </label>
+                      <label className="flex items-center justify-between text-sm text-foreground">
+                        <span>Rozepsat sáčky pod každou součástkou</span>
+                        <Switch
+                          checked={reportOpts.showPackets}
+                          onCheckedChange={(v) => setReportOpts({ ...reportOpts, showPackets: v })}
+                        />
+                      </label>
+                      <div className="space-y-1">
+                        <p className="text-sm text-foreground">Neinventované položky</p>
+                        {(
+                          [
+                            ["alert", "Zobrazit s upozorněním"],
+                            ["show", "Zobrazit normálně"],
+                            ["hide", "Skrýt"],
+                          ] as const
+                        ).map(([value, label]) => (
+                          <label
+                            key={value}
+                            className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground"
+                          >
+                            <input
+                              type="radio"
+                              name="uninventoried"
+                              value={value}
+                              checked={reportOpts.uninventoried === value}
+                              onChange={() =>
+                                setReportOpts({ ...reportOpts, uninventoried: value })
+                              }
+                            />
+                            {label}
+                          </label>
+                        ))}
+                      </div>
+                      <Button
+                        className="w-full gap-2"
+                        onClick={handleDownloadReport}
+                        disabled={reportLoading}
+                      >
+                        <FileDown className="h-4 w-4" />
+                        {reportLoading ? "Generuji..." : "Generovat PDF"}
+                      </Button>
+                    </div>
+                  )}
                   {canEdit && (
                     <Button
                       variant="outline"
