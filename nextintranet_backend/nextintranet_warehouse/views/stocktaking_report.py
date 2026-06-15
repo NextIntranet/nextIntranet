@@ -98,18 +98,85 @@ class _ReportPDF(FPDF):
                 self.draw_col_headers()
 
 
-def _collect_data(campaign, show_all: bool, uninventoried: str):
+def _count_from_ops(ops_for_packet: list, cutoff_id=None) -> float:
+    """
+    Replay operations in chronological order (same logic as Packet.calculate()),
+    stopping after cutoff_id if provided. Returns the running count.
+    """
+    count = 0.0
+    for op in ops_for_packet:
+        if op['relative_quantity']:
+            count += op['quantity'] or 0
+        else:
+            count = op['quantity'] or 0
+        if cutoff_id is not None and op['id'] == cutoff_id:
+            break
+    return count
+
+
+def _build_inventory_counts(campaign_id) -> dict[str, float]:
+    """
+    For each active packet inventoried in this campaign, compute the stock count
+    at the moment of the last inventory operation — using the same running-sum
+    logic as Packet.calculate() but cut off at the last inventory op timestamp.
+
+    Returns: {str(packet_id): count_at_inventory}
+    """
+    # 1. Find the last inventory op per packet for this campaign (ordered by
+    #    timestamp then id, matching Packet.calculate() ordering).
     inv_ops = (
         StockOperation.objects.filter(
             operation_type='inventory',
-            reference=campaign.id,
+            reference=campaign_id,
+            packet__is_active=True,
         )
-        .order_by('timestamp')
-        .values('packet_id', 'quantity')
+        .order_by('packet_id', 'timestamp', 'id')
+        .values('id', 'packet_id', 'timestamp')
     )
-    inventory_map: dict[str, float] = {}
+
+    # last inv op per packet (later rows overwrite earlier ones for same packet)
+    cutoffs: dict[str, dict] = {}
     for op in inv_ops:
-        inventory_map[str(op['packet_id'])] = float(op['quantity'])
+        cutoffs[str(op['packet_id'])] = {'id': op['id'], 'timestamp': op['timestamp']}
+
+    if not cutoffs:
+        return {}
+
+    # 2. For each inventoried packet, load ALL its operations up to (and including)
+    #    the cutoff timestamp, ordered to match Packet.calculate().
+    #    We fetch in bulk (one query) and group in Python.
+    inventoried_packet_ids = list(cutoffs.keys())
+
+    # Build per-packet cutoff timestamp filter using OR over all packets.
+    # Simpler: load all ops for these packets up to max(cutoff timestamps)
+    # then filter per-packet in Python — avoids a huge OR clause.
+    max_cutoff_ts = max(v['timestamp'] for v in cutoffs.values())
+
+    all_ops = list(
+        StockOperation.objects.filter(
+            packet_id__in=inventoried_packet_ids,
+            timestamp__lte=max_cutoff_ts,
+        )
+        .order_by('packet_id', 'timestamp', 'id')
+        .values('id', 'packet_id', 'quantity', 'relative_quantity', 'timestamp')
+    )
+
+    # Group by packet_id (order is already correct from queryset)
+    ops_by_packet: dict[str, list] = defaultdict(list)
+    for op in all_ops:
+        ops_by_packet[str(op['packet_id'])].append(op)
+
+    # 3. Replay ops up to each packet's cutoff and record the count.
+    inventory_counts: dict[str, float] = {}
+    for pid, cutoff in cutoffs.items():
+        inventory_counts[pid] = _count_from_ops(ops_by_packet.get(pid, []), cutoff_id=cutoff['id'])
+
+    return inventory_counts
+
+
+def _collect_data(campaign, show_all: bool, uninventoried: str):
+    # Counts computed by replaying operations up to the last inventory op
+    inventory_counts = _build_inventory_counts(campaign.id)
 
     all_packets = list(
         Packet.objects.filter(is_active=True)
@@ -128,12 +195,12 @@ def _collect_data(campaign, show_all: bool, uninventoried: str):
 
         for packet in packets:
             pid = str(packet.id)
-            is_inventoried = pid in inventory_map
+            is_inventoried = pid in inventory_counts
 
             if not is_inventoried and uninventoried == 'hide':
                 continue
 
-            count = inventory_map[pid] if is_inventoried else float(packet.count)
+            count = inventory_counts[pid] if is_inventoried else float(packet.count)
             value = count * float(packet.itemValue)
 
             if not show_all and count == 0:
