@@ -24,7 +24,7 @@ SUB_ROW_H = 6
 FONT_NORMAL = 9
 FONT_SMALL = 8
 FONT_HEADER = 8
-PAGE_BOTTOM = 277
+PAGE_BOTTOM = 272
 
 
 def _fmt_value(v: float) -> str:
@@ -90,6 +90,15 @@ class _ReportPDF(FPDF):
         self.set_text_color(0)
         self.set_fill_color(255, 255, 255)
         self.ln(HEADER_H)
+
+    def footer(self):
+        if self.page <= 1:
+            return
+        self.set_y(-12)
+        self.set_font('DejaVu', style='', size=7)
+        self.set_text_color(150, 150, 150)
+        self.cell(0, 5, f'Strana {self.page} / {{nb}}', align='C')
+        self.set_text_color(0)
 
     def check_page_break(self, needed: float = ROW_H):
         if self.get_y() + needed > PAGE_BOTTOM:
@@ -243,6 +252,7 @@ def _generate_pdf(
 ) -> bytes:
     show_status = uninventoried in ('show', 'alert')
     pdf = _ReportPDF(show_status=show_status)
+    pdf.alias_nb_pages()
     pdf.add_fonts()
     pdf.set_auto_page_break(auto=False)
     pdf.set_margins(MARGIN, MARGIN, MARGIN)
@@ -269,8 +279,9 @@ def _generate_pdf(
         ('Datum konce inventury:', end_date_str),
         ('Celková hodnota v reportu:', _fmt_value(grand_total_value)),
         ('Počet součástek v reportu:', str(len(components))),
-        ('Inventarizováno sáčků:', f'{total_inventoried} / {total_active}'),
     ]
+    if uninventoried != 'hide':
+        info_rows.append(('Inventarizováno sáčků:', f'{total_inventoried} / {total_active}'))
 
     label_x = MARGIN + 10
     value_x = MARGIN + 85
@@ -381,7 +392,19 @@ def _generate_pdf(
         y = pdf.get_y()
         pdf.line(MARGIN, y, 210 - MARGIN, y)
 
+    # ── End of list ─────────────────────────────────────────────────────────────
+    pdf.check_page_break(12)
+    y = pdf.get_y() + 3
+    pdf.set_draw_color(60, 60, 60)
+    pdf.set_line_width(1.2)
+    pdf.line(MARGIN, y, 210 - MARGIN, y)
+    pdf.set_line_width(0.2)
     pdf.set_draw_color(0)
+    pdf.set_font('DejaVu', style='', size=7)
+    pdf.set_text_color(100, 100, 100)
+    pdf.set_xy(MARGIN, y + 3)
+    pdf.cell(180, 5, 'Konec seznamu', align='C')
+    pdf.set_text_color(0)
 
     return pdf.output()
 
