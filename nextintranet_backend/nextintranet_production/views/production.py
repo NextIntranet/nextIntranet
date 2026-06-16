@@ -7,6 +7,8 @@ from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
 import xml.etree.ElementTree as ET
 
+from ..ibom_bridge import inject_ni_bridge_into_upload
+
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.base import ContentFile
 from django.db import transaction
@@ -785,7 +787,7 @@ class TemplateViewSet(viewsets.ModelViewSet):
         if ibom_url:
             template.ibom_url = ibom_url
         if ibom_file:
-            template.ibom_file = ibom_file
+            template.ibom_file = inject_ni_bridge_into_upload(ibom_file)
 
         template.ibom_updated_at = timezone.now()
         template.save()

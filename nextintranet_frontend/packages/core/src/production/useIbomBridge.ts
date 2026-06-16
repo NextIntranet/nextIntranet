@@ -66,6 +66,8 @@ export function useIbomBridge(templateId: string | null): UseIbomBridgeReturn {
   const templateIdRef = useRef(templateId);
   templateIdRef.current = templateId;
   const syncInFlightRef = useRef(false);
+  /** Timestamp until which ibom.hover echoes should be suppressed (after we send ibom.highlight). */
+  const suppressHoverUntilRef = useRef<number>(0);
 
   const syncIbomState = useCallback(async (refs?: IbomCompletionRefs) => {
     const tid = templateIdRef.current;
@@ -109,6 +111,7 @@ export function useIbomBridge(templateId: string | null): UseIbomBridgeReturn {
 
     switch (event.type) {
       case IBOM_EVENT_TYPES.HOVER: {
+        if (Date.now() < suppressHoverUntilRef.current) break;
         const hp = payload as unknown as IbomHoverPayload;
         if (hp.refs && Array.isArray(hp.refs)) {
           setHighlightedRefs(hp.refs.map((r) => r[0]));
@@ -169,6 +172,7 @@ export function useIbomBridge(templateId: string | null): UseIbomBridgeReturn {
 
   const highlightInIbom = useCallback(
     (ref: string) => {
+      suppressHoverUntilRef.current = Date.now() + 300;
       const client = getRealtimeClient();
       client.emit({
         type: IBOM_EVENT_TYPES.HIGHLIGHT,

@@ -1243,8 +1243,11 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     const signature = `${bomId}|${sourcedSignature}|${placedSignature}`
     if (signature === lastIbomCompletionSyncRef.current) return
 
-    void syncIbomState(ibomCompletionRefs)
-    lastIbomCompletionSyncRef.current = signature
+    const timer = window.setTimeout(() => {
+      void syncIbomState(ibomCompletionRefs)
+      lastIbomCompletionSyncRef.current = signature
+    }, 400)
+    return () => window.clearTimeout(timer)
   }, [autoSyncIbomCompletion, ibomConnected, bomId, ibomCompletionRefs, syncIbomState])
 
   const sendIbomHover = useCallback((refs: [string, number][] | null, rowid: string) => {
@@ -2790,14 +2793,22 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                           }}
                                           tabIndex={-1}
                                           className={cn("text-xs", highlightedLineId === row.id ? "bg-amber-100/50" : undefined, ibomHighlighted ? "ring-2 ring-inset ring-blue-400/60" : undefined)}
-                                          onMouseEnter={() => rowRefs.length > 0 && sendIbomHover(rowRefs, row.id)}
+                                          onMouseEnter={() => {
+                                            if (rowRefs.length > 0) {
+                                              sendIbomHover(rowRefs, row.id)
+                                              // Emit unconditionally: ibom.ready handshake may have been
+                                              // missed (iBOM in another tab / connected before NI), so
+                                              // ibomConnected can be stale-false. Harmless if no iBOM listens.
+                                              if (row.refs[0]) highlightInIbom(row.refs[0])
+                                            }
+                                          }}
                                           onMouseLeave={() => sendIbomHover(null, row.id)}
                                         >
                                           <TableCell
                                             className={ibomConnected ? "cursor-pointer hover:text-primary" : undefined}
                                             onClick={() => {
                                               const firstRef = row.refs?.[0]
-                                              if (firstRef && ibomConnected) highlightInIbom(firstRef)
+                                              if (firstRef) highlightInIbom(firstRef)
                                             }}
                                           >
                                             {row.refs && row.refs.length > 0 ? (
