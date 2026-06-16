@@ -25,6 +25,7 @@ from .views.plugins import PluginInstanceRouter, PluginExecuteView
 from .views.serviceToken import ServiceTokenRouter
 from .views.branding import BrandingSettingsView
 from .views.labelTemplate import LabelTemplateRouter, LabelTemplatePreviewView
+from .views.version import VersionView
 
 
 from .schema import schema
@@ -60,6 +61,7 @@ urlpatterns = [
     path('token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('kicad/', include(kicad_urlpatterns)),
+    path('v1/version/', VersionView.as_view(), name='api-version'),
     path('v1/me/', user.UserApiDetailedView.as_view(), name='api-user-detail'),
     path('v1/me/change-password/', user.UserChangePasswordView.as_view(), name='api-user-change-password'),
     path('v1/dashboard/', DashboardMetricsAPIView.as_view(), name='api-dashboard'),

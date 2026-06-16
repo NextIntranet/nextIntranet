@@ -27,9 +27,15 @@ services:
     build:
       context: nextintranet_backend
       dockerfile: Dockerfile
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-}
+        GIT_BRANCH: ${GIT_BRANCH:-}
+        BUILD_DATE: ${BUILD_DATE:-}
+        BUILD_METHOD: ${BUILD_METHOD:-development}
     volumes:
       - ./nextintranet_backend:/app
       - ./.data/:/data
+      - ./.git:/app/.gitinfo:ro
     #ports:
     #  - "8080:8000"
     env_file:
@@ -48,10 +54,16 @@ services:
     build:
       context: nextintranet_backend
       dockerfile: Dockerfile
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-}
+        GIT_BRANCH: ${GIT_BRANCH:-}
+        BUILD_DATE: ${BUILD_DATE:-}
+        BUILD_METHOD: ${BUILD_METHOD:-development}
     container_name: webasgi
     volumes:
       - ./nextintranet_backend:/app
       - ./.data/:/data
+      - ./.git:/app/.gitinfo:ro
     env_file:
       - .env
     environment:
@@ -68,6 +80,11 @@ services:
     build:
       context: nextintranet_backend
       dockerfile: Dockerfile
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-}
+        GIT_BRANCH: ${GIT_BRANCH:-}
+        BUILD_DATE: ${BUILD_DATE:-}
+        BUILD_METHOD: ${BUILD_METHOD:-development}
     volumes:
       - ./nextintranet_backend:/app
       - ./.data/:/data
@@ -147,9 +164,11 @@ services:
       - minio
     entrypoint: >
       /bin/sh -c "
-      /usr/bin/mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin} &&
+      until /usr/bin/mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin}; do
+        echo 'waiting for minio...'; sleep 1;
+      done &&
       /usr/bin/mc mb --ignore-existing local/${MINIO_BUCKET:-nextintranet-dev} &&
-      /usr/bin/mc anonymous set download local/${MINIO_BUCKET:-nextintranet-dev} || true
+      /usr/bin/mc anonymous set download local/${MINIO_BUCKET:-nextintranet-dev}
       "
     networks:
       - nextintranet_net

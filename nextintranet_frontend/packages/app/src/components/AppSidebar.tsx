@@ -4,6 +4,7 @@ import {
   BookOpen,
   Command,
   Factory,
+  Info,
   LayoutDashboard,
   Search,
   Settings2,
@@ -14,6 +15,7 @@ import {
 import { Link } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { apiFetch } from "@nextintranet/core"
+import type { BuildInfo } from "@nextintranet/core"
 
 import { NavMain } from "@/components/nav-main"
 import { NavSecondary } from "@/components/nav-secondary"
@@ -27,6 +29,11 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 import { SearchModal } from "@/components/SearchModal"
 import { useRealtimeConnectionState } from "@nextintranet/core"
 import { useHotkeys } from "@/lib/hotkeys"
@@ -59,6 +66,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { data: me } = useQuery<UserMe>({
     queryKey: ["me"],
     queryFn: () => apiFetch<UserMe>("/api/v1/me/"),
+  })
+
+  const { data: version } = useQuery<BuildInfo>({
+    queryKey: ["version"],
+    queryFn: () => apiFetch<BuildInfo>("/api/v1/version/"),
+    staleTime: Infinity,
   })
 
   useEffect(() => {
@@ -166,6 +179,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       icon: UserCog,
     },
     {
+      title: "About",
+      url: "/about",
+      icon: Info,
+    },
+    {
       title: "Documentation",
       url: "/docs",
       icon: BookOpen,
@@ -230,10 +248,86 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             />
             <span>Websocket: {connectionLabel}</span>
           </div>
+          {version ? (
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className="mt-1 flex w-full items-center gap-2 rounded-md px-3 py-1 text-left hover:bg-sidebar-accent"
+                  title="Build version details"
+                >
+                  <Info className="h-3 w-3 shrink-0" />
+                  <span className="truncate">
+                    {version.commit_short} · {version.build_method}
+                    {version.build_date ? ` · ${formatBuildDate(version.build_date)}` : ""}
+                  </span>
+                </button>
+              </PopoverTrigger>
+              <PopoverContent side="top" align="start" className="w-72 text-xs">
+                <div className="space-y-1.5">
+                  <div className="font-medium text-foreground">Build version</div>
+                  <VersionRow label="Commit">
+                    {version.commit_url ? (
+                      <a
+                        href={version.commit_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-mono text-primary hover:underline"
+                      >
+                        {version.commit_short}
+                      </a>
+                    ) : (
+                      <span className="font-mono">{version.commit_short}</span>
+                    )}
+                  </VersionRow>
+                  <VersionRow label="Branch">{version.branch}</VersionRow>
+                  <VersionRow label="Build">{version.build_method}</VersionRow>
+                  <VersionRow label="Date">
+                    {version.build_date ? formatBuildDate(version.build_date) : "unknown"}
+                  </VersionRow>
+                  <a
+                    href={version.github_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-block pt-1 text-primary hover:underline"
+                  >
+                    GitHub repository ↗
+                  </a>
+                </div>
+              </PopoverContent>
+            </Popover>
+          ) : null}
         </div>
         <NavUser user={userInfo} />
       </SidebarFooter>
       <SearchModal open={searchOpen} onOpenChange={setSearchOpen} />
     </Sidebar>
+  )
+}
+
+function formatBuildDate(value: string): string {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return value
+  }
+  return date.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  })
+}
+
+function VersionRow({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-muted-foreground">{label}</span>
+      <span className="truncate text-right">{children}</span>
+    </div>
   )
 }

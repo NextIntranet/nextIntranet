@@ -31,6 +31,10 @@ ALLOWED_HOSTS = ['localhost', '127.0.0.1', '*']
 
 SITE_URL = os.getenv('SITE_URL', 'http://localhost:8000')
 
+# Build/version info (see nextintranet_backend/version.py)
+GITHUB_REPO_URL = os.getenv('GITHUB_REPO_URL', 'https://github.com/NextIntranet/nextIntranet')
+GIT_DIR = os.getenv('GIT_DIR', '/app/.gitinfo')
+
 CORS_ORIGIN_WHITELIST = [
     SITE_URL,
     "http://localhost:9000",

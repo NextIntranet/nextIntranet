@@ -5,3 +5,4 @@ export * from './realtime/client';
 export * from './realtime/hooks';
 export * from './production/ibom-events';
 export * from './production/useIbomBridge';
+export * from './system/version';

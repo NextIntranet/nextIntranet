@@ -30,6 +30,7 @@ import { ServiceTokensPage } from './pages/ServiceTokensPage';
 import { SoftwareSettingsPage } from './pages/SoftwareSettingsPage';
 import { LabelTemplatesPage } from './pages/LabelTemplatesPage';
 import { DocsPage } from './pages/DocsPage';
+import { AboutPage } from './pages/AboutPage';
 import { SupplierRelationPage } from './pages/SupplierRelationPage';
 import { ProductionPage } from './pages/ProductionPage';
 import { ProductionBomPage } from './pages/ProductionBomPage';
@@ -257,6 +258,7 @@ export function App() {
           />
           <Route path="user/:id" element={<UserDetailPage />} />
           <Route path="profile" element={<ProfileRedirectPage />} />
+          <Route path="about" element={<AboutPage />} />
           <Route path="401" element={<UnauthorizedPage />} />
           <Route path="403" element={<ForbiddenPage />} />
           <Route path="404" element={<NotFoundPage />} />

@@ -23,6 +23,16 @@ WORKDIR /app
 COPY requirements.txt /app/
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Build/version info (consumed by nextintranet_backend/version.py at runtime)
+ARG GIT_COMMIT=
+ARG GIT_BRANCH=
+ARG BUILD_DATE=
+ARG BUILD_METHOD=
+ENV GIT_COMMIT=$GIT_COMMIT \
+    GIT_BRANCH=$GIT_BRANCH \
+    BUILD_DATE=$BUILD_DATE \
+    BUILD_METHOD=$BUILD_METHOD
+
 COPY . .
 
 ENTRYPOINT python manage.py runserver 0.0.0.0:8000

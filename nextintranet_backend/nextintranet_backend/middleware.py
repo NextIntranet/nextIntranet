@@ -80,6 +80,9 @@ class LoginRequiredMiddleware:
         # MCP server endpoint
         if request.path.startswith('/mcp'):
             return True
+        # Public build/version info
+        if request.path.startswith('/api/v1/version'):
+            return True
         return any(request.path.startswith(path) for path in exempt_paths)
 
     def _has_service_token_header(self, request):
