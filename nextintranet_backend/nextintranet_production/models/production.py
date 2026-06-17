@@ -360,6 +360,77 @@ class TemplateComponent(NIModel):
         component_name = self.component.name if self.component else 'Unknown'
         return f"{self.template.name} - {component_name}"
 
+    def sync_ref_cache(self, *, save: bool = True):
+        """Recompute the denormalized refs cache from the TemplateComponentRef children.
+
+        refs/ref_group/qty_per_board mirror the ref_items so existing readers
+        (availability, finalize, iBOM, print) keep working unchanged.
+        """
+        refs = list(
+            self.ref_items.order_by('position', 'ref').values_list('ref', flat=True)
+        )
+        self.refs = refs
+        self.ref_group = ",".join(refs) if refs else None
+        self.qty_per_board = len(refs) if refs else 1
+        if save:
+            self.save(update_fields=['refs', 'ref_group', 'qty_per_board'])
+
+
+class TemplateComponentRef(NIModel):
+    """One physical designator (reference) of a BOM line.
+
+    The BOM line (TemplateComponent) stays the unit of progress/scans; these
+    children carry per-reference identity and netlist metadata (KiCad tstamp)
+    used for split/merge and future netlist reconciliation.
+    """
+    line = models.ForeignKey(
+        'TemplateComponent',
+        on_delete=models.CASCADE,
+        related_name='ref_items',
+        verbose_name=_('BOM line'),
+    )
+    template = models.ForeignKey(
+        'Template',
+        on_delete=models.CASCADE,
+        related_name='ref_items',
+        verbose_name=_('Template'),
+        help_text=_('Denormalized for fast per-template ref lookups.'),
+    )
+    ref = models.CharField(
+        max_length=255,
+        verbose_name=_('Reference'),
+        help_text=_('Designator, e.g. R1.'),
+    )
+    tstamp = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        verbose_name=_('Netlist tstamp'),
+        help_text=_('KiCad instance UUID/tstamp, stable across netlist updates.'),
+    )
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name=_('Metadata'),
+        help_text=_('Per-reference netlist snapshot (fields, properties, raw).'),
+    )
+    position = models.PositiveIntegerField(
+        default=0,
+        verbose_name=_('Position'),
+    )
+
+    class Meta:
+        verbose_name = _('Template Component Reference')
+        verbose_name_plural = _('Template Component References')
+        ordering = ['position', 'ref']
+        indexes = [
+            models.Index(fields=['template', 'ref']),
+            models.Index(fields=['line']),
+        ]
+
+    def __str__(self):
+        return f"{self.ref} ({self.line_id})"
+
 
 class Realization(NIModel):
     """

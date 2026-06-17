@@ -4,6 +4,7 @@ from nextintranet_production.models import (
     Production,
     Template,
     TemplateComponent,
+    TemplateComponentRef,
     Realization,
     RealizationComponent,
     TemplateComponentScan,
@@ -50,6 +51,12 @@ class TemplateComponentScanInlineSerializer(serializers.ModelSerializer):
         ]
 
 
+class TemplateComponentRefSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TemplateComponentRef
+        fields = ['id', 'ref', 'tstamp', 'position']
+
+
 class TemplateComponentSerializer(serializers.ModelSerializer):
     """Serializer pro TemplateComponent"""
     component_detail = ComponentSerializer(source='component', read_only=True)
@@ -57,14 +64,15 @@ class TemplateComponentSerializer(serializers.ModelSerializer):
     linked_component = serializers.UUIDField(source='component.id', read_only=True)
     component_kicad_footprint = serializers.SerializerMethodField()
     scans = TemplateComponentScanInlineSerializer(many=True, read_only=True)
-    
+    ref_items = TemplateComponentRefSerializer(many=True, read_only=True)
+
     class Meta:
         model = TemplateComponent
         fields = [
             'id', 'template', 'component', 'component_detail', 'component_name',
             'linked_component', 'component_kicad_footprint',
             'position', 'notes', 'attributes',
-            'source_type', 'ref_group', 'refs',
+            'source_type', 'ref_group', 'refs', 'ref_items',
             'qty_per_board', 'qty_override_total',
             'value', 'footprint', 'datasheet', 'bom_description',
             'dnp', 'needs_review', 'import_snapshot',

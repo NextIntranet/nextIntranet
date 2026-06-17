@@ -46,7 +46,14 @@ type PacketSelectSheetProps = {
   lineProgress?: PacketLineProgress | null
   initialSearch?: string
   browseMode?: boolean
+  homePath?: string | null
   onSelect: (packet: PacketSelectItem, qty: number) => void
+}
+
+const isInHome = (packet: PacketSelectItem, homePath?: string | null) => {
+  if (!homePath) return false
+  const path = packet.location?.full_path || packet.location?.name || ""
+  return path === homePath || path.startsWith(`${homePath}/`)
 }
 
 const unwrap = <T,>(data: T[] | Paginated<T> | undefined): T[] => {
@@ -103,6 +110,7 @@ export function PacketSelectSheet({
   lineProgress,
   initialSearch = "",
   browseMode = false,
+  homePath = null,
   onSelect,
 }: PacketSelectSheetProps) {
   const [search, setSearch] = useState("")
@@ -132,23 +140,36 @@ export function PacketSelectSheet({
   })
 
   const rows = useMemo(() => {
-    const baseRows = unwrap(data).filter((packet) => packet.is_active !== false)
+    let baseRows = unwrap(data).filter((packet) => packet.is_active !== false)
     const query = search.trim().toLowerCase()
-    if (!query) return baseRows
-    return baseRows.filter((packet) => {
-      const haystack = [
-        packet.id,
-        packet.component?.name,
-        packet.location?.full_path,
-        packet.location?.name,
-        packet.description,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-      return haystack.includes(query)
-    })
-  }, [data, search])
+    if (query) {
+      baseRows = baseRows.filter((packet) => {
+        const haystack = [
+          packet.id,
+          packet.component?.name,
+          packet.location?.full_path,
+          packet.location?.name,
+          packet.description,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+        return haystack.includes(query)
+      })
+    }
+    if (homePath) {
+      // Stable sort: home-location bags first, keep original order otherwise.
+      baseRows = baseRows
+        .map((packet, index) => ({ packet, index }))
+        .sort((a, b) => {
+          const ah = isInHome(a.packet, homePath) ? 0 : 1
+          const bh = isInHome(b.packet, homePath) ? 0 : 1
+          return ah - bh || a.index - b.index
+        })
+        .map((entry) => entry.packet)
+    }
+    return baseRows
+  }, [data, search, homePath])
 
   useEffect(() => {
     if (rows.length === 0) {
@@ -336,7 +357,14 @@ export function PacketSelectSheet({
                   >
                     <div className="grid gap-1 text-[11px] sm:grid-cols-[1fr_auto] sm:items-center">
                       <div className="leading-[1.15]">
-                        <div className="text-[12px] font-medium text-foreground">{packet.component?.name || "Unknown component"}</div>
+                        <div className="flex items-center gap-1.5 text-[12px] font-medium text-foreground">
+                          {packet.component?.name || "Unknown component"}
+                          {isInHome(packet, homePath) ? (
+                            <span className="inline-flex rounded bg-emerald-100 px-1 py-0.5 text-[9px] font-semibold uppercase text-emerald-800">
+                              home
+                            </span>
+                          ) : null}
+                        </div>
                         <div className="text-[10px] text-muted-foreground">
                           <span className="block">
                             Packet:{" "}

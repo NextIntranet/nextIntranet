@@ -28,6 +28,7 @@ from nextintranet_production.models import (
     Production,
     Template,
     TemplateComponent,
+    TemplateComponentRef,
     Realization,
     RealizationComponent,
     TemplateComponentScan,
@@ -210,6 +211,23 @@ def _element_to_dict(elem: ET.Element):
     return result
 
 
+def _extract_tstamp(comp: ET.Element) -> str | None:
+    """KiCad instance UUID/tstamp, stable across netlist updates."""
+    for getter in (
+        lambda: comp.findtext("tstamps"),
+        lambda: comp.findtext("tstamp"),
+        lambda: comp.get("tstamps"),
+        lambda: comp.get("tstamp"),
+    ):
+        value = getter()
+        if value:
+            value = value.strip()
+            if value:
+                # tstamps can be space-separated; first entry is the component UUID.
+                return value.split()[0]
+    return None
+
+
 def _parse_netlist_components(xml_bytes: bytes):
     root = ET.fromstring(xml_bytes)
     groups: dict[tuple[str, str, str, bool], dict[str, Any]] = {}
@@ -267,6 +285,7 @@ def _parse_netlist_components(xml_bytes: bytes):
         group["instances"].append(
             {
                 "ref": ref,
+                "tstamp": _extract_tstamp(comp),
                 "value": display_value,
                 "footprint": footprint,
                 "datasheet": datasheet,
@@ -408,7 +427,10 @@ def _line_needed_total(line: TemplateComponent, qty_planned: int) -> Decimal:
     return Decimal(line.qty_per_board or 0) * Decimal(qty_planned or 0)
 
 
-def _line_locations(component: Component | None) -> list[dict[str, Any]]:
+def _line_locations(
+    component: Component | None,
+    home_location_ids: set | None = None,
+) -> list[dict[str, Any]]:
     if not component:
         return []
     rows = []
@@ -426,6 +448,7 @@ def _line_locations(component: Component | None) -> list[dict[str, Any]]:
                 "packet_id": str(packet.id),
                 "location": packet.location.full_path if packet.location else "Unknown",
                 "quantity": count,
+                "in_home": bool(home_location_ids and packet.location_id in home_location_ids),
             }
         )
     return rows
@@ -475,6 +498,115 @@ def _consume_component(component: Component, qty: float, reference, user, descri
         raise ValueError(f"Insufficient stock for component '{component.name}'. Missing {remaining:.3f}.")
 
 
+def _create_ref_items_from_instances(line: TemplateComponent):
+    """Create one TemplateComponentRef per designator from the line's instances.
+
+    Reads refs/tstamp/metadata from attributes.instances when available, falling
+    back to the cached refs list. Keeps the denormalized cache in sync.
+    """
+    attributes = line.attributes if isinstance(line.attributes, dict) else {}
+    instances_by_ref = {
+        inst["ref"]: inst
+        for inst in (attributes.get("instances") or [])
+        if isinstance(inst, dict) and inst.get("ref")
+    }
+    refs = line.refs or list(instances_by_ref.keys())
+    new_items = []
+    for position, ref in enumerate(refs):
+        instance = instances_by_ref.get(ref) or {}
+        new_items.append(
+            TemplateComponentRef(
+                line=line,
+                template_id=line.template_id,
+                ref=ref,
+                tstamp=instance.get("tstamp"),
+                metadata=instance or {},
+                position=position,
+            )
+        )
+    if new_items:
+        TemplateComponentRef.objects.bulk_create(new_items)
+    line.sync_ref_cache()
+
+
+def _merge_lines(target: TemplateComponent, source: TemplateComponent) -> TemplateComponent:
+    """Move all of source's ref children + scans into target, then delete source."""
+    source.ref_items.update(line=target, template=target.template)
+    TemplateComponentScan.objects.filter(template_component=source).update(template_component=target)
+    target.sync_ref_cache()
+    _recalculate_scan_totals(target)
+    source.delete()
+    return target
+
+
+def _assign_component_to_refs(
+    line: TemplateComponent,
+    component: Component | None,
+    refs: list[str] | None,
+) -> tuple[TemplateComponent, bool]:
+    """Assign `component` to the given refs of `line` (default: all refs).
+
+    Implements both split (subset of refs → different component) and auto-merge
+    (target component already has a line in this template). Returns the resulting
+    line and whether a merge with an existing line happened.
+
+    Scan progress: a whole-line move into an existing line combines scans (merge);
+    a partial move leaves scans on the original line (split).
+    """
+    all_refs = list(line.ref_items.order_by("position", "ref").values_list("ref", flat=True))
+    selected = [r for r in (refs or all_refs) if r in all_refs] or all_refs
+    is_whole_line = len(selected) >= len(all_refs)
+
+    existing_target = None
+    if component is not None:
+        existing_target = (
+            TemplateComponent.objects.filter(template=line.template, component=component)
+            .exclude(id=line.id)
+            .order_by("position", "created_at")
+            .first()
+        )
+
+    # Case 1: a line for this component already exists → move refs into it.
+    if existing_target is not None:
+        if is_whole_line:
+            _merge_lines(existing_target, line)
+            return existing_target, True
+        line.ref_items.filter(ref__in=selected).update(
+            line=existing_target, template=existing_target.template
+        )
+        existing_target.sync_ref_cache()
+        line.sync_ref_cache()
+        return existing_target, True
+
+    # Case 2: no existing target.
+    if is_whole_line:
+        if component is not None:
+            line.component = component
+            line.save(update_fields=["component"])
+        return line, False
+
+    # Partial move with no existing target → split into a new line.
+    new_line = TemplateComponent.objects.create(
+        template=line.template,
+        component=component if component is not None else line.component,
+        position=line.position,
+        notes=line.notes,
+        attributes={},
+        source_type=line.source_type,
+        value=line.value,
+        footprint=line.footprint,
+        datasheet=line.datasheet,
+        bom_description=line.bom_description,
+        dnp=line.dnp,
+        needs_review=line.needs_review,
+        import_snapshot={},
+    )
+    line.ref_items.filter(ref__in=selected).update(line=new_line, template=new_line.template)
+    new_line.sync_ref_cache()
+    line.sync_ref_cache()
+    return new_line, False
+
+
 def _apply_import_rows(template: Template, parsed_rows: list[dict[str, Any]], mode: str):
     if mode not in {"replace", "merge"}:
         raise ValueError("Import mode must be 'replace' or 'merge'.")
@@ -490,7 +622,7 @@ def _apply_import_rows(template: Template, parsed_rows: list[dict[str, Any]], mo
 
     created = 0
     for idx, row in enumerate(parsed_rows):
-        TemplateComponent.objects.create(
+        line = TemplateComponent.objects.create(
             template=template,
             component=row.get("component"),
             position=idx,
@@ -508,6 +640,7 @@ def _apply_import_rows(template: Template, parsed_rows: list[dict[str, Any]], mo
             needs_review=bool(row.get("needs_review")),
             import_snapshot=row.get("import_snapshot") or {},
         )
+        _create_ref_items_from_instances(line)
         created += 1
 
     return created
@@ -556,9 +689,9 @@ def _clone_template_series(
         production_checkpoint={},
     )
 
-    components = template.components.all().order_by("position", "created_at")
+    components = template.components.all().order_by("position", "created_at").prefetch_related("ref_items")
     for idx, item in enumerate(components):
-        TemplateComponent.objects.create(
+        clone_line = TemplateComponent.objects.create(
             template=clone,
             component=item.component,
             position=idx,
@@ -579,6 +712,19 @@ def _clone_template_series(
             sourced_total=0,
             placed_total=0,
         )
+        ref_clones = [
+            TemplateComponentRef(
+                line=clone_line,
+                template=clone,
+                ref=ref_item.ref,
+                tstamp=ref_item.tstamp,
+                metadata=ref_item.metadata,
+                position=ref_item.position,
+            )
+            for ref_item in item.ref_items.all()
+        ]
+        if ref_clones:
+            TemplateComponentRef.objects.bulk_create(ref_clones)
 
     return clone
 
@@ -726,6 +872,7 @@ class TemplateViewSet(viewsets.ModelViewSet):
             "components",
             "components__component__parameters__parameter_type",
             "components__scans",
+            "components__ref_items",
         )
         .all()
     )
@@ -1073,7 +1220,7 @@ class TemplateViewSet(viewsets.ModelViewSet):
         template_id_str = str(template.id)
         for line in lines_qs:
             needed_total = _line_needed_total(line, template.qty_planned)
-            locations = _line_locations(line.component)
+            locations = _line_locations(line.component, home_location_ids)
             total_quantity = sum(_safe_float(loc.get("quantity") or 0) for loc in locations)
             # Available = total minus reservations that are NOT for this BOM (self-reservations don't reduce availability here)
             if line.component:
@@ -1506,6 +1653,66 @@ class TemplateComponentViewSet(viewsets.ModelViewSet):
         if instance.template.status == "locked":
             return Response({"error": "BOM is locked and cannot be edited."}, status=status.HTTP_409_CONFLICT)
         return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=["post"], url_path="set-component")
+    @transaction.atomic
+    def set_component(self, request, pk=None):
+        """Assign a linked component to all or selected references of this line.
+
+        A subset of refs splits the line; assigning a component that already has
+        a line in the template merges into it (auto-merge).
+        """
+        line = self.get_object()
+        if line.template.status == "locked":
+            return Response({"error": "BOM is locked and cannot be edited."}, status=status.HTTP_409_CONFLICT)
+
+        component = None
+        if request.data.get("component"):
+            component = get_object_or_404(Component, id=request.data.get("component"))
+
+        refs = request.data.get("refs") or None
+        if refs is not None and not isinstance(refs, list):
+            return Response({"error": "refs must be a list."}, status=status.HTTP_400_BAD_REQUEST)
+
+        result_line, merged = _assign_component_to_refs(line, component, refs)
+        serializer = TemplateComponentSerializer(result_line)
+        return Response({"line": serializer.data, "merged": merged})
+
+    @action(detail=True, methods=["post"], url_path="split")
+    @transaction.atomic
+    def split(self, request, pk=None):
+        """Split selected references off this line into a new line (same component)."""
+        line = self.get_object()
+        if line.template.status == "locked":
+            return Response({"error": "BOM is locked and cannot be edited."}, status=status.HTTP_409_CONFLICT)
+        refs = request.data.get("refs") or []
+        if not isinstance(refs, list) or not refs:
+            return Response({"error": "refs must be a non-empty list."}, status=status.HTTP_400_BAD_REQUEST)
+
+        new_line, _ = _assign_component_to_refs(line, line.component, refs)
+        if new_line.id == line.id:
+            return Response({"error": "Select a subset of references to split."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                "original": TemplateComponentSerializer(line).data,
+                "new": TemplateComponentSerializer(new_line).data,
+            }
+        )
+
+    @action(detail=True, methods=["post"], url_path="merge")
+    @transaction.atomic
+    def merge(self, request, pk=None):
+        """Merge other lines (by id) into this line."""
+        target = self.get_object()
+        if target.template.status == "locked":
+            return Response({"error": "BOM is locked and cannot be edited."}, status=status.HTTP_409_CONFLICT)
+        source_ids = request.data.get("ids") or ([request.data.get("into_id")] if request.data.get("into_id") else [])
+        sources = TemplateComponent.objects.filter(
+            template=target.template, id__in=[sid for sid in source_ids if sid]
+        ).exclude(id=target.id)
+        for source in sources:
+            _merge_lines(target, source)
+        return Response({"line": TemplateComponentSerializer(target).data})
 
 
 class RealizationViewSet(viewsets.ModelViewSet):

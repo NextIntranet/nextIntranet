@@ -17,6 +17,7 @@ import { ComponentInfoPopover } from "@/components/ComponentInfoPopover"
 import { ComponentSearchSheet, type SearchComponentItem } from "@/components/ComponentSearchSheet"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { PacketSelectSheet, type PacketLineProgress, type PacketSelectItem } from "@/components/PacketSelectSheet"
+import { ScanActionDialog, type ScanActionTarget } from "@/components/ScanActionDialog"
 import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -169,6 +170,7 @@ type AvailabilityRow = {
     packet_id: string
     location: string
     quantity: number
+    in_home?: boolean
   }>
   shortage: boolean
   unlinked: boolean
@@ -181,12 +183,24 @@ type AvailabilityResponse = {
   rows: AvailabilityRow[]
 }
 
-type TabKey = "bom" | "ibom" | "production" | "finalize"
+type TabKey = "bom" | "production" | "finalize"
 
 type LinkSheetTarget = {
   lineId: string
   value: string
   footprint: string
+  refs: string[]
+}
+
+type RefAssignTarget = {
+  title: string
+  componentId: string
+  componentName: string
+  lineId: string
+  refs: string[]
+  selected: string[]
+  // When present, the user may pick which line's refs to reassign (replace flow).
+  lineOptions?: { id: string; label: string; refs: string[] }[]
 }
 
 type PacketSheetTarget = {
@@ -206,21 +220,12 @@ type ScannerRow = BomRow & {
   scans: BomRowScan[]
 }
 
-type PendingScanConfirmation = {
-  mode: "SOURCED" | "PLACED"
-  barcode: string
-  lineId: string
-  qtyInput: string
-  recommendedQty: number
-  remainingQty: number
-  lineRefLabel: string
-  lineValue: string
-}
 
 type PendingNotInBomConfirmation = {
   mode: ScanMode
   barcode: string
   componentName?: string | null
+  componentId?: string | null
 }
 
 type ReservationSource = {
@@ -440,6 +445,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
   const [actualUsed, setActualUsed] = useState<Record<string, string>>({})
   const [linkSheetOpen, setLinkSheetOpen] = useState(false)
   const [linkSheetTarget, setLinkSheetTarget] = useState<LinkSheetTarget | null>(null)
+  const [refAssignTarget, setRefAssignTarget] = useState<RefAssignTarget | null>(null)
   const [packetSheetOpen, setPacketSheetOpen] = useState(false)
   const [packetSheetTarget, setPacketSheetTarget] = useState<PacketSheetTarget | null>(null)
   const [showBomDetails, setShowBomDetails] = useState(false)
@@ -447,8 +453,9 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
   const [showCreateProduction, setShowCreateProduction] = useState(false)
   const [showCreateSeries, setShowCreateSeries] = useState(false)
   const [ibomPanelOpen, setIbomPanelOpen] = useState(false)
+  const [ibomSectionOpen, setIbomSectionOpen] = useState(false)
   const [quickPlaceQtyByScan, setQuickPlaceQtyByScan] = useState<Record<string, string>>({})
-  const [pendingScanConfirmation, setPendingScanConfirmation] = useState<PendingScanConfirmation | null>(null)
+  const [scanActionTarget, setScanActionTarget] = useState<ScanActionTarget | null>(null)
   const [pendingNotInBomConfirmation, setPendingNotInBomConfirmation] = useState<PendingNotInBomConfirmation | null>(null)
   const scanInputRef = useRef<HTMLInputElement>(null)
   const lastScannerEventRef = useRef<{ text: string; ts: number } | null>(null)
@@ -774,6 +781,20 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
       queryClient.invalidateQueries({ queryKey: ["production-availability", bomId] })
     },
     onError: () => toast.error("Failed to update BOM line."),
+  })
+
+  const setComponentMutation = useMutation({
+    mutationFn: ({ lineId, component, refs }: { lineId: string; component: string; refs?: string[] }) =>
+      apiFetch<{ merged?: boolean }>(`/api/v1/production/template-components/${lineId}/set-component/`, {
+        method: "POST",
+        body: JSON.stringify({ component, ...(refs ? { refs } : {}) }),
+      }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["production-bom", bomId] })
+      queryClient.invalidateQueries({ queryKey: ["production-availability", bomId] })
+      toast.success(data?.merged ? "Component set and merged with existing line." : "Component updated.")
+    },
+    onError: () => toast.error("Failed to set component."),
   })
 
   const deleteLineMutation = useMutation({
@@ -1285,36 +1306,23 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     [highlightInIbom, ibomConnected, scannerRows, sendBarcodeScan],
   )
 
-  const acknowledgeFoundLine = useCallback(
-    (lineId: string) => {
-      focusScannedLine(lineId)
-      toast.success("Found in BOM.")
-      setScanInput("")
-      refocusScanInput()
-    },
-    [focusScannedLine, refocusScanInput],
-  )
 
-  const openScanConfirmation = useCallback(
-    (lineId: string, mode: "SOURCED" | "PLACED", barcode: string) => {
+  const openScanAction = useCallback(
+    (lineId: string, barcode: string) => {
       const matchedRow = scannerRows.find((row) => row.id === lineId)
-      const needed = matchedRow ? Math.max(0, toNumber(matchedRow.needed)) : 0
-      const progress = matchedRow ? toNumber(mode === "SOURCED" ? matchedRow.sourced : matchedRow.placed) : 0
-      const remainingQty = Math.max(0, needed - progress)
-      const recommendedQty = remainingQty > 0 ? remainingQty : 1
-
-      setPendingScanConfirmation({
-        mode,
+      focusScannedLine(lineId)
+      setScanActionTarget({
         barcode,
         lineId,
-        qtyInput: formatQty(recommendedQty),
-        recommendedQty,
-        remainingQty,
+        componentId: matchedRow?.component || null,
+        componentName: matchedRow?.component_name || matchedRow?.value || "Component",
         lineRefLabel: matchedRow?.ref_group || (matchedRow?.refs?.length ? matchedRow.refs.join(", ") : "-"),
         lineValue: matchedRow?.value || matchedRow?.component_name || "-",
+        needed: matchedRow ? Math.max(0, toNumber(matchedRow.needed)) : 0,
+        sourced: matchedRow ? toNumber(matchedRow.sourced) : 0,
+        placed: matchedRow ? toNumber(matchedRow.placed) : 0,
       })
       setScanInput("")
-      focusScannedLine(lineId)
     },
     [focusScannedLine, scannerRows],
   )
@@ -1337,54 +1345,25 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
         return
       }
 
-      if (target.mode === "FIND") {
-        acknowledgeFoundLine(addResponse.line_id)
-        refreshScannerData()
-        return
-      }
-
-      openScanConfirmation(addResponse.line_id, target.mode, target.barcode)
+      refreshScannerData()
+      openScanAction(addResponse.line_id, target.barcode)
     } catch {
       toast.error("Scan failed.")
     }
-  }, [acknowledgeFoundLine, openScanConfirmation, pendingNotInBomConfirmation, refreshScannerData, scanLookupMutation])
+  }, [openScanAction, pendingNotInBomConfirmation, refreshScannerData, scanLookupMutation])
 
   const executeScan = useCallback(
-    async (mode: ScanMode, rawBarcode: string, options?: { silentBlockedNotice?: boolean }) => {
+    async (_mode: ScanMode, rawBarcode: string, options?: { silentBlockedNotice?: boolean }) => {
       const barcode = rawBarcode.trim()
       if (!barcode) return
-      if (pendingScanConfirmation || pendingNotInBomConfirmation) {
+      if (scanActionTarget || pendingNotInBomConfirmation) {
         if (!options?.silentBlockedNotice) {
-          toast.error("Confirm or cancel the current quantity popup first.")
+          toast.error("Confirm or cancel the current scan popup first.")
         }
         return
       }
 
       try {
-        if (mode === "FIND") {
-          const response = await scanLookupMutation.mutateAsync({ mode: "FIND", barcode })
-
-          if (response.result === "unknown_barcode") {
-            toast.error("Unknown barcode.")
-            return
-          }
-          if (response.result === "not_in_bom") {
-            setPendingNotInBomConfirmation({
-              mode: "FIND",
-              barcode,
-              componentName: response.resolved_component?.name || null,
-            })
-            return
-          }
-          if (response.result === "found" && response.line_id) {
-            acknowledgeFoundLine(response.line_id)
-            return
-          }
-
-          toast.error("Scan failed.")
-          return
-        }
-
         const lookup = await scanLookupMutation.mutateAsync({ mode: "FIND", barcode })
         if (lookup.result === "unknown_barcode") {
           toast.error("Unknown barcode.")
@@ -1392,14 +1371,15 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
         }
         if (lookup.result === "not_in_bom") {
           setPendingNotInBomConfirmation({
-            mode,
+            mode: _mode,
             barcode,
             componentName: lookup.resolved_component?.name || null,
+            componentId: lookup.resolved_component?.id || null,
           })
           return
         }
         if (lookup.result === "found" && lookup.line_id) {
-          openScanConfirmation(lookup.line_id, mode, barcode)
+          openScanAction(lookup.line_id, barcode)
           return
         }
 
@@ -1408,47 +1388,40 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
         toast.error("Scan failed.")
       }
     },
-    [acknowledgeFoundLine, openScanConfirmation, pendingNotInBomConfirmation, pendingScanConfirmation, scanLookupMutation],
+    [openScanAction, pendingNotInBomConfirmation, scanActionTarget, scanLookupMutation],
   )
 
-  const handleConfirmPendingScan = useCallback(async () => {
-    if (!pendingScanConfirmation) return
-
-    const qty = Number(pendingScanConfirmation.qtyInput)
-    if (!Number.isFinite(qty) || qty <= 0) {
-      toast.error("Quantity must be greater than 0.")
-      return
-    }
-
-    try {
-      const response = await scanCommitMutation.mutateAsync({
-        mode: pendingScanConfirmation.mode,
-        barcode: pendingScanConfirmation.barcode,
-        line_id: pendingScanConfirmation.lineId,
-        qty,
-      })
-
-      setPendingScanConfirmation(null)
-
-      if (response.result === "unknown_barcode") {
-        toast.error("Unknown barcode.")
-        return
+  const handleScanActionCommit = useCallback(
+    async (operation: "SOURCED" | "PLACED", qty: number, barcode: string) => {
+      if (!scanActionTarget) return
+      try {
+        const response = await scanCommitMutation.mutateAsync({
+          mode: operation,
+          barcode,
+          line_id: scanActionTarget.lineId,
+          qty,
+        })
+        setScanActionTarget(null)
+        if (response.result === "unknown_barcode") {
+          toast.error("Unknown barcode.")
+          return
+        }
+        if (response.result === "not_in_bom") {
+          toast.error("Scanned component is not in BOM.")
+          return
+        }
+        if (response.line_id) {
+          focusScannedLine(response.line_id)
+        }
+        toast.success("Scan saved.")
+        refreshScannerData()
+        refocusScanInput()
+      } catch {
+        toast.error("Scan failed.")
       }
-      if (response.result === "not_in_bom") {
-        toast.error("Scanned component is not in BOM.")
-        return
-      }
-
-      if (response.line_id) {
-        focusScannedLine(response.line_id)
-      }
-      toast.success("Scan saved.")
-      refreshScannerData()
-      refocusScanInput()
-    } catch {
-      toast.error("Scan failed.")
-    }
-  }, [focusScannedLine, pendingScanConfirmation, refreshScannerData, refocusScanInput, scanCommitMutation])
+    },
+    [focusScannedLine, refreshScannerData, refocusScanInput, scanActionTarget, scanCommitMutation],
+  )
 
   useEffect(() => {
     const unsubscribe = nextIO.on("scanner.data", (event) => {
@@ -1513,18 +1486,76 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
       lineId: line.id,
       value: line.value || "",
       footprint: line.footprint || "",
+      refs: line.refs || [],
     })
     setLinkSheetOpen(true)
   }
 
   const handleLinkSelect = (component: SearchComponentItem) => {
     if (!linkSheetTarget) return
-    updateLineMutation.mutate({
-      lineId: linkSheetTarget.lineId,
-      payload: { component: component.id },
-    })
+    const target = linkSheetTarget
     setLinkSheetOpen(false)
     setLinkSheetTarget(null)
+    // Single (or no) ref → assign whole line directly (auto-merges on duplicate component).
+    if (target.refs.length <= 1) {
+      setComponentMutation.mutate({ lineId: target.lineId, component: component.id })
+      return
+    }
+    // Multiple refs → let the user pick which references get the new component.
+    setRefAssignTarget({
+      title: `Assign ${component.name} to references`,
+      componentId: component.id,
+      componentName: component.name,
+      lineId: target.lineId,
+      refs: target.refs,
+      selected: [...target.refs],
+    })
+  }
+
+  const handleRefAssignConfirm = () => {
+    if (!refAssignTarget) return
+    const { lineId, componentId, refs, selected } = refAssignTarget
+    if (selected.length === 0) {
+      toast.error("Select at least one reference.")
+      return
+    }
+    const allSelected = selected.length >= refs.length
+    setComponentMutation.mutate({
+      lineId,
+      component: componentId,
+      refs: allSelected ? undefined : selected,
+    })
+    setRefAssignTarget(null)
+  }
+
+  const openReplaceForReference = () => {
+    const target = pendingNotInBomConfirmation
+    if (!target?.componentId) {
+      toast.error("Could not resolve scanned component.")
+      return
+    }
+    const options = scannerRows
+      .filter((row) => (row.refs?.length || 0) > 0)
+      .map((row) => ({
+        id: row.id,
+        label: `${row.ref_group || (row.refs || []).join(", ")}${row.value ? ` · ${row.value}` : ""}`,
+        refs: row.refs || [],
+      }))
+    if (options.length === 0) {
+      toast.error("No BOM references available to replace.")
+      return
+    }
+    const first = options[0]
+    setPendingNotInBomConfirmation(null)
+    setRefAssignTarget({
+      title: `Assign ${target.componentName || "component"} to references`,
+      componentId: target.componentId,
+      componentName: target.componentName || "component",
+      lineId: first.id,
+      refs: first.refs,
+      selected: [...first.refs],
+      lineOptions: options,
+    })
   }
 
   const openPacketSheet = (row: (typeof scannerRows)[number], mode: "SOURCED" | "PLACED") => {
@@ -2048,7 +2079,6 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                           <div className="-mb-px flex flex-wrap items-center gap-4" role="tablist" aria-label="BOM sections">
                           {([
                             { key: "bom", label: "BOM", icon: FileText },
-                            { key: "ibom", label: "iBOM", icon: Link2 },
                             ...(!isTemplateSeries
                               ? [
                                   { key: "production" as TabKey, label: "Production", icon: ScanLine },
@@ -2082,6 +2112,76 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
 
                         {activeTab === "bom" ? (
                           <div className="space-y-4">
+                            <div className="rounded-md border border-border/60">
+                              <button
+                                type="button"
+                                onClick={() => setIbomSectionOpen((v) => !v)}
+                                className="flex w-full items-center justify-between px-3 py-2 text-sm font-medium"
+                              >
+                                <span className="flex items-center gap-2">
+                                  <Link2 className="h-4 w-4" />
+                                  iBOM
+                                  <span
+                                    className={cn(
+                                      "inline-block h-2 w-2 rounded-full",
+                                      ibomConnected ? "bg-green-500" : "bg-muted-foreground/30",
+                                    )}
+                                    title={ibomConnected ? "Bridge connected" : "Bridge disconnected"}
+                                  />
+                                  {ibomViewUrl ? (
+                                    <span className="text-xs font-normal text-muted-foreground">set</span>
+                                  ) : (
+                                    <span className="text-xs font-normal text-muted-foreground">not set</span>
+                                  )}
+                                </span>
+                                {ibomSectionOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                              </button>
+                              {ibomSectionOpen ? (
+                                <div className="space-y-2 border-t border-border/60 p-3">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <Input
+                                      className="h-8 w-64 max-w-full"
+                                      placeholder="iBOM URL (HTTPS)"
+                                      value={ibomUrlInput}
+                                      onChange={(e) => setIbomUrlInput(e.target.value)}
+                                      disabled={selectedBom.status === "locked"}
+                                    />
+                                    <Button
+                                      size="sm"
+                                      onClick={() => setIbomMutation.mutate({ file: null })}
+                                      disabled={selectedBom.status === "locked" || setIbomMutation.isPending}
+                                    >
+                                      Save URL
+                                    </Button>
+                                    <label className="inline-flex cursor-pointer items-center rounded-md border border-input px-2 py-1.5 text-xs">
+                                      <input
+                                        type="file"
+                                        accept=".html,.htm,.zip"
+                                        className="hidden"
+                                        disabled={selectedBom.status === "locked"}
+                                        onChange={(e) => {
+                                          const file = e.currentTarget.files?.[0] || null
+                                          setIbomMutation.mutate({ file })
+                                          e.currentTarget.value = ""
+                                        }}
+                                      />
+                                      Upload
+                                    </label>
+                                    <Button size="sm" variant="outline" disabled={!ibomViewUrl} onClick={() => setIbomPanelOpen(true)}>
+                                      Open panel
+                                    </Button>
+                                    <Button size="sm" variant="outline" disabled={!ibomIframeSrc} onClick={openIbomInNewTab}>
+                                      New tab
+                                    </Button>
+                                  </div>
+                                  <p className="text-xs text-muted-foreground">
+                                    Last updated:{" "}
+                                    {selectedBom.ibom_updated_at ? new Date(selectedBom.ibom_updated_at).toLocaleString() : "not set"}
+                                    {" · "}Source: {ibomViewUrl || "not set"}
+                                  </p>
+                                </div>
+                              ) : null}
+                            </div>
                             {isTemplateSeries ? (
                               <p className="rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
                                 Template series is locked after netlist import. Use &quot;Create working series&quot; to run production.
@@ -2091,8 +2191,9 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                 Netlist import is only available on template series or empty series. Duplicate from the template instead.
                               </p>
                             ) : null}
-                            <div className="grid gap-2 rounded-md border border-border/60 p-3 sm:grid-cols-[1fr_140px_auto_auto]">
+                            <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 p-3">
                               <Input
+                                className="h-8 w-72 max-w-full"
                                 placeholder="Source URL (HTTPS)"
                                 value={sourceUrlInput}
                                 onChange={(e) => setSourceUrlInput(e.target.value)}
@@ -2101,7 +2202,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                               <select
                                 value={importMode}
                                 onChange={(e) => setImportMode(e.target.value as "replace" | "merge")}
-                                className="rounded-md border border-input bg-background px-2 text-sm"
+                                className="h-8 rounded-md border border-input bg-background px-2 text-sm"
                                 disabled={!canImportNetlist}
                               >
                                 <option value="replace">Replace</option>
@@ -2109,6 +2210,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                               </select>
                               <Button
                                 variant="outline"
+                                size="sm"
                                 disabled={!canImportNetlist || !sourceUrlInput.trim() || importUrlMutation.isPending}
                                 onClick={() => importUrlMutation.mutate(sourceUrlInput)}
                               >
@@ -2116,6 +2218,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                               </Button>
                               <Button
                                 variant="outline"
+                                size="sm"
                                 disabled={!isTemplateSeries || !selectedBom.source_url || reImportMutation.isPending}
                                 onClick={() => reImportMutation.mutate()}
                               >
@@ -2603,70 +2706,6 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                           </div>
                         ) : null}
 
-                        {activeTab === "ibom" ? (
-                          <div className="space-y-4">
-                            <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-                              <Input
-                                placeholder="iBOM URL (HTTPS)"
-                                value={ibomUrlInput}
-                                onChange={(e) => setIbomUrlInput(e.target.value)}
-                                disabled={selectedBom.status === "locked"}
-                              />
-                              <label className="inline-flex cursor-pointer items-center rounded-md border border-input px-3 py-2 text-sm">
-                                <input
-                                  type="file"
-                                  accept=".html,.htm,.zip"
-                                  className="hidden"
-                                  disabled={selectedBom.status === "locked"}
-                                  onChange={(e) => {
-                                    const file = e.currentTarget.files?.[0] || null
-                                    setIbomMutation.mutate({ file })
-                                    e.currentTarget.value = ""
-                                  }}
-                                />
-                                Upload iBOM
-                              </label>
-                            </div>
-
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Button
-                                onClick={() => setIbomMutation.mutate({ file: null })}
-                                disabled={selectedBom.status === "locked" || setIbomMutation.isPending}
-                              >
-                                Save iBOM URL
-                              </Button>
-                              <Button
-                                disabled={!ibomViewUrl}
-                                onClick={() => setIbomPanelOpen(true)}
-                              >
-                                Open iBOM panel
-                              </Button>
-                              <Button
-                                variant="outline"
-                                disabled={!ibomIframeSrc}
-                                onClick={openIbomInNewTab}
-                              >
-                                Open iBOM in new tab
-                              </Button>
-                            </div>
-
-                            <div className="rounded-md border border-border/60 p-3 text-sm text-muted-foreground">
-                              {ibomViewUrl
-                                ? "Use 'Open iBOM panel' to view the iBOM inside the application."
-                                : "Upload an iBOM file or save iBOM URL to view it inside the application."}
-                            </div>
-
-                            <div className="rounded-md border border-border/60 p-3 text-sm text-muted-foreground">
-                              <p>
-                                Last updated: {selectedBom.ibom_updated_at ? new Date(selectedBom.ibom_updated_at).toLocaleString() : "not set"}
-                              </p>
-                              <p>
-                                Source: {ibomViewUrl || "not set"}
-                              </p>
-                            </div>
-                          </div>
-                        ) : null}
-
                         {activeTab === "production" ? (
                           <div className="space-y-3">
                             <form onSubmit={handleScanSubmit} className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
@@ -2682,7 +2721,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                 disabled={
                                   scanLookupMutation.isPending
                                   || scanCommitMutation.isPending
-                                  || Boolean(pendingScanConfirmation)
+                                  || Boolean(scanActionTarget)
                                   || Boolean(pendingNotInBomConfirmation)
                                 }
                                 onClick={openFindPacketSheet}
@@ -2694,7 +2733,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                 disabled={
                                   scanLookupMutation.isPending
                                   || scanCommitMutation.isPending
-                                  || Boolean(pendingScanConfirmation)
+                                  || Boolean(scanActionTarget)
                                   || Boolean(pendingNotInBomConfirmation)
                                   || !scanInput.trim()
                                 }
@@ -2712,7 +2751,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                   disabled={
                                     scanLookupMutation.isPending
                                     || scanCommitMutation.isPending
-                                    || Boolean(pendingScanConfirmation)
+                                    || Boolean(scanActionTarget)
                                     || Boolean(pendingNotInBomConfirmation)
                                   }
                                   onClick={() => setScannerMode(mode)}
@@ -3127,6 +3166,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
         lineProgress={packetSheetTarget?.lineProgress || null}
         initialSearch={packetSheetTarget?.initialSearch || ""}
         browseMode={packetSheetTarget?.browseMode}
+        homePath={availabilityData?.home_location_full_path || null}
         onSelect={handlePacketSelect}
       />
       <Dialog
@@ -3147,8 +3187,10 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                 : "Scanned component is not linked in this BOM."}
             </DialogDescription>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">Do you want to add it to BOM now?</p>
-          <DialogFooter className="gap-2">
+          <p className="text-sm text-muted-foreground">
+            Add it as a new BOM line, or replace the component on selected references of an existing line.
+          </p>
+          <DialogFooter className="gap-2 sm:justify-between">
             <Button
               type="button"
               variant="outline"
@@ -3160,75 +3202,116 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
             >
               Cancel
             </Button>
-            <Button type="button" disabled={scanLookupMutation.isPending} onClick={() => void handleConfirmNotInBom()}>
-              Add to BOM
-            </Button>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={openReplaceForReference}>
+                Replace for reference
+              </Button>
+              <Button type="button" disabled={scanLookupMutation.isPending} onClick={() => void handleConfirmNotInBom()}>
+                Add to BOM
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <Dialog
-        open={Boolean(pendingScanConfirmation)}
-        onOpenChange={(open) => {
-          if (!open) {
-            setPendingScanConfirmation(null)
-            refocusScanInput()
-          }
+      <ScanActionDialog
+        target={scanActionTarget}
+        defaultOperation={scannerMode}
+        homePath={availabilityData?.home_location_full_path || null}
+        isPending={scanCommitMutation.isPending}
+        onCommit={(operation, qty, barcode) => void handleScanActionCommit(operation, qty, barcode)}
+        onFind={() => {
+          setScanActionTarget(null)
+          toast.success("Found in BOM.")
+          refocusScanInput()
         }}
-      >
+        onClose={() => {
+          setScanActionTarget(null)
+          refocusScanInput()
+        }}
+      />
+      <Dialog open={Boolean(refAssignTarget)} onOpenChange={(open) => (open ? undefined : setRefAssignTarget(null))}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Confirm quantity</DialogTitle>
+            <DialogTitle>{refAssignTarget?.title || "Assign component to references"}</DialogTitle>
             <DialogDescription>
-              {pendingScanConfirmation
-                ? `${pendingScanConfirmation.mode === "SOURCED" ? "Source" : "Place"} quantity for ${pendingScanConfirmation.lineRefLabel} (${pendingScanConfirmation.lineValue}).`
-                : "Set quantity for this scan."}
+              {refAssignTarget?.componentName
+                ? `Select which references get "${refAssignTarget.componentName}". Unselected references keep their current component.`
+                : "Select references."}
             </DialogDescription>
           </DialogHeader>
-          {pendingScanConfirmation ? (
+          {refAssignTarget ? (
             <div className="space-y-3">
-              <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                <p>
-                  Remaining suggested quantity:{" "}
-                  <span className="font-medium text-foreground">{formatQty(pendingScanConfirmation.remainingQty)}</span>
-                </p>
-                <p>
-                  Recommended for this scan:{" "}
-                  <span className="font-medium text-foreground">{formatQty(pendingScanConfirmation.recommendedQty)}</span>
-                </p>
+              {refAssignTarget.lineOptions && refAssignTarget.lineOptions.length > 0 ? (
+                <label className="grid gap-1 text-sm">
+                  <span className="font-medium text-foreground">BOM line</span>
+                  <select
+                    className="rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                    value={refAssignTarget.lineId}
+                    onChange={(e) => {
+                      const opt = refAssignTarget.lineOptions?.find((o) => o.id === e.target.value)
+                      if (!opt) return
+                      setRefAssignTarget((prev) =>
+                        prev ? { ...prev, lineId: opt.id, refs: opt.refs, selected: [...opt.refs] } : prev,
+                      )
+                    }}
+                  >
+                    {refAssignTarget.lineOptions.map((opt) => (
+                      <option key={opt.id} value={opt.id}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              <div className="max-h-[40vh] space-y-1 overflow-auto rounded-md border border-border/60 p-2">
+                {refAssignTarget.refs.map((ref) => {
+                  const checked = refAssignTarget.selected.includes(ref)
+                  return (
+                    <label key={ref} className="flex items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-muted/40">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) =>
+                          setRefAssignTarget((prev) => {
+                            if (!prev) return prev
+                            const selected = e.target.checked
+                              ? [...prev.selected, ref]
+                              : prev.selected.filter((r) => r !== ref)
+                            return { ...prev, selected }
+                          })
+                        }
+                      />
+                      <span className="font-mono">{ref}</span>
+                    </label>
+                  )
+                })}
               </div>
-              <label className="grid gap-1.5">
-                <span className="text-sm font-medium text-foreground">Quantity to record</span>
-                <Input
-                  type="number"
-                  min="0"
-                  step="any"
-                  value={pendingScanConfirmation.qtyInput}
-                  onChange={(event) =>
-                    setPendingScanConfirmation((prev) => (prev ? { ...prev, qtyInput: event.target.value } : prev))
+              <div className="flex gap-2 text-xs">
+                <button
+                  type="button"
+                  className="text-primary hover:underline"
+                  onClick={() =>
+                    setRefAssignTarget((prev) => (prev ? { ...prev, selected: [...prev.refs] } : prev))
                   }
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault()
-                      void handleConfirmPendingScan()
-                    }
-                  }}
-                />
-              </label>
+                >
+                  Select all
+                </button>
+                <button
+                  type="button"
+                  className="text-primary hover:underline"
+                  onClick={() => setRefAssignTarget((prev) => (prev ? { ...prev, selected: [] } : prev))}
+                >
+                  Clear
+                </button>
+              </div>
             </div>
           ) : null}
           <DialogFooter className="gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setPendingScanConfirmation(null)
-                refocusScanInput()
-              }}
-            >
+            <Button type="button" variant="outline" onClick={() => setRefAssignTarget(null)}>
               Cancel
             </Button>
-            <Button type="button" onClick={() => void handleConfirmPendingScan()} disabled={scanCommitMutation.isPending}>
-              Confirm
+            <Button type="button" disabled={setComponentMutation.isPending} onClick={handleRefAssignConfirm}>
+              Apply
             </Button>
           </DialogFooter>
         </DialogContent>
