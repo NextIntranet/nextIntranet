@@ -47,9 +47,11 @@ from .views.purchases import (
 from .views.document_api import ComponentDocumentListCreateAPIView, ComponentDocumentDetailAPIView, DocumentDetailAPIView
 from .views.reservations import ReservationListAPIView, ReservationDetailAPIView
 from .views.supplier_api import SupplierRelationApplyAPIView, SupplierRelationSyncAPIView
+from .views.api_create import ComponentCreateFromSupplierAPIView
 
 # /api/v1/warehouse/
 urlpatterns = [
+    path('components/from-supplier/', ComponentCreateFromSupplierAPIView.as_view(), name='api_component_create_from_supplier'),
     path('components/', ComponentListAPIView.as_view(), name='api_warehouse_components'),
     path('component/<uuid:pk>/', ComponentDetailAPIView.as_view(), name='api_warehouse_component_detail'),
     path('component/<uuid:pk>/duplicate/', ComponentDuplicateAPIView.as_view(), name='api_warehouse_component_duplicate'),

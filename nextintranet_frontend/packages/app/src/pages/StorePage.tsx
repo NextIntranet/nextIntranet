@@ -83,6 +83,16 @@ interface User {
   }>;
 }
 
+interface Supplier {
+  id: string;
+  name: string;
+  api_plugin_instance: string | null;
+}
+
+interface PaginatedSuppliers {
+  results: Supplier[];
+}
+
 const STORAGE_KEYS = {
   VIEW_MODE: 'store_view_mode',
   PAGE_SIZE: 'store_page_size',
@@ -141,6 +151,12 @@ export function StorePage() {
   });
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [fromSupplierOpen, setFromSupplierOpen] = useState(false);
+  const [fromSupplierForm, setFromSupplierForm] = useState({
+    supplier: '',
+    symbol: '',
+    category: '',
+  });
   const [selectedCategories, setSelectedCategories] = useState<string[]>(() => {
     const cats = searchParams.get('categories');
     return cats ? cats.split(',') : [];
@@ -200,6 +216,14 @@ export function StorePage() {
     queryKey: ['me'],
     queryFn: () => apiFetch<User>('/api/v1/me/'),
   });
+
+  const { data: suppliersData } = useQuery<Supplier[] | PaginatedSuppliers>({
+    queryKey: ['suppliers'],
+    queryFn: () => apiFetch<Supplier[] | PaginatedSuppliers>('/api/v1/store/supplier/?page_size=1000'),
+  });
+  const apiSuppliers = (Array.isArray(suppliersData) ? suppliersData : suppliersData?.results ?? []).filter(
+    (s) => s.api_plugin_instance != null,
+  );
 
   const { data, isLoading, error } = useQuery<PaginatedResponse>({
     queryKey: ['components', search, page, pageSize, selectedCategories, selectedLocation],
@@ -261,6 +285,36 @@ export function StorePage() {
       toast.error('Failed to create component.');
     },
   });
+
+  const fromSupplierMutation = useMutation({
+    mutationFn: (payload: { supplier: string; symbol: string; category?: string }) =>
+      apiFetch<{ id: string }>('/api/v1/store/components/from-supplier/', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['components'] });
+      setFromSupplierOpen(false);
+      setFromSupplierForm({ supplier: '', symbol: '', category: '' });
+      toast.success('Component created from supplier API.');
+      if (data?.id) {
+        navigate(`/store/component/${data.id}`);
+      }
+    },
+    onError: (err: { data?: { detail?: string; symbol?: string[] } }) => {
+      const msg = err?.data?.detail || err?.data?.symbol?.[0] || 'Failed to create component from supplier API.';
+      toast.error(msg);
+    },
+  });
+
+  const handleFromSupplier = () => {
+    if (!fromSupplierForm.supplier || !fromSupplierForm.symbol.trim()) return;
+    fromSupplierMutation.mutate({
+      supplier: fromSupplierForm.supplier,
+      symbol: fromSupplierForm.symbol.trim(),
+      ...(fromSupplierForm.category ? { category: fromSupplierForm.category } : {}),
+    });
+  };
 
   const handleCreate = () => {
     if (!createForm.name.trim() || !createForm.category) {
@@ -686,13 +740,24 @@ export function StorePage() {
                 </div>
               </div>
               {canCreate && (
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={() => setCreateOpen(true)}
-                >
-                  New component
-                </Button>
+                <div className="flex items-center gap-2">
+                  {apiSuppliers.length > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setFromSupplierOpen(true)}
+                    >
+                      From supplier API
+                    </Button>
+                  )}
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => setCreateOpen(true)}
+                  >
+                    New component
+                  </Button>
+                </div>
               )}
               <div className="flex items-center gap-2 sm:justify-end">
                 <label
@@ -1113,6 +1178,60 @@ export function StorePage() {
               disabled={!createForm.name.trim() || !createForm.category || createMutation.isPending}
             >
               {createMutation.isPending ? 'Creating...' : 'Create component'}
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <Sheet open={fromSupplierOpen} onOpenChange={setFromSupplierOpen}>
+        <SheetContent side="right" className="w-full max-w-lg">
+          <SheetHeader>
+            <SheetTitle>Create from supplier API</SheetTitle>
+          </SheetHeader>
+          <div className="mt-6 space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Supplier</label>
+              <select
+                value={fromSupplierForm.supplier}
+                onChange={(e) => setFromSupplierForm({ ...fromSupplierForm, supplier: e.target.value })}
+                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                <option value="">Select supplier</option>
+                {apiSuppliers.map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Part number / symbol</label>
+              <Input
+                value={fromSupplierForm.symbol}
+                onChange={(e) => setFromSupplierForm({ ...fromSupplierForm, symbol: e.target.value })}
+                placeholder="e.g. BCM2837"
+                onKeyDown={(e) => { if (e.key === 'Enter') handleFromSupplier(); }}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">Category <span className="text-muted-foreground">(optional)</span></label>
+              <CategoryParentSelect
+                categories={categoryTree}
+                value={fromSupplierForm.category || null}
+                onChange={(v) => setFromSupplierForm({ ...fromSupplierForm, category: v ?? '' })}
+                emptyLabel="No category"
+                placeholder="Select category"
+              />
+            </div>
+          </div>
+          <div className="mt-6 flex gap-2">
+            <Button variant="outline" className="flex-1" onClick={() => setFromSupplierOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              className="flex-1"
+              onClick={handleFromSupplier}
+              disabled={!fromSupplierForm.supplier || !fromSupplierForm.symbol.trim() || fromSupplierMutation.isPending}
+            >
+              {fromSupplierMutation.isPending ? 'Fetching...' : 'Create component'}
             </Button>
           </div>
         </SheetContent>

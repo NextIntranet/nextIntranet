@@ -14,7 +14,6 @@ from .views import locations
 from .views import parameters
 from .views import category
 from .views import api_source
-from .views import api_create
 from .views import stocktaking
 
 
@@ -32,7 +31,6 @@ urlpatterns = [
     # path('parameter/', include(parameters.urlpatterns)),
     path('category/', include(category.urlpatterns)),
     path('api_source/', include(api_source.urlpatterns)),
-    path('api_create/', include(api_create.urlpatterns)),
 
     path('packet/<uuid:uuid>/edit/', components.PacketEditView.as_view(), name='packet-edit'),
     path('packet/<uuid:uuid>/delete/', components.PacketDeleteView.as_view(), name='packet-delete'),

@@ -1,59 +1,63 @@
-from django.views import View
-from django import forms
-from django.urls import path
-from django.http import HttpResponse, JsonResponse
-from django.shortcuts import render, redirect
-from nextintranet_warehouse.models.component import Supplier, Component
-from crispy_forms.helper import FormHelper
-from crispy_forms.layout import Layout, Submit, Field
-from django.views.generic.edit import FormView
+from django.db import transaction
+from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from nextintranet_warehouse.models.category import Category
+from nextintranet_warehouse.models.component import Component, Supplier, SupplierRelation
+from nextintranet_warehouse.services.supplier_api import (
+    apply_supplier_mapping,
+    fetch_supplier_relation_payload,
+)
 
 
+class ComponentCreateFromSupplierAPIView(APIView):
+    permission_classes = [IsAuthenticated]
 
-class ComponentCreateForm(forms.Form):
-    api = forms.ModelChoiceField(queryset=Supplier.objects.all(), label='API (Supplier)')
-    symbol_mfpn = forms.CharField(label='Symbol/MFPN', max_length=100)
-    data_preview = forms.CharField(widget=forms.Textarea(attrs={'rows': 6}), label='Data Preview', required=False)
-    create_component = forms.BooleanField(label='Create Component', required=False)
-    
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.helper = FormHelper()
-        self.helper.form_method = 'post'
-        self.helper.layout = Layout(
-            Field('api'),
-            Field('symbol_mfpn'),
-            Submit('submit', 'Create Component', css_class='btn btn-primary')
+    def post(self, request):
+        supplier_id = request.data.get("supplier")
+        symbol = request.data.get("symbol", "").strip()
+        category_id = request.data.get("category")
+
+        if not supplier_id:
+            return Response({"supplier": "Required."}, status=status.HTTP_400_BAD_REQUEST)
+        if not symbol:
+            return Response({"symbol": "Required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            supplier = Supplier.objects.get(pk=supplier_id)
+        except Supplier.DoesNotExist:
+            return Response({"supplier": "Not found."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not supplier.api_plugin_instance:
+            return Response(
+                {"supplier": "This supplier has no API plugin configured."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        category = None
+        if category_id:
+            try:
+                category = Category.objects.get(pk=category_id)
+            except Category.DoesNotExist:
+                return Response({"category": "Not found."}, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            component = Component.objects.create(name=symbol, category=category)
+            relation = SupplierRelation.objects.create(
+                component=component,
+                supplier=supplier,
+                symbol=symbol,
+            )
+            fetch_supplier_relation_payload(relation, user=request.user)
+            result = apply_supplier_mapping(relation)
+
+        return Response(
+            {
+                "id": str(component.pk),
+                "supplier_relation_id": str(relation.pk),
+                "result": result,
+            },
+            status=status.HTTP_201_CREATED,
         )
-    api = forms.ModelChoiceField(queryset=Supplier.objects.all(), label='API (Supplier)')
-    symbol_mfpn = forms.CharField(label='Symbol/MFPN', max_length=100)
-
-    def clean(self):
-        cleaned_data = super().clean()
-        api = cleaned_data.get('api')
-        symbol_mfpn = cleaned_data.get('symbol_mfpn')
-        
-        if api and symbol_mfpn:
-            # You would typically validate the symbol_mfpn with the selected API here
-            # This is a placeholder for the actual validation logic
-            
-            # For example, you might check if the symbol_mfpn exists in the API's database
-            # If not valid, raise a validation error:
-            # raise forms.ValidationError("This symbol/MFPN is not valid for the selected supplier.")
-            
-            # You could also populate the data_preview field here based on the API response
-            pass
-        
-        return cleaned_data
-
-class ComponentCreateFormView(FormView):
-    template_name = 'warehouse/component_create_from_api.html'
-    form_class = ComponentCreateForm
-
-
-
-
-
-urlpatterns = [
-    path('', ComponentCreateFormView.as_view(), name='component-create-from-api'),
-]
