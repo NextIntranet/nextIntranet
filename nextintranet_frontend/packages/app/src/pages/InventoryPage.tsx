@@ -355,7 +355,8 @@ export function InventoryPage() {
     // Leading + or - → relative delta
     const v = evalMathExpr(raw)
     if (v === null) return null
-    return currentCount + v
+    const next = currentCount + v
+    return next >= 0 ? next : null
   }
   const parsedNewCount = parseNewCount()
   const diff =
