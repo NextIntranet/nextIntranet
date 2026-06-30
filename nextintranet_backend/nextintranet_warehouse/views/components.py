@@ -720,6 +720,30 @@ class ComponentHistoryAPIView(APIView):
         return Response({'packets': packet_items, 'history': history})
 
 
+class PacketHistoryAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        packet = get_object_or_404(Packet, pk=pk)
+        operations = StockOperation.objects.filter(packet=packet).order_by('timestamp', 'id')
+
+        history = []
+        current = 0.0
+        for operation in operations:
+            if operation.relative_quantity:
+                current += operation.quantity or 0.0
+            else:
+                current = operation.quantity or 0.0
+            history.append(
+                {
+                    'timestamp': operation.timestamp.isoformat(),
+                    'quantity': float(current),
+                }
+            )
+
+        return Response({'history': history})
+
+
 class PacketForm(forms.ModelForm):
     """Form for creating and updating Packet instances."""
 

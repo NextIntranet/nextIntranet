@@ -13,6 +13,7 @@ from .views.components import (
     ComponentDetailAPIView,
     ComponentDuplicateAPIView,
     ComponentHistoryAPIView,
+    PacketHistoryAPIView,
     ComponentIdentifierListCreateAPIView,
     ComponentIdentifierDetailAPIView,
     ComponentParameterListAPIView,
@@ -71,6 +72,7 @@ urlpatterns = [
 # Packets
     path('packet/operation/', include(StockOperationRouter.urls), name='api_warehouse_operations'),
     path('packet/<uuid:pk>/identifiers/', PacketIdentifierListCreateAPIView.as_view(), name='api_warehouse_packet_identifiers'),
+    path('packet/<uuid:pk>/history/', PacketHistoryAPIView.as_view(), name='api_warehouse_packet_history'),
     path('packet/<uuid:packet_pk>/identifiers/<uuid:identifier_pk>/', PacketIdentifierDetailAPIView.as_view(), name='api_warehouse_packet_identifier_detail'),
     path('packet/', include(PacketRouter.urls), name='api_warehouse_packet_detail'),
     # path('packet/<uuid:pk>/operations/', PacketOperationsAPIView.as_view(), name='api_warehouse_packet_operations'),
