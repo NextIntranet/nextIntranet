@@ -333,6 +333,7 @@ class WarehouseReadToolset(MCPToolset):
         self,
         category: str = "",
         low_stock_only: bool = False,
+        missing_internal_price: bool = False,
         limit: int = 200,
     ) -> list[dict]:
         """Get inventory summary with quantities, reservations, and locations.
@@ -340,6 +341,8 @@ class WarehouseReadToolset(MCPToolset):
         Args:
             category: Optional category slug to filter by.
             low_stock_only: If true, only return components with quantity <= 0.
+            missing_internal_price: If true, only return components whose internal_price
+                is zero or unset.
             limit: Maximum number of results (default 200, max 500).
         """
         _require_read(self.request)
@@ -350,6 +353,8 @@ class WarehouseReadToolset(MCPToolset):
 
         if category:
             qs = qs.filter(category__abbreviation=category)
+        if missing_internal_price:
+            qs = qs.filter(Q(internal_price__isnull=True) | Q(internal_price=0))
 
         row_limit = _clamp_list_limit(limit, default=200, maximum=500)
         results = MCPInventoryItemSerializer(qs[:row_limit], many=True).data

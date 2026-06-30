@@ -109,7 +109,7 @@ class MCPInventoryItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Component
-        fields = ["id", "name", "category_name", "quantity", "reserved", "locations"]
+        fields = ["id", "name", "category_name", "quantity", "reserved", "locations", "internal_price"]
 
     def get_reserved(self, obj):
         return sum(r.quantity for r in obj.reservations.all())
