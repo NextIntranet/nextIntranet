@@ -127,9 +127,13 @@ services:
       - "9000:80"
 #      - "9010:9003"
     depends_on:
-      - frontend
-      - web
-      - web_asgi
+      frontend:
+        condition: service_started
+      web:
+        condition: service_started
+        restart: true
+      web_asgi:
+        condition: service_started
     networks:
       - nextintranet_net
 
