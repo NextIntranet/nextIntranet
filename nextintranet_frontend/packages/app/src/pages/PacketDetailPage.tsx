@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react"
+import React, { useEffect, useMemo, useRef, useState } from "react"
 import { Link, useParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { type ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table"
@@ -57,6 +57,14 @@ interface PacketDetail {
   external_identifiers?: ExternalIdentifier[]
 }
 
+interface StockOperationMetadata {
+  production_id?: string | null
+  supplier_relation_id?: string | null
+  counted_quantity?: number | null
+  recorded_quantity?: number | null
+  counted_price?: number | null
+}
+
 interface StockOperation {
   id: string
   operation_type: string
@@ -64,6 +72,7 @@ interface StockOperation {
   timestamp: string
   description?: string | null
   author_name?: string | null
+  metadata?: StockOperationMetadata | null
 }
 
 interface LocationNode {
@@ -79,6 +88,38 @@ interface User {
     area: string
     level: string
   }>
+}
+
+function OperationMetaCell({ op }: { op: StockOperation }) {
+  const m = op.metadata
+  if (!m) return <>-</>
+  const parts: React.ReactNode[] = []
+
+  if (m.production_id) {
+    parts.push(
+      <Link key="prod" to={`/production/${m.production_id}`} className="text-primary text-xs hover:underline underline-offset-2">
+        Production run →
+      </Link>
+    )
+  }
+  if (m.counted_quantity != null) {
+    parts.push(<span key="cnt" className="text-xs">Counted: {m.counted_quantity}</span>)
+  }
+  if (m.recorded_quantity != null) {
+    parts.push(<span key="rec" className="text-xs text-muted-foreground">(was: {m.recorded_quantity})</span>)
+  }
+  if (m.counted_price != null) {
+    parts.push(<span key="price" className="text-xs">Price: {m.counted_price}</span>)
+  }
+  if (m.supplier_relation_id) {
+    parts.push(
+      <span key="sr" className="text-xs text-muted-foreground">
+        Supplier rel: {m.supplier_relation_id.slice(0, 8)}…
+      </span>
+    )
+  }
+  if (parts.length === 0) return <>-</>
+  return <div className="flex flex-col gap-0.5">{parts}</div>
 }
 
 export function PacketDetailPage() {
@@ -593,8 +634,11 @@ export function PacketDetailPage() {
                       <TableHead className="h-9 w-[15%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                         Author
                       </TableHead>
-                      <TableHead className="h-9 w-[27%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      <TableHead className="h-9 w-[22%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                         Description
+                      </TableHead>
+                      <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Details
                       </TableHead>
                     </TableRow>
                   </TableHeader>
@@ -626,6 +670,9 @@ export function PacketDetailPage() {
                           ) : (
                             "-"
                           )}
+                        </TableCell>
+                        <TableCell className="px-3 py-2 text-sm text-muted-foreground align-top">
+                          <OperationMetaCell op={operation} />
                         </TableCell>
                       </TableRow>
                     ))}
