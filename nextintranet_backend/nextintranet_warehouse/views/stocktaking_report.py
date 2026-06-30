@@ -55,14 +55,16 @@ class _ReportPDF(FPDF):
         self.in_table = False
 
         if show_status:
-            self.col_name = 93
-            self.col_count = 25
-            self.col_value = 38
+            self.col_name = 78
+            self.col_count = 20
+            self.col_price = 28
+            self.col_value = 30
             self.col_status = 24
         else:
-            self.col_name = 117
-            self.col_count = 25
-            self.col_value = 38
+            self.col_name = 99
+            self.col_count = 20
+            self.col_price = 28
+            self.col_value = 33
             self.col_status = 0
 
     def add_fonts(self):
@@ -81,6 +83,9 @@ class _ReportPDF(FPDF):
         self.set_xy(x, y)
         self.cell(self.col_count, HEADER_H, 'Počet', border='B', align='R', fill=True)
         x += self.col_count
+        self.set_xy(x, y)
+        self.cell(self.col_price, HEADER_H, 'Cena/ks', border='B', align='R', fill=True)
+        x += self.col_price
         self.set_xy(x, y)
         self.cell(self.col_value, HEADER_H, 'Hodnota', border='B', align='R', fill=True)
         x += self.col_value
@@ -123,16 +128,13 @@ def _count_from_ops(ops_for_packet: list, cutoff_id=None) -> float:
     return count
 
 
-def _build_inventory_counts(campaign_id) -> dict[str, float]:
+def _build_inventory_counts(campaign_id) -> dict[str, dict]:
     """
     For each active packet inventoried in this campaign, compute the stock count
-    at the moment of the last inventory operation — using the same running-sum
-    logic as Packet.calculate() but cut off at the last inventory op timestamp.
+    at the moment of the last inventory operation and the recorded unit price.
 
-    Returns: {str(packet_id): count_at_inventory}
+    Returns: {str(packet_id): {'count': float, 'counted_price': float|None}}
     """
-    # 1. Find the last inventory op per packet for this campaign (ordered by
-    #    timestamp then id, matching Packet.calculate() ordering).
     inv_ops = (
         StockOperation.objects.filter(
             operation_type='inventory',
@@ -140,13 +142,16 @@ def _build_inventory_counts(campaign_id) -> dict[str, float]:
             packet__is_active=True,
         )
         .order_by('packet_id', 'timestamp', 'id')
-        .values('id', 'packet_id', 'timestamp')
+        .values('id', 'packet_id', 'timestamp', 'metadata')
     )
 
-    # last inv op per packet (later rows overwrite earlier ones for same packet)
     cutoffs: dict[str, dict] = {}
     for op in inv_ops:
-        cutoffs[str(op['packet_id'])] = {'id': op['id'], 'timestamp': op['timestamp']}
+        cutoffs[str(op['packet_id'])] = {
+            'id': op['id'],
+            'timestamp': op['timestamp'],
+            'counted_price': (op['metadata'] or {}).get('counted_price'),
+        }
 
     if not cutoffs:
         return {}
@@ -175,10 +180,12 @@ def _build_inventory_counts(campaign_id) -> dict[str, float]:
     for op in all_ops:
         ops_by_packet[str(op['packet_id'])].append(op)
 
-    # 3. Replay ops up to each packet's cutoff and record the count.
-    inventory_counts: dict[str, float] = {}
+    inventory_counts: dict[str, dict] = {}
     for pid, cutoff in cutoffs.items():
-        inventory_counts[pid] = _count_from_ops(ops_by_packet.get(pid, []), cutoff_id=cutoff['id'])
+        inventory_counts[pid] = {
+            'count': _count_from_ops(ops_by_packet.get(pid, []), cutoff_id=cutoff['id']),
+            'counted_price': cutoff['counted_price'],
+        }
 
     return inventory_counts
 
@@ -209,8 +216,17 @@ def _collect_data(campaign, show_all: bool, uninventoried: str):
             if not is_inventoried and uninventoried == 'hide':
                 continue
 
-            count = inventory_counts[pid] if is_inventoried else float(packet.count)
-            value = count * float(packet.itemValue)
+            if is_inventoried:
+                inv = inventory_counts[pid]
+                count = inv['count']
+                price = inv['counted_price']
+                if price is None:
+                    price = float(packet.itemValue)
+            else:
+                count = float(packet.count)
+                price = float(packet.itemValue)
+
+            value = count * price
 
             if not show_all and count == 0:
                 continue
@@ -219,6 +235,7 @@ def _collect_data(campaign, show_all: bool, uninventoried: str):
                 'packet': packet,
                 'is_inventoried': is_inventoried,
                 'count': count,
+                'price': price,
                 'value': value,
                 'location': packet.location.full_path if packet.location else '—',
             })
@@ -334,6 +351,10 @@ def _generate_pdf(
         x += pdf.col_count
 
         pdf.set_xy(x, y)
+        pdf.cell(pdf.col_price, ROW_H, '', align='R')
+        x += pdf.col_price
+
+        pdf.set_xy(x, y)
         pdf.cell(pdf.col_value, ROW_H, _fmt_value(comp_data['total_value']), align='R')
         x += pdf.col_value
 
@@ -370,6 +391,11 @@ def _generate_pdf(
                 pdf.set_xy(x, y)
                 pdf.cell(pdf.col_count, SUB_ROW_H, _fmt_count(prow['count']), align='R')
                 x += pdf.col_count
+
+                pdf.set_xy(x, y)
+                price_str = _fmt_value(prow['price']) if prow.get('price') else '—'
+                pdf.cell(pdf.col_price, SUB_ROW_H, price_str, align='R')
+                x += pdf.col_price
 
                 pdf.set_xy(x, y)
                 pdf.cell(pdf.col_value, SUB_ROW_H, _fmt_value(prow['value']), align='R')
