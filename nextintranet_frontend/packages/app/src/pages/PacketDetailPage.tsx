@@ -73,6 +73,7 @@ interface StockOperation {
   id: string
   operation_type: string
   quantity: number
+  unit_price?: number | null
   timestamp: string
   description?: string | null
   author_name?: string | null
@@ -620,6 +621,57 @@ export function PacketDetailPage() {
           </Card>
         </div>
 
+        <div className="mt-4 space-y-4">
+          <h2 className="text-lg font-semibold text-foreground">History levels</h2>
+          {isHistoryLoading ? (
+            <div className="space-y-3">
+              <Skeleton className="h-5 w-1/2" />
+              <Skeleton className="h-64 w-full" />
+            </div>
+          ) : historyDataPoints.length ? (
+            <ChartContainer config={historyChartConfig} className="h-[280px] w-full">
+              <AreaChart data={historyDataPoints} margin={{ left: 12, right: 12 }}>
+                <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="timestamp"
+                  type="number"
+                  scale="time"
+                  domain={["dataMin", "dataMax"]}
+                  tickFormatter={formatHistoryDate}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(value) => Number(value).toLocaleString()}
+                />
+                <ChartTooltip
+                  content={
+                    <ChartTooltipContent
+                      labelKey="timestamp"
+                      labelFormatter={(_, payload) =>
+                        formatHistoryDateTime(payload?.[0]?.payload?.timestamp ?? "")
+                      }
+                    />
+                  }
+                />
+                <Area
+                  type="monotone"
+                  dataKey="quantity"
+                  stroke="var(--color-quantity)"
+                  fill="var(--color-quantity)"
+                  fillOpacity={0.3}
+                  dot={{ r: 3, strokeWidth: 2, fill: "var(--background)" }}
+                  activeDot={{ r: 5 }}
+                />
+              </AreaChart>
+            </ChartContainer>
+          ) : (
+            <p className="text-sm text-muted-foreground">No history data is available yet.</p>
+          )}
+        </div>
+
         <section className="mt-4 space-y-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
@@ -677,61 +729,6 @@ export function PacketDetailPage() {
         </section>
 
         <div className="mt-4 space-y-4">
-          <h2 className="text-lg font-semibold text-foreground">History levels</h2>
-          <Card className="shadow-none">
-            <CardContent className="p-2">
-              {isHistoryLoading ? (
-                <div className="space-y-3">
-                  <Skeleton className="h-5 w-1/2" />
-                  <Skeleton className="h-64 w-full" />
-                </div>
-              ) : historyDataPoints.length ? (
-                <ChartContainer config={historyChartConfig} className="h-[280px] w-full">
-                  <AreaChart data={historyDataPoints} margin={{ left: 12, right: 12 }}>
-                    <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                    <XAxis
-                      dataKey="timestamp"
-                      type="number"
-                      scale="time"
-                      domain={["dataMin", "dataMax"]}
-                      tickFormatter={formatHistoryDate}
-                      tickLine={false}
-                      axisLine={false}
-                    />
-                    <YAxis
-                      tickLine={false}
-                      axisLine={false}
-                      tickFormatter={(value) => Number(value).toLocaleString()}
-                    />
-                    <ChartTooltip
-                      content={
-                        <ChartTooltipContent
-                          labelKey="timestamp"
-                          labelFormatter={(_, payload) =>
-                            formatHistoryDateTime(payload?.[0]?.payload?.timestamp ?? "")
-                          }
-                        />
-                      }
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="quantity"
-                      stroke="var(--color-quantity)"
-                      fill="var(--color-quantity)"
-                      fillOpacity={0.3}
-                      dot={{ r: 3, strokeWidth: 2, fill: "var(--background)" }}
-                      activeDot={{ r: 5 }}
-                    />
-                  </AreaChart>
-                </ChartContainer>
-              ) : (
-                <p className="text-sm text-muted-foreground">No history data is available yet.</p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="mt-4 space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-lg font-semibold text-foreground">Operations</h2>
             {canEdit && (
@@ -759,13 +756,16 @@ export function PacketDetailPage() {
                       <TableHead className="h-9 w-[8%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                         Qty
                       </TableHead>
+                      <TableHead className="h-9 w-[12%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Price
+                      </TableHead>
                       <TableHead className="h-9 w-[16%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                         Date / Author
                       </TableHead>
-                      <TableHead className="h-9 w-[32%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      <TableHead className="h-9 w-[22%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                         Description
                       </TableHead>
-                      <TableHead className="h-9 w-[32%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      <TableHead className="h-9 w-[22%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                         Details
                       </TableHead>
                     </TableRow>
@@ -789,6 +789,24 @@ export function PacketDetailPage() {
                         >
                           {flow === "in" ? "+" : flow === "out" ? "−" : ""}
                           {operation.quantity}
+                        </TableCell>
+                        <TableCell className="px-3 py-2 text-sm align-top">
+                          {operation.unit_price != null && operation.unit_price > 0 ? (
+                            <div className="flex flex-col gap-0.5">
+                              <span className="font-medium text-foreground">{operation.unit_price.toFixed(2)}</span>
+                              {packet?.itemValue != null && packet.itemValue > 0 && (() => {
+                                const diff = operation.unit_price - Number(packet.itemValue)
+                                if (Math.abs(diff) < 0.001) return null
+                                return (
+                                  <span className={diff > 0 ? "text-xs text-red-500" : "text-xs text-emerald-600"}>
+                                    {diff > 0 ? "+" : ""}{diff.toFixed(2)}
+                                  </span>
+                                )
+                              })()}
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
                         </TableCell>
                         <TableCell className="px-3 py-2 text-sm text-muted-foreground align-top">
                           <div className="flex flex-col gap-0.5">
