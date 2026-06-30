@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
-import { Link, useLocation } from "react-router-dom"
+import { Link, useLocation, useNavigate } from "react-router-dom"
 import { useQuery } from "@tanstack/react-query"
 import { apiFetch } from "@nextintranet/core"
 import { Search } from "lucide-react"
@@ -43,38 +43,12 @@ export function SearchModal({
   onOpenChange: (open: boolean) => void
 }) {
   const location = useLocation()
+  const navigate = useNavigate()
   const [query, setQuery] = useState("")
   const [debouncedQuery, setDebouncedQuery] = useState("")
   const [page, setPage] = useState(1)
-
-  useEffect(() => {
-    if (!open) {
-      setQuery("")
-      setDebouncedQuery("")
-      setPage(1)
-    }
-  }, [open])
-
-  useEffect(() => {
-    const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onOpenChange(false)
-      }
-    }
-    if (open) {
-      window.addEventListener("keydown", handleKey)
-    }
-    return () => window.removeEventListener("keydown", handleKey)
-  }, [open, onOpenChange])
-
-  useEffect(() => {
-    const timeout = setTimeout(() => setDebouncedQuery(query.trim()), 200)
-    return () => clearTimeout(timeout)
-  }, [query])
-
-  useEffect(() => {
-    setPage(1)
-  }, [debouncedQuery])
+  const [activeIndex, setActiveIndex] = useState(-1)
+  const resultRefs = useRef<(HTMLAnchorElement | HTMLDivElement | null)[]>([])
 
   const context = useMemo(() => contextFromPath(location.pathname), [location.pathname])
 
@@ -92,6 +66,52 @@ export function SearchModal({
   const results = data?.results ?? []
   const totalPages = data?.total_pages ?? 1
   const totalCount = data?.total_count ?? 0
+
+  useEffect(() => {
+    if (!open) {
+      setQuery("")
+      setDebouncedQuery("")
+      setPage(1)
+      setActiveIndex(-1)
+    }
+  }, [open])
+
+  useEffect(() => {
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onOpenChange(false)
+      } else if (event.key === "ArrowDown") {
+        event.preventDefault()
+        setActiveIndex((prev) => Math.min(prev + 1, results.length - 1))
+      } else if (event.key === "ArrowUp") {
+        event.preventDefault()
+        setActiveIndex((prev) => Math.max(prev - 1, -1))
+      } else if (event.key === "Enter") {
+        if (activeIndex >= 0 && results[activeIndex]?.route) {
+          navigate(results[activeIndex].route!)
+          onOpenChange(false)
+        }
+      }
+    }
+    if (open) {
+      window.addEventListener("keydown", handleKey)
+    }
+    return () => window.removeEventListener("keydown", handleKey)
+  }, [open, onOpenChange, activeIndex, results, navigate])
+
+  useEffect(() => {
+    const timeout = setTimeout(() => setDebouncedQuery(query.trim()), 200)
+    return () => clearTimeout(timeout)
+  }, [query])
+
+  useEffect(() => {
+    setPage(1)
+    setActiveIndex(-1)
+  }, [debouncedQuery])
+
+  useEffect(() => {
+    resultRefs.current[activeIndex]?.scrollIntoView({ block: "nearest" })
+  }, [activeIndex])
 
   if (!open) {
     return null
@@ -123,10 +143,12 @@ export function SearchModal({
           {!isFetching && debouncedQuery.length > 1 && results.length === 0 && (
             <div className="px-3 py-6 text-sm text-muted-foreground">No results.</div>
           )}
-          {results.map((result) => {
+          {results.map((result, index) => {
+            const isActive = index === activeIndex
             const wrapperClass = cn(
               "flex w-full flex-col gap-1 rounded-lg px-3 py-2 text-left transition",
-              "hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              "hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              isActive && "bg-muted/60"
             )
             const content = (
               <>
@@ -152,16 +174,23 @@ export function SearchModal({
               return (
                 <Link
                   key={`${result.source}-${result.id}`}
+                  ref={(el) => { resultRefs.current[index] = el }}
                   to={result.route}
                   onClick={() => onOpenChange(false)}
                   className={wrapperClass}
+                  onMouseEnter={() => setActiveIndex(index)}
                 >
                   {content}
                 </Link>
               )
             }
             return (
-              <div key={`${result.source}-${result.id}`} className={wrapperClass}>
+              <div
+                key={`${result.source}-${result.id}`}
+                ref={(el) => { resultRefs.current[index] = el }}
+                className={wrapperClass}
+                onMouseEnter={() => setActiveIndex(index)}
+              >
                 {content}
               </div>
             )
