@@ -111,7 +111,7 @@ class PacketSerializer(serializers.ModelSerializer):
         return ExternalIdentifierSerializer(qs, many=True).data
 
     def to_representation(self, instance):
-        if instance.count == 0 and instance.operations.exists():
+        if (instance.count == 0 or instance.itemValue == 0) and instance.operations.exists():
             instance.calculate()
         response = super().to_representation(instance)
         response['component'] = ComponentSerializer(instance.component).data
