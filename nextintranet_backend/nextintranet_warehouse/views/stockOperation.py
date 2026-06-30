@@ -156,6 +156,10 @@ class StockOperationSerializer(serializers.ModelSerializer):
                     validated_data, absolute_quantity, recorded_count
                 )
 
+        validated_data.setdefault("metadata", {})
+        validated_data["metadata"].setdefault("counted_quantity", absolute_quantity)
+        validated_data["metadata"].setdefault("recorded_quantity", recorded_count)
+
         return super().create(validated_data)
 
     # def to_representation(self, instance):

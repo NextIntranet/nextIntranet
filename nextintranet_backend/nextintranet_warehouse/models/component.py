@@ -526,6 +526,7 @@ class StockOperation(NIModel):
     relative_quantity = models.BooleanField(default=True, help_text=_('Indicates if the quantity is relative (e.g., added or removed) or an absolute value after the operation.'), verbose_name=_('Relative quantity'))
     unit_price = models.FloatField(blank=True, null=True, help_text=_('Unit price for the operation, used for FIFO tracking.'), verbose_name=_('Unit price'))
     description = models.TextField(blank=True, null=True, verbose_name=_('Description'))
+    metadata = models.JSONField(blank=True, null=True, default=dict, verbose_name=_('Metadata'))
     author = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True, related_name='stock_operations', verbose_name=_('Author'))
 
     @property

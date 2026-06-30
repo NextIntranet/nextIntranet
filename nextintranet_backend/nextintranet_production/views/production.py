@@ -490,6 +490,7 @@ def _consume_component(component: Component, qty: float, reference, user, descri
             relative_quantity=True,
             unit_price=packet.itemValue if packet.itemValue is not None else None,
             description=description,
+            metadata={"production_id": str(reference)} if reference else {},
             author=user,
         )
         remaining -= consume_qty

@@ -807,6 +807,7 @@ class PurchaseStockAPIView(APIView):
                 unit_price_value = item.unit_price_original
             unit_price = float(unit_price_value or 0)
 
+            sr = item.supplier_relation
             StockOperation.objects.create(
                 packet=delivery.packet,
                 operation_type='buy',
@@ -816,6 +817,7 @@ class PurchaseStockAPIView(APIView):
                 description=f'Purchase {purchase.id} stocking',
                 author=request.user if request.user.is_authenticated else None,
                 reference=purchase.id,
+                metadata={"supplier_relation_id": str(sr.id)} if sr else {},
             )
 
             delivery.is_stocked = True
