@@ -159,6 +159,9 @@ class StockOperationSerializer(serializers.ModelSerializer):
         validated_data.setdefault("metadata", {})
         validated_data["metadata"].setdefault("counted_quantity", absolute_quantity)
         validated_data["metadata"].setdefault("recorded_quantity", recorded_count)
+        if "counted_price" not in validated_data["metadata"]:
+            item_value = float(locked_packet.itemValue or 0)
+            validated_data["metadata"]["counted_price"] = item_value if item_value else None
 
         return super().create(validated_data)
 

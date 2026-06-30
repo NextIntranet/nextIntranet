@@ -50,6 +50,7 @@ class PacketSerializer(serializers.ModelSerializer):
     location = serializers.PrimaryKeyRelatedField(queryset=Warehouse.objects.all())
     external_identifiers = serializers.SerializerMethodField()
     inventory_op_count = serializers.IntegerField(read_only=True, required=False)
+    price_source = serializers.SerializerMethodField()
 
     class Meta:
         model = Packet
@@ -61,7 +62,23 @@ class PacketSerializer(serializers.ModelSerializer):
             'last_operation',
             'date_added',
             'inventory_op_count',
+            'price_source',
         ]
+
+    def get_price_source(self, instance):
+        if not instance.count or instance.count <= 0:
+            return None
+        has_priced_buy = instance.operations.filter(
+            operation_type__in=['buy', 'add', 'trans_in'],
+            unit_price__gt=0
+        ).exists()
+        if has_priced_buy and instance.itemValue and instance.itemValue > 0:
+            return "fifo"
+        if instance.component.internal_price and instance.itemValue and instance.itemValue > 0:
+            return "internal"
+        if instance.component.internal_price and (not instance.itemValue or instance.itemValue == 0):
+            return "internal_missing"
+        return "unknown"
 
     def _initial_count(self) -> float:
         raw = self.initial_data.get('count', 0)

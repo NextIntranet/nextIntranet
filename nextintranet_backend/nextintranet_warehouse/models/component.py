@@ -475,8 +475,14 @@ class Packet(NIModel):
                 total_value = total_value_fifo + (unaccounted_count * average_purchase_price)
                 remaining_count = self.count
             else:
-                total_value = total_value_fifo
-                remaining_count = remaining_count_fifo
+                # Fallback: no priced inflow operations — use component internal_price
+                internal_price = self.component.internal_price
+                if internal_price:
+                    total_value = total_value_fifo + (unaccounted_count * float(internal_price))
+                    remaining_count = self.count
+                else:
+                    total_value = total_value_fifo
+                    remaining_count = remaining_count_fifo
         else:
             total_value = total_value_fifo
             remaining_count = remaining_count_fifo

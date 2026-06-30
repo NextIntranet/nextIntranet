@@ -3,10 +3,11 @@ import { Link, useParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { type ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table"
 import { apiFetch } from "@nextintranet/core"
-import { Copy, Pencil, Plus, Share2, Trash2 } from "lucide-react"
+import { ArrowDownCircle, ArrowUpCircle, Copy, Pencil, Plus, RefreshCw, Share2, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import Select, { type SingleValue } from "react-select"
 import type { StylesConfig } from "react-select"
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
 
 import { LocationDisplay } from "@/components/LocationDisplay"
 import { LocationParentSelect } from "@/components/LocationParentSelect"
@@ -14,13 +15,14 @@ import { PacketOperationSheet } from "@/components/PacketOperationSheet"
 import { PriceLabel } from "@/components/PriceLabel"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { ExtensionPoint } from "@/plugins/ExtensionPoint"
 import { PrintActions } from "@/components/PrintActions"
-import { getOperationLabel } from "@/lib/stockOperations"
+import { getOperationFlow, getOperationLabel } from "@/lib/stockOperations"
 import { setScannerCapture } from "@/lib/scannerCapture"
 import { IDENTIFIER_SCHEME_OPTIONS } from "@/lib/identifierSchemes"
 import { Input } from "@/components/ui/input"
@@ -29,6 +31,7 @@ import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetT
 interface PacketComponent {
   id: string
   name: string
+  internal_price?: number | null
 }
 
 interface PacketLocation {
@@ -49,6 +52,7 @@ interface PacketDetail {
   count?: number | null
   itemValue?: number | null
   totalValue?: number | null
+  price_source?: "fifo" | "internal" | "internal_missing" | "unknown" | null
   is_active?: boolean
   created_at: string
   date_added?: string
@@ -75,6 +79,15 @@ interface StockOperation {
   metadata?: StockOperationMetadata | null
 }
 
+interface PacketHistoryEntry {
+  timestamp: string
+  quantity: number
+}
+
+interface PacketHistoryResponse {
+  history: PacketHistoryEntry[]
+}
+
 interface LocationNode {
   id: string
   name: string
@@ -88,6 +101,13 @@ interface User {
     area: string
     level: string
   }>
+}
+
+function OperationTypeIcon({ operationType }: { operationType: string }) {
+  const flow = getOperationFlow(operationType)
+  if (flow === "in") return <ArrowDownCircle className="h-4 w-4 shrink-0 text-emerald-600" />
+  if (flow === "out") return <ArrowUpCircle className="h-4 w-4 shrink-0 text-red-600" />
+  return <RefreshCw className="h-4 w-4 shrink-0 text-muted-foreground" />
 }
 
 function OperationMetaCell({ op }: { op: StockOperation }) {
@@ -168,6 +188,12 @@ export function PacketDetailPage() {
     queryKey: ["packet-operations", id],
     queryFn: () =>
       apiFetch<StockOperation[]>(`/api/v1/store/packet/operation/?packet=${id}`),
+    enabled: !!id,
+  })
+
+  const { data: historyData, isLoading: isHistoryLoading } = useQuery<PacketHistoryResponse>({
+    queryKey: ["packet-history", id],
+    queryFn: () => apiFetch<PacketHistoryResponse>(`/api/v1/store/packet/${id}/history/`),
     enabled: !!id,
   })
 
@@ -307,6 +333,40 @@ export function PacketDetailPage() {
 
   const formattedCount = packet?.count ?? 0
   const operationsList = useMemo(() => operations ?? [], [operations])
+
+  const historyChartConfig = useMemo<ChartConfig>(
+    () => ({
+      quantity: { label: "Quantity", color: "var(--chart-1)" },
+    }),
+    [],
+  )
+
+  const historyDataPoints = useMemo(() => {
+    if (!historyData?.history) {
+      return []
+    }
+    const rows = historyData.history.map((entry) => {
+      const parsedTimestamp = new Date(entry.timestamp).getTime()
+      return {
+        timestamp: Number.isNaN(parsedTimestamp) ? entry.timestamp : parsedTimestamp,
+        quantity: entry.quantity,
+      }
+    })
+    if (rows.length > 0) {
+      rows.push({ ...rows[rows.length - 1], timestamp: Date.now() })
+    }
+    return rows
+  }, [historyData?.history])
+
+  const formatHistoryDate = (value: string | number) => {
+    const parsed = new Date(value)
+    return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleDateString()
+  }
+
+  const formatHistoryDateTime = (value: string | number) => {
+    const parsed = new Date(value)
+    return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString()
+  }
   const packetOptions = useMemo(
     () =>
       packet
@@ -425,6 +485,22 @@ export function PacketDetailPage() {
               <p className="mt-2 text-2xl font-semibold text-foreground">
                 <PriceLabel value={packet?.itemValue ?? null} />
               </p>
+              {packet?.price_source && (
+                <p className="mt-1">
+                  <span className={[
+                    "text-xs rounded px-1.5 py-0.5",
+                    packet.price_source === "fifo" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
+                    packet.price_source === "internal" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" :
+                    packet.price_source === "internal_missing" ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" :
+                    "bg-muted text-muted-foreground"
+                  ].join(" ")}>
+                    {packet.price_source === "fifo" && "Purchase (FIFO)"}
+                    {packet.price_source === "internal" && "Internal price"}
+                    {packet.price_source === "internal_missing" && "⚠ Internal price (not applied)"}
+                    {packet.price_source === "unknown" && "No price"}
+                  </span>
+                </p>
+              )}
             </CardContent>
           </Card>
           <Card>
@@ -601,6 +677,61 @@ export function PacketDetailPage() {
         </section>
 
         <div className="mt-4 space-y-4">
+          <h2 className="text-lg font-semibold text-foreground">History levels</h2>
+          <Card className="shadow-none">
+            <CardContent className="p-2">
+              {isHistoryLoading ? (
+                <div className="space-y-3">
+                  <Skeleton className="h-5 w-1/2" />
+                  <Skeleton className="h-64 w-full" />
+                </div>
+              ) : historyDataPoints.length ? (
+                <ChartContainer config={historyChartConfig} className="h-[280px] w-full">
+                  <AreaChart data={historyDataPoints} margin={{ left: 12, right: 12 }}>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="timestamp"
+                      type="number"
+                      scale="time"
+                      domain={["dataMin", "dataMax"]}
+                      tickFormatter={formatHistoryDate}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      tickFormatter={(value) => Number(value).toLocaleString()}
+                    />
+                    <ChartTooltip
+                      content={
+                        <ChartTooltipContent
+                          labelKey="timestamp"
+                          labelFormatter={(_, payload) =>
+                            formatHistoryDateTime(payload?.[0]?.payload?.timestamp ?? "")
+                          }
+                        />
+                      }
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="quantity"
+                      stroke="var(--color-quantity)"
+                      fill="var(--color-quantity)"
+                      fillOpacity={0.3}
+                      dot={{ r: 3, strokeWidth: 2, fill: "var(--background)" }}
+                      activeDot={{ r: 5 }}
+                    />
+                  </AreaChart>
+                </ChartContainer>
+              ) : (
+                <p className="text-sm text-muted-foreground">No history data is available yet.</p>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="mt-4 space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-lg font-semibold text-foreground">Operations</h2>
             {canEdit && (
@@ -622,40 +753,48 @@ export function PacketDetailPage() {
                 <Table className="w-full table-fixed">
                   <TableHeader className="bg-muted/40">
                     <TableRow className="border-border/50">
-                      <TableHead className="h-9 w-[20%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      <TableHead className="h-9 w-[12%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                         Type
                       </TableHead>
-                      <TableHead className="h-9 w-[15%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Quantity
+                      <TableHead className="h-9 w-[8%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Qty
                       </TableHead>
-                      <TableHead className="h-9 w-[18%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Date
+                      <TableHead className="h-9 w-[16%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Date / Author
                       </TableHead>
-                      <TableHead className="h-9 w-[15%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Author
-                      </TableHead>
-                      <TableHead className="h-9 w-[22%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      <TableHead className="h-9 w-[32%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                         Description
                       </TableHead>
-                      <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      <TableHead className="h-9 w-[32%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                         Details
                       </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {operationsList.map((operation) => (
+                    {operationsList.map((operation) => {
+                      const flow = getOperationFlow(operation.operation_type)
+                      return (
                       <TableRow key={operation.id} className="border-border/40">
                         <TableCell className="h-9 px-3 text-sm text-foreground">
-                          {getOperationLabel(operation.operation_type)}
+                          <div className="flex items-center gap-1.5" title={getOperationLabel(operation.operation_type)}>
+                            <OperationTypeIcon operationType={operation.operation_type} />
+                            <span className="truncate">{getOperationLabel(operation.operation_type)}</span>
+                          </div>
                         </TableCell>
-                        <TableCell className="h-9 px-3 text-sm text-foreground">
+                        <TableCell
+                          className={
+                            "h-9 px-3 text-sm font-bold " +
+                            (flow === "in" ? "text-emerald-600" : flow === "out" ? "text-red-600" : "text-foreground")
+                          }
+                        >
+                          {flow === "in" ? "+" : flow === "out" ? "−" : ""}
                           {operation.quantity}
                         </TableCell>
-                        <TableCell className="h-9 px-3 text-sm text-muted-foreground">
-                          {new Date(operation.timestamp).toLocaleString()}
-                        </TableCell>
-                        <TableCell className="h-9 px-3 text-sm text-muted-foreground">
-                          {operation.author_name || "-"}
+                        <TableCell className="px-3 py-2 text-sm text-muted-foreground align-top">
+                          <div className="flex flex-col gap-0.5">
+                            <span>{new Date(operation.timestamp).toLocaleString()}</span>
+                            <span className="text-xs text-muted-foreground/80">{operation.author_name || "-"}</span>
+                          </div>
                         </TableCell>
                         <TableCell className="px-3 py-2 text-sm text-muted-foreground align-top">
                           {operation.description ? (
@@ -675,7 +814,8 @@ export function PacketDetailPage() {
                           <OperationMetaCell op={operation} />
                         </TableCell>
                       </TableRow>
-                    ))}
+                      )
+                    })}
                   </TableBody>
                 </Table>
               </div>
