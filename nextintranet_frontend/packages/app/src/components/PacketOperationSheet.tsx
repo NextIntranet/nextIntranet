@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/sheet"
 import { Input } from "@/components/ui/input"
 import { OPERATION_OPTIONS, getOperationFlow, getOperationOption } from "@/lib/stockOperations"
+import { evalMathExpr } from "@/lib/utils"
 
 export type PacketOption = {
   id: string
@@ -207,15 +208,15 @@ export function PacketOperationSheet({
       return { valid: false, value: 0 }
     }
     if (isServiceOperation && quantityRaw.startsWith("=")) {
-      const targetValue = Number(quantityRaw.slice(1).trim())
-      if (Number.isNaN(targetValue) || sourcePacketCount === null) {
+      const targetValue = evalMathExpr(quantityRaw.slice(1).trim())
+      if (targetValue === null || sourcePacketCount === null) {
         return { valid: false, value: 0 }
       }
       const delta = targetValue - sourcePacketCount
       return { valid: delta !== 0, value: delta }
     }
-    const parsed = Number(quantityRaw)
-    if (Number.isNaN(parsed)) {
+    const parsed = evalMathExpr(quantityRaw)
+    if (parsed === null) {
       return { valid: false, value: 0 }
     }
     if (isServiceOperation) {
@@ -396,12 +397,27 @@ export function PacketOperationSheet({
                 onChange={(e) =>
                   setFormState({ ...formState, quantity: e.target.value })
                 }
-                placeholder={isServiceOperation ? "-5 or =10" : "0"}
+                onBlur={isServiceOperation ? () => {
+                  const raw = formState.quantity.trim()
+                  if (raw === "") return
+                  if (raw.startsWith("=")) {
+                    const v = evalMathExpr(raw.slice(1))
+                    if (v !== null && `=${v}` !== raw) {
+                      setFormState((s) => ({ ...s, quantity: `=${v}` }))
+                    }
+                  } else {
+                    const v = evalMathExpr(raw)
+                    if (v !== null && String(v) !== raw) {
+                      setFormState((s) => ({ ...s, quantity: String(v) }))
+                    }
+                  }
+                } : undefined}
+                placeholder={isServiceOperation ? "-5 or =10 or 50+50" : "0"}
               />
               {isServiceOperation && (
                 <p className="text-xs text-muted-foreground">
                   Note: negative values withdraw stock, positive values add stock. Use
-                  {" "}{"="}10 to target a new total of 10 units.
+                  {" "}{"="}10 to target a new total of 10 units. Arithmetic expressions like 50+50 are supported.
                 </p>
               )}
             </div>
