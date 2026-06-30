@@ -221,6 +221,9 @@ def _collect_data(campaign, show_all: bool, uninventoried: str):
                 count = inv['count']
                 price = inv['counted_price']
                 if price is None:
+                    # Fallback for inventory operations created before metadata.counted_price
+                    # was introduced (commit d5b285f). Remove once all legacy operations
+                    # have been superseded by new ones.
                     price = float(packet.itemValue)
             else:
                 count = float(packet.count)
