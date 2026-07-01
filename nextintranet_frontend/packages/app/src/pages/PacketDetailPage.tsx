@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { type ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table"
 import { apiFetch } from "@nextintranet/core"
-import { ArrowDownCircle, ArrowUpCircle, Copy, Pencil, Plus, RefreshCw, Share2, Trash2 } from "lucide-react"
+import { ArrowDownCircle, ArrowUpCircle, Copy, ExternalLink, Pencil, Plus, RefreshCw, Share2, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import Select, { type SingleValue } from "react-select"
 import type { StylesConfig } from "react-select"
@@ -894,7 +894,25 @@ export function PacketDetailPage() {
                           )}
                         </TableCell>
                         <TableCell className="px-3 py-2 text-sm text-muted-foreground align-top">
-                          <OperationMetaCell op={operation} />
+                          <div className="flex flex-col gap-0.5">
+                            <OperationMetaCell op={operation} />
+                            {user?.is_superuser && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <a
+                                    href={`/admin/nextintranet_warehouse/stockoperation/${operation.id}/change/`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors w-fit"
+                                  >
+                                    <ExternalLink className="h-2.5 w-2.5" />
+                                    admin
+                                  </a>
+                                </TooltipTrigger>
+                                <TooltipContent>Open in Django admin</TooltipContent>
+                              </Tooltip>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
                       )
