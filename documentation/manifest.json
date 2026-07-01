@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-22T14:55:07.332Z",
+  "generatedAt": "2026-07-01T18:07:54.791356+00:00",
   "pages": [
     {
       "path": "",
@@ -216,8 +216,13 @@
         },
         {
           "level": 3,
-          "text": "Client configuration paths",
-          "id": "client-configuration-paths"
+          "text": "Claude Code setup",
+          "id": "claude-code-setup"
+        },
+        {
+          "level": 3,
+          "text": "Other clients",
+          "id": "other-clients"
         },
         {
           "level": 2,
@@ -233,6 +238,16 @@
           "level": 3,
           "text": "Write (`mcp:write` scope, includes all read tools)",
           "id": "write-mcpwrite-scope-includes-all-read-tools"
+        },
+        {
+          "level": 2,
+          "text": "Print queue",
+          "id": "print-queue"
+        },
+        {
+          "level": 2,
+          "text": "Component documents",
+          "id": "component-documents"
         },
         {
           "level": 2,
@@ -311,6 +326,60 @@
           "level": 2,
           "text": "Related topics",
           "id": "related-topics"
+        }
+      ]
+    },
+    {
+      "path": "guide/warehouse/pricing",
+      "file": "guide/warehouse/pricing.md",
+      "title": "Packet pricing",
+      "description": "How unit prices and total values are calculated for packets, including FIFO, internal price fallback, and inventory snapshots.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "Packet pricing",
+          "id": "packet-pricing"
+        },
+        {
+          "level": 2,
+          "text": "Calculation order (`Packet.calculate()`)",
+          "id": "calculation-order-packetcalculate"
+        },
+        {
+          "level": 3,
+          "text": "1. FIFO from priced inflow operations",
+          "id": "1-fifo-from-priced-inflow-operations"
+        },
+        {
+          "level": 3,
+          "text": "2. Average price for unaccounted units",
+          "id": "2-average-price-for-unaccounted-units"
+        },
+        {
+          "level": 3,
+          "text": "3. Internal price fallback",
+          "id": "3-internal-price-fallback"
+        },
+        {
+          "level": 2,
+          "text": "Price source badge",
+          "id": "price-source-badge"
+        },
+        {
+          "level": 2,
+          "text": "Inventory operations",
+          "id": "inventory-operations"
+        },
+        {
+          "level": 2,
+          "text": "Inventory PDF report",
+          "id": "inventory-pdf-report"
+        },
+        {
+          "level": 2,
+          "text": "`component.internal_price`",
+          "id": "componentinternal_price"
         }
       ]
     },

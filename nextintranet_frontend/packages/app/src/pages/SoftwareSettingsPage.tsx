@@ -215,7 +215,7 @@ export function SoftwareSettingsPage() {
             Creates a new service token and generates a JSON configuration
             for MCP clients (Claude Code, Claude Desktop, Cursor, etc.).
             Copy the JSON into your client&apos;s MCP settings.{" "}
-            <DocLink page="guide/settings/mcp" hash="generate-token" className="text-primary underline">
+            <DocLink page="guide/settings/mcp" hash="claude-code-setup" className="text-primary underline">
               Read the MCP setup guide
             </DocLink>
             .

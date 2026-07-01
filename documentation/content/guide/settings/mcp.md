@@ -33,9 +33,48 @@ The generated JSON looks like:
 }
 ```
 
-### Client configuration paths
+### Claude Code setup
 
-- **Claude Code**: `~/.claude/claude_code_config.json` under `"mcpServers"`
+The fastest way is the CLI — run this once in a terminal:
+
+```bash
+claude mcp add --transport http nextintranet-warehouse https://your-instance/mcp \
+  --header "X-Service-Token: <generated-token>"
+```
+
+Replace `https://your-instance` with your NextIntranet URL and `<generated-token>` with the token you copied in step 5 above.
+
+Verify it was added:
+
+```bash
+claude mcp list
+```
+
+You should see `nextintranet-warehouse` in the list. The next time you open Claude Code, the warehouse tools are available automatically.
+
+**Alternative — edit the config file manually:**
+
+Open `~/.claude/claude_code_config.json` and add the server under `"mcpServers"`:
+
+```json
+{
+  "mcpServers": {
+    "nextintranet-warehouse": {
+      "url": "https://your-instance/mcp",
+      "headers": {
+        "X-Service-Token": "<generated-token>"
+      }
+    }
+  }
+}
+```
+
+Create the file if it does not exist yet.
+
+**Project-scoped config:** To restrict the MCP server to a specific project instead of all Claude Code sessions, pass `--scope project` to `claude mcp add`. This writes the server into `.mcp.json` in the current directory instead of your global config.
+
+### Other clients
+
 - **Claude Desktop**: `~/.claude/claude_desktop_config.json` under `"mcpServers"`
 - **Cursor**: Settings → MCP Servers
 
