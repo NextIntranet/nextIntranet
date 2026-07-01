@@ -2,13 +2,14 @@ import { useEffect, useMemo, useState } from "react"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiFetch } from "@nextintranet/core"
-import { Pencil, Plus } from "lucide-react"
+import { Copy, Package, Pencil, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import Select, { SingleValue } from "react-select"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
@@ -54,6 +55,15 @@ interface Component {
   name: string
 }
 
+interface ComponentDetail {
+  id: string
+  name: string
+  description?: string | null
+  category_name?: string | null
+  internal_price?: number | null
+  quantity?: number
+}
+
 interface PaginatedComponents {
   results: Component[]
 }
@@ -64,6 +74,99 @@ type OptionType = {
 }
 
 type EditMode = "detail" | "edit"
+
+function ComponentPopover({ componentId, componentName }: { componentId: string; componentName: string }) {
+  const [open, setOpen] = useState(false)
+
+  const { data: detail, isLoading } = useQuery<ComponentDetail>({
+    queryKey: ["component-detail-mini", componentId],
+    queryFn: () => apiFetch<ComponentDetail>(`/api/v1/store/components/${componentId}/`),
+    enabled: open,
+    staleTime: 60_000,
+  })
+
+  const copyText = (text: string, label: string) => {
+    navigator.clipboard.writeText(text)
+    toast.success(`${label} copied`)
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button className="flex min-w-0 items-center gap-1.5 text-left text-primary hover:underline underline-offset-2 truncate">
+          <Package className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <span className="truncate">{componentName}</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 p-3" align="start">
+        {isLoading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-3/4" />
+            <Skeleton className="h-3 w-full" />
+            <Skeleton className="h-3 w-1/2" />
+          </div>
+        ) : detail ? (
+          <div className="space-y-2">
+            <div className="flex items-start justify-between gap-2">
+              <Link
+                to={`/store/component/${detail.id}`}
+                className="text-sm font-medium text-primary hover:underline leading-tight"
+              >
+                {detail.name}
+              </Link>
+              <div className="flex shrink-0 gap-1">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => copyText(detail.name, "Name")}
+                      className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    >
+                      <Copy className="h-3 w-3" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>Copy name</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => copyText(detail.id, "ID")}
+                      className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-mono text-[10px]"
+                    >
+                      ID
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>Copy ID ({detail.id})</TooltipContent>
+                </Tooltip>
+              </div>
+            </div>
+            {detail.category_name && (
+              <p className="text-xs text-muted-foreground">{detail.category_name}</p>
+            )}
+            {detail.description && (
+              <p className="text-xs text-muted-foreground line-clamp-3">{detail.description}</p>
+            )}
+            <div className="flex gap-4 border-t pt-2 text-xs">
+              <div>
+                <span className="text-muted-foreground">Stock: </span>
+                <span className={`font-medium ${(detail.quantity ?? 0) <= 0 ? "text-red-500" : "text-emerald-600"}`}>
+                  {detail.quantity ?? 0}
+                </span>
+              </div>
+              {detail.internal_price != null && (
+                <div>
+                  <span className="text-muted-foreground">Price: </span>
+                  <span className="font-medium">{Number(detail.internal_price).toFixed(2)}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">Component not found.</p>
+        )}
+      </PopoverContent>
+    </Popover>
+  )
+}
 
 export function PurchaseRequestsPage() {
   const { id } = useParams<{ id: string }>()
@@ -162,6 +265,18 @@ export function PurchaseRequestsPage() {
     },
     onError: () => {
       toast.error("Failed to update request.")
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (requestId: string) =>
+      apiFetch(`/api/v1/store/purchase-request/${requestId}/`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["purchase-requests"] })
+      toast.success("Request deleted.")
+    },
+    onError: () => {
+      toast.error("Failed to delete request.")
     },
   })
 
@@ -321,24 +436,25 @@ export function PurchaseRequestsPage() {
                   <TableHead className="h-9 w-[30%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Component
                   </TableHead>
-                  <TableHead className="h-9 w-[12%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableHead className="h-9 w-[10%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Qty
                   </TableHead>
-                  <TableHead className="h-9 w-[18%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableHead className="h-9 w-[16%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Requested by
                   </TableHead>
-                  <TableHead className="h-9 w-[20%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableHead className="h-9 w-[18%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Suppliers
                   </TableHead>
-                  <TableHead className="h-9 w-[20%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableHead className="h-9 w-[18%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Description
                   </TableHead>
+                  <TableHead className="h-9 w-[8%] px-3" />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isRequestsLoading ? (
                   <TableRow className="border-border/40">
-                    <TableCell colSpan={5} className="py-8">
+                    <TableCell colSpan={6} className="py-8">
                       <div className="space-y-2">
                         <Skeleton className="h-5 w-1/2" />
                         <Skeleton className="h-5 w-3/4" />
@@ -350,25 +466,26 @@ export function PurchaseRequestsPage() {
                   requests.map((request) => (
                     <TableRow key={request.id} className="border-border/40">
                       <TableCell className="h-9 px-3">
-                        <div className="flex min-w-0 flex-col">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleOpen(request.id)}
-                            className="h-7 min-w-0 justify-start px-2 font-normal text-primary hover:underline"
-                          >
-                            <span className="truncate">
-                              {request.component_name || request.item_name || "Unknown item"}
-                            </span>
-                          </Button>
-                          {request.component_id && (
-                            <Link
-                              to={`/store/component/${request.component_id}`}
-                              className="px-2 text-xs text-muted-foreground hover:underline"
+                        <div className="flex min-w-0 flex-col gap-0.5">
+                          {request.component_id ? (
+                            <ComponentPopover
+                              componentId={request.component_id}
+                              componentName={request.component_name || request.item_name || "Unknown item"}
+                            />
+                          ) : (
+                            <button
+                              onClick={() => handleOpen(request.id)}
+                              className="truncate text-left text-sm text-primary hover:underline underline-offset-2"
                             >
-                              Open component
-                            </Link>
+                              {request.item_name || "Unknown item"}
+                            </button>
                           )}
+                          <button
+                            onClick={() => handleOpen(request.id)}
+                            className="px-0 text-left text-xs text-muted-foreground hover:underline underline-offset-2"
+                          >
+                            Details →
+                          </button>
                         </div>
                       </TableCell>
                       <TableCell className="h-9 px-3 text-sm text-foreground">
@@ -407,12 +524,28 @@ export function PurchaseRequestsPage() {
                           "-"
                         )}
                       </TableCell>
+                      <TableCell className="px-3 py-2 align-top">
+                        {canEdit && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                onClick={() => deleteMutation.mutate(request.id)}
+                                disabled={deleteMutation.isPending}
+                                className="rounded p-1 text-muted-foreground/50 hover:bg-destructive/10 hover:text-destructive transition-colors"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent>Delete request</TooltipContent>
+                          </Tooltip>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))
                 ) : (
                   <TableRow className="border-border/40">
                     <TableCell
-                      colSpan={5}
+                      colSpan={6}
                       className="py-8 text-center text-sm text-muted-foreground"
                     >
                       No purchase requests found.
