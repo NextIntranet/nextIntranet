@@ -96,6 +96,8 @@ interface TagType {
 interface ComponentPacket {
   id: string
   count: number
+  itemValue?: number | null
+  totalValue?: number | null
   description: string
   created_at: string
   last_used_at?: string | null
@@ -1270,6 +1272,40 @@ export function ComponentDetailPage() {
         cell: ({ row }) => (
           <span className={inactivePacketClass(row.original)}>{row.original.count}</span>
         ),
+      },
+      {
+        id: "unit_price",
+        header: "Unit price",
+        cell: ({ row }) => {
+          const v = row.original.itemValue
+          return v != null && v > 0 ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className={`cursor-default ${inactivePacketClass(row.original)}`}>{Number(v).toFixed(2)}</span>
+              </TooltipTrigger>
+              <TooltipContent>Unit price (FIFO or internal price fallback)</TooltipContent>
+            </Tooltip>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          )
+        },
+      },
+      {
+        id: "total_value",
+        header: "Total value",
+        cell: ({ row }) => {
+          const v = row.original.totalValue
+          return v != null && v > 0 ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className={`cursor-default font-medium ${inactivePacketClass(row.original)}`}>{Number(v).toFixed(2)}</span>
+              </TooltipTrigger>
+              <TooltipContent>Total value = unit price × count</TooltipContent>
+            </Tooltip>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          )
+        },
       },
       {
         id: "status",
