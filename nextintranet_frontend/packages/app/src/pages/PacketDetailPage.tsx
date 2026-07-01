@@ -73,6 +73,7 @@ interface StockOperation {
   id: string
   operation_type: string
   quantity: number
+  relative_quantity?: boolean
   unit_price?: number | null
   timestamp: string
   description?: string | null
@@ -118,25 +119,56 @@ function OperationMetaCell({ op }: { op: StockOperation }) {
 
   if (m.production_id) {
     parts.push(
-      <Link key="prod" to={`/production/${m.production_id}`} className="text-primary text-xs hover:underline underline-offset-2">
-        Production run →
-      </Link>
+      <Tooltip key="prod">
+        <TooltipTrigger asChild>
+          <Link to={`/production/${m.production_id}`} className="text-primary text-xs hover:underline underline-offset-2">
+            Production run →
+          </Link>
+        </TooltipTrigger>
+        <TooltipContent>Open production run {m.production_id}</TooltipContent>
+      </Tooltip>
     )
   }
   if (m.counted_quantity != null) {
-    parts.push(<span key="cnt" className="text-xs">Counted: {m.counted_quantity}</span>)
+    parts.push(
+      <Tooltip key="cnt">
+        <TooltipTrigger asChild>
+          <span className="text-xs cursor-default">Counted: {m.counted_quantity}</span>
+        </TooltipTrigger>
+        <TooltipContent>Physical quantity counted during inventory</TooltipContent>
+      </Tooltip>
+    )
   }
   if (m.recorded_quantity != null) {
-    parts.push(<span key="rec" className="text-xs text-muted-foreground">(was: {m.recorded_quantity})</span>)
+    parts.push(
+      <Tooltip key="rec">
+        <TooltipTrigger asChild>
+          <span className="text-xs text-muted-foreground cursor-default">(was: {m.recorded_quantity})</span>
+        </TooltipTrigger>
+        <TooltipContent>Quantity recorded in the system before this inventory operation</TooltipContent>
+      </Tooltip>
+    )
   }
   if (m.counted_price != null) {
-    parts.push(<span key="price" className="text-xs">Price: {m.counted_price}</span>)
+    parts.push(
+      <Tooltip key="price">
+        <TooltipTrigger asChild>
+          <span className="text-xs cursor-default">Price: {m.counted_price}</span>
+        </TooltipTrigger>
+        <TooltipContent>Unit price snapshotted at the time of this inventory count</TooltipContent>
+      </Tooltip>
+    )
   }
   if (m.supplier_relation_id) {
     parts.push(
-      <span key="sr" className="text-xs text-muted-foreground">
-        Supplier rel: {m.supplier_relation_id.slice(0, 8)}…
-      </span>
+      <Tooltip key="sr">
+        <TooltipTrigger asChild>
+          <span className="text-xs text-muted-foreground cursor-default">
+            Supplier rel: {m.supplier_relation_id.slice(0, 8)}…
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>Supplier relation ID: {m.supplier_relation_id}</TooltipContent>
+      </Tooltip>
     )
   }
   if (parts.length === 0) return <>-</>
@@ -787,8 +819,19 @@ export function PacketDetailPage() {
                             (flow === "in" ? "text-emerald-600" : flow === "out" ? "text-red-600" : "text-foreground")
                           }
                         >
-                          {flow === "in" ? "+" : flow === "out" ? "−" : ""}
-                          {operation.quantity}
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="cursor-default">
+                                {flow === "in" ? "+" : flow === "out" ? "−" : ""}
+                                {operation.quantity}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              {operation.relative_quantity === false
+                                ? `Absolute count set to ${operation.quantity}`
+                                : `Relative change: ${flow === "in" ? "+" : flow === "out" ? "−" : ""}${operation.quantity}`}
+                            </TooltipContent>
+                          </Tooltip>
                         </TableCell>
                         <TableCell className="px-3 py-2 text-sm align-top">
                           {operation.unit_price != null && operation.unit_price > 0 ? (
@@ -822,8 +865,18 @@ export function PacketDetailPage() {
                         </TableCell>
                         <TableCell className="px-3 py-2 text-sm text-muted-foreground align-top">
                           <div className="flex flex-col gap-0.5">
-                            <span>{new Date(operation.timestamp).toLocaleString()}</span>
-                            <span className="text-xs text-muted-foreground/80">{operation.author_name || "-"}</span>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="cursor-default">{new Date(operation.timestamp).toLocaleString()}</span>
+                              </TooltipTrigger>
+                              <TooltipContent>{operation.timestamp}</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="text-xs text-muted-foreground/80 cursor-default">{operation.author_name || "-"}</span>
+                              </TooltipTrigger>
+                              <TooltipContent>{operation.author_name ? `Recorded by ${operation.author_name}` : "No author recorded"}</TooltipContent>
+                            </Tooltip>
                           </div>
                         </TableCell>
                         <TableCell className="px-3 py-2 text-sm text-muted-foreground align-top">
