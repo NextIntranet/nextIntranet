@@ -793,14 +793,26 @@ export function PacketDetailPage() {
                         <TableCell className="px-3 py-2 text-sm align-top">
                           {operation.unit_price != null && operation.unit_price > 0 ? (
                             <div className="flex flex-col gap-0.5">
-                              <span className="font-medium text-foreground">{operation.unit_price.toFixed(2)}</span>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="font-medium text-foreground cursor-default">{operation.unit_price.toFixed(2)}</span>
+                                </TooltipTrigger>
+                                <TooltipContent>Unit price recorded on this operation</TooltipContent>
+                              </Tooltip>
                               {packet?.itemValue != null && packet.itemValue > 0 && (() => {
                                 const diff = operation.unit_price - Number(packet.itemValue)
                                 if (Math.abs(diff) < 0.001) return null
                                 return (
-                                  <span className={diff > 0 ? "text-xs text-red-500" : "text-xs text-emerald-600"}>
-                                    {diff > 0 ? "+" : ""}{diff.toFixed(2)}
-                                  </span>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <span className={diff > 0 ? "text-xs text-red-500 cursor-default" : "text-xs text-emerald-600 cursor-default"}>
+                                        {diff > 0 ? "+" : ""}{diff.toFixed(2)}
+                                      </span>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      Difference vs. current unit value ({Number(packet.itemValue).toFixed(2)})
+                                    </TooltipContent>
+                                  </Tooltip>
                                 )
                               })()}
                             </div>
