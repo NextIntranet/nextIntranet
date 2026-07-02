@@ -43,6 +43,20 @@ class Component(NIModel):
     def __str__(self):
         return self.name
 
+    def save(self, *args, **kwargs):
+        old_internal_price = None
+        if self.pk:
+            old_internal_price = Component.objects.filter(pk=self.pk).values_list(
+                'internal_price', flat=True
+            ).first()
+        super().save(*args, **kwargs)
+        if old_internal_price != self.internal_price:
+            # Packet.itemValue/totalValue are cached and only recomputed when a
+            # StockOperation is saved on that packet — changing internal_price here
+            # would otherwise leave packets that rely on the fallback price stale.
+            for packet in self.packets.all():
+                packet.calculate()
+
     def get_absolute_url(self):
         return reverse('component-detail', args=[str(self.id)])
 
