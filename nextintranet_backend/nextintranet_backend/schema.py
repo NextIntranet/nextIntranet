@@ -25,16 +25,6 @@ from graphql_relay.node.node import from_global_id, to_global_id
 from django.db.models import Q
 
 
-import graphene
-
-from graphql_auth.schema import UserQuery, MeQuery
-
-class Query(UserQuery, MeQuery, graphene.ObjectType):
-    pass
-
-schema = graphene.Schema(query=Query)
-
-
 class UserType(DjangoObjectType):
     class Meta:
         model = User

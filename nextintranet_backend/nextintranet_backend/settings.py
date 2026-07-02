@@ -103,7 +103,6 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'graphene_django',
     'graphql_jwt',
-    "graphql_auth",
     'constance',
     'crispy_forms',
     "crispy_bootstrap5",
@@ -185,11 +184,6 @@ GRAPHQL_JWT = {
     "JWT_ALLOW_REFRESH": True,
     'JWT_EXPIRATION_DELTA': datetime.timedelta(days=7),
     'JWT_REFRESH_EXPIRATION_DELTA': datetime.timedelta(days=30),
-    # "JWT_ALLOW_ANY_CLASSES": [
-    #     "graphql_auth.mutations.Register",
-    #     "graphql_auth.mutations.VerifyAccount",
-    #     "graphql_auth.mutations.ObtainJSONWebToken",
-    # ],
 }
 
 
