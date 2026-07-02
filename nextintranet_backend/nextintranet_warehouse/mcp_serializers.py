@@ -53,6 +53,13 @@ class MCPPacketSerializer(serializers.ModelSerializer):
     component_id = serializers.UUIDField(read_only=True)
     location_id = serializers.UUIDField(read_only=True, allow_null=True)
     location_name = serializers.SerializerMethodField()
+    # TODO: itemValue/totalValue/price_source are pricing data and should only be
+    # visible to warehouse staff ("skladníci"), but MCP service tokens are generic
+    # scope-based tokens (mcp:read/mcp:write) with no live per-request user
+    # permission check, so this isn't gated yet. See follow-up issue for the two
+    # candidate approaches (new scope checked at token issuance vs. live lookup
+    # against ServiceToken.created_by.access_permissions).
+    price_source = serializers.ReadOnlyField()
 
     def get_location_name(self, obj):
         if not obj.location_id:
@@ -64,6 +71,7 @@ class MCPPacketSerializer(serializers.ModelSerializer):
         fields = [
             "id", "component_id", "location_id", "location_name",
             "count", "description", "is_trackable", "is_active",
+            "itemValue", "totalValue", "price_source",
         ]
 
 

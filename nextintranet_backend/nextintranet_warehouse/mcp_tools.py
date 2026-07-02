@@ -555,7 +555,7 @@ class WarehouseReadToolset(MCPToolset):
             limit: Maximum number of results (default 100, max 500).
         """
         _require_read(self.request)
-        qs = Packet.objects.filter(component_id=component_id).select_related("location")
+        qs = Packet.objects.filter(component_id=component_id).select_related("location", "component")
         if active_only:
             qs = qs.filter(is_active=True)
         row_limit = _clamp_list_limit(limit, default=100, maximum=500)
