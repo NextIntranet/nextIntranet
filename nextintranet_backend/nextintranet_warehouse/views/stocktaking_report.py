@@ -188,7 +188,7 @@ def _build_inventory_counts(campaign_id) -> dict[str, dict]:
     return inventory_counts
 
 
-def _collect_data(campaign, show_all: bool, uninventoried: str):
+def _collect_data(campaign, show_all: bool, uninventoried: str, hide_zero_value: bool = False):
     # Counts computed by replaying operations up to the last inventory op
     inventory_counts = _build_inventory_counts(campaign.id)
 
@@ -233,6 +233,9 @@ def _collect_data(campaign, show_all: bool, uninventoried: str):
             value = count * price
 
             if not show_all and count == 0:
+                continue
+
+            if hide_zero_value and value == 0:
                 continue
 
             packet_rows.append({
@@ -478,11 +481,12 @@ class StocktakingReportView(APIView):
         show_all = request.query_params.get('show_all', 'false').lower() == 'true'
         show_packets = request.query_params.get('show_packets', 'false').lower() == 'true'
         show_price_source = request.query_params.get('show_price_source', 'true').lower() == 'true'
+        hide_zero_value = request.query_params.get('hide_zero_value', 'false').lower() == 'true'
         uninventoried = request.query_params.get('uninventoried', 'alert')
         if uninventoried not in ('show', 'alert', 'hide'):
             uninventoried = 'alert'
 
-        components = _collect_data(campaign, show_all, uninventoried)
+        components = _collect_data(campaign, show_all, uninventoried, hide_zero_value)
 
         total_active = Packet.objects.filter(is_active=True).count()
         total_inventoried = StockOperation.objects.filter(

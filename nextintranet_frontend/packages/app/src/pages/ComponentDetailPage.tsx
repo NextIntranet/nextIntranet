@@ -27,10 +27,10 @@ import {
   Home,
   Layers,
   Link2,
+  AlertTriangle,
   Copy,
   CopyPlus,
   Check,
-  Info,
   Pencil,
   Plus,
   RefreshCcw,
@@ -1160,6 +1160,19 @@ export function ComponentDetailPage() {
   const inactivePacketClass = (packet: ComponentPacket) =>
     packet.is_active === false ? "text-muted-foreground line-through" : ""
 
+  const priceSourceLabel = (source?: ComponentPacket["price_source"]) => {
+    switch (source) {
+      case "fifo":
+        return "Purchase price (FIFO)"
+      case "internal":
+        return "Estimated from internal price — no purchase price recorded for this packet"
+      case "internal_missing":
+        return "No price available — internal price is not set on this component"
+      default:
+        return "Unit price (FIFO or internal price fallback)"
+    }
+  }
+
   const documentTypeOptions = [
     { value: "datasheet", label: "Datasheet" },
     { value: "manual", label: "Manual" },
@@ -1292,14 +1305,14 @@ export function ComponentDetailPage() {
                     {Number(v).toFixed(2)}
                   </span>
                 </TooltipTrigger>
-                <TooltipContent>Unit price (FIFO or internal price fallback)</TooltipContent>
+                <TooltipContent>{priceSourceLabel(row.original.price_source)}</TooltipContent>
               </Tooltip>
               {isInternal && (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Info className="h-3 w-3 text-muted-foreground" />
+                    <AlertTriangle className="h-3 w-3 text-orange-500" />
                   </TooltipTrigger>
-                  <TooltipContent>Derived from internal price (no purchase price recorded)</TooltipContent>
+                  <TooltipContent>{priceSourceLabel(row.original.price_source)}</TooltipContent>
                 </Tooltip>
               )}
             </span>
@@ -1325,14 +1338,14 @@ export function ComponentDetailPage() {
                     {Number(v).toFixed(2)}
                   </span>
                 </TooltipTrigger>
-                <TooltipContent>Total value = unit price × count</TooltipContent>
+                <TooltipContent>Total value = unit price × count ({priceSourceLabel(row.original.price_source)})</TooltipContent>
               </Tooltip>
               {isInternal && (
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Info className="h-3 w-3 text-muted-foreground" />
+                    <AlertTriangle className="h-3 w-3 text-orange-500" />
                   </TooltipTrigger>
-                  <TooltipContent>Derived from internal price (no purchase price recorded)</TooltipContent>
+                  <TooltipContent>{priceSourceLabel(row.original.price_source)}</TooltipContent>
                 </Tooltip>
               )}
             </span>

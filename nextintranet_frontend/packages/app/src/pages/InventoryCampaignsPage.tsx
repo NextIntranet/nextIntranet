@@ -121,6 +121,7 @@ export function InventoryCampaignsPage() {
     showAll: false,
     showPackets: false,
     showPriceSource: true,
+    hideZeroValue: false,
     uninventoried: "alert" as "show" | "alert" | "hide",
   })
   const [reportLoading, setReportLoading] = useState(false)
@@ -272,6 +273,7 @@ export function InventoryCampaignsPage() {
         show_all: String(reportOpts.showAll),
         show_packets: String(reportOpts.showPackets),
         show_price_source: String(reportOpts.showPriceSource),
+        hide_zero_value: String(reportOpts.hideZeroValue),
         uninventoried: reportOpts.uninventoried,
       })
       const cfg = getApiConfig()
@@ -575,6 +577,13 @@ export function InventoryCampaignsPage() {
                         <Switch
                           checked={reportOpts.showPriceSource}
                           onCheckedChange={(v) => setReportOpts({ ...reportOpts, showPriceSource: v })}
+                        />
+                      </label>
+                      <label className="flex items-center justify-between text-sm text-foreground">
+                        <span>Skrýt položky s nulovou celkovou cenou</span>
+                        <Switch
+                          checked={reportOpts.hideZeroValue}
+                          onCheckedChange={(v) => setReportOpts({ ...reportOpts, hideZeroValue: v })}
                         />
                       </label>
                       <div className="space-y-1">
