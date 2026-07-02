@@ -370,17 +370,21 @@ def _generate_pdf(
 
         pdf.set_xy(x, y)
         value_text = _fmt_value(comp_data['total_value'])
-        if show_warnings and comp_data['has_price_warning']:
-            value_text += ' !'
-            any_price_warning = True
         pdf.cell(pdf.col_value, ROW_H, value_text, align='R')
         x += pdf.col_value
+
+        comp_price_warning = show_warnings and comp_data['has_price_warning']
+        if comp_price_warning:
+            any_price_warning = True
 
         if show_status:
             pdf.set_xy(x, y)
             if is_alert:
                 pdf.set_font('DejaVu', style='B', size=FONT_SMALL)
                 pdf.cell(pdf.col_status, ROW_H, '! neinv.')
+            elif comp_price_warning:
+                pdf.set_font('DejaVu', style='B', size=FONT_SMALL)
+                pdf.cell(pdf.col_status, ROW_H, '! cena')
             else:
                 pdf.set_font('DejaVu', style='', size=FONT_SMALL)
                 pdf.cell(pdf.col_status, ROW_H, 'ok')
@@ -414,29 +418,33 @@ def _generate_pdf(
                 x += pdf.col_count
 
                 pdf.set_xy(x, y)
-                if prow.get('price'):
-                    price_str = _fmt_value(prow['price'])
-                elif prow_price_warning:
-                    price_str = '⚠ neurčeno'
-                    any_price_warning = True
-                else:
-                    price_str = '—'
+                price_str = _fmt_value(prow['price']) if prow.get('price') else '—'
                 pdf.cell(pdf.col_price, SUB_ROW_H, price_str, align='R')
                 x += pdf.col_price
 
                 pdf.set_xy(x, y)
-                value_str = '⚠ neurčeno' if (not prow.get('price') and prow_price_warning) else _fmt_value(prow['value'])
-                pdf.cell(pdf.col_value, SUB_ROW_H, value_str, align='R')
+                pdf.cell(pdf.col_value, SUB_ROW_H, _fmt_value(prow['value']), align='R')
                 x += pdf.col_value
 
                 if show_status:
                     pdf.set_xy(x, y)
-                    if prow_uninventoried_alert or prow_price_warning:
+                    if prow_uninventoried_alert and prow_price_warning:
                         pdf.set_font('DejaVu', style='B', size=FONT_SMALL - 1)
-                        pdf.cell(pdf.col_status, SUB_ROW_H, '!')
+                        pdf.cell(pdf.col_status, SUB_ROW_H, '! neinv.+cena')
+                        pdf.set_font('DejaVu', style='', size=FONT_SMALL)
+                    elif prow_uninventoried_alert:
+                        pdf.set_font('DejaVu', style='B', size=FONT_SMALL - 1)
+                        pdf.cell(pdf.col_status, SUB_ROW_H, '! neinv.')
+                        pdf.set_font('DejaVu', style='', size=FONT_SMALL)
+                    elif prow_price_warning:
+                        pdf.set_font('DejaVu', style='B', size=FONT_SMALL - 1)
+                        pdf.cell(pdf.col_status, SUB_ROW_H, '! cena')
                         pdf.set_font('DejaVu', style='', size=FONT_SMALL)
                     else:
                         pdf.cell(pdf.col_status, SUB_ROW_H, '')
+
+                if prow_price_warning:
+                    any_price_warning = True
 
                 pdf.set_text_color(0)
                 pdf.ln(SUB_ROW_H)
