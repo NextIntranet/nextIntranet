@@ -30,6 +30,7 @@ import {
   Copy,
   CopyPlus,
   Check,
+  Info,
   Pencil,
   Plus,
   RefreshCcw,
@@ -98,6 +99,7 @@ interface ComponentPacket {
   count: number
   itemValue?: number | null
   totalValue?: number | null
+  price_source?: "fifo" | "internal" | "internal_missing" | "unknown" | null
   description: string
   created_at: string
   last_used_at?: string | null
@@ -1278,13 +1280,29 @@ export function ComponentDetailPage() {
         header: "Unit price",
         cell: ({ row }) => {
           const v = row.original.itemValue
+          const isInternal =
+            row.original.price_source === "internal" || row.original.price_source === "internal_missing"
           return v != null && v > 0 ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className={`cursor-default ${inactivePacketClass(row.original)}`}>{Number(v).toFixed(2)}</span>
-              </TooltipTrigger>
-              <TooltipContent>Unit price (FIFO or internal price fallback)</TooltipContent>
-            </Tooltip>
+            <span className="inline-flex items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    className={`cursor-default ${isInternal ? "text-muted-foreground" : ""} ${inactivePacketClass(row.original)}`}
+                  >
+                    {Number(v).toFixed(2)}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>Unit price (FIFO or internal price fallback)</TooltipContent>
+              </Tooltip>
+              {isInternal && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3 w-3 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Derived from internal price (no purchase price recorded)</TooltipContent>
+                </Tooltip>
+              )}
+            </span>
           ) : (
             <span className="text-muted-foreground">—</span>
           )
@@ -1295,13 +1313,29 @@ export function ComponentDetailPage() {
         header: "Total value",
         cell: ({ row }) => {
           const v = row.original.totalValue
+          const isInternal =
+            row.original.price_source === "internal" || row.original.price_source === "internal_missing"
           return v != null && v > 0 ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className={`cursor-default font-medium ${inactivePacketClass(row.original)}`}>{Number(v).toFixed(2)}</span>
-              </TooltipTrigger>
-              <TooltipContent>Total value = unit price × count</TooltipContent>
-            </Tooltip>
+            <span className="inline-flex items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    className={`cursor-default font-medium ${isInternal ? "text-muted-foreground" : ""} ${inactivePacketClass(row.original)}`}
+                  >
+                    {Number(v).toFixed(2)}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>Total value = unit price × count</TooltipContent>
+              </Tooltip>
+              {isInternal && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3 w-3 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent>Derived from internal price (no purchase price recorded)</TooltipContent>
+                </Tooltip>
+              )}
+            </span>
           ) : (
             <span className="text-muted-foreground">—</span>
           )

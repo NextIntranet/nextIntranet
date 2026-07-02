@@ -498,6 +498,26 @@ class Packet(NIModel):
         # Uložení packetu
         self.save()
 
+    @property
+    def price_source(self):
+        """
+        Classifies how itemValue/totalValue were derived: 'fifo' (priced purchase
+        operations), 'internal' (fell back to component.internal_price), 'internal_missing'
+        (would need internal_price but it isn't set), or 'unknown'.
+        """
+        if not self.count or self.count <= 0:
+            return None
+        has_priced_buy = self.operations.filter(
+            operation_type__in=['buy', 'add', 'trans_in'],
+            unit_price__gt=0
+        ).exists()
+        if has_priced_buy and self.itemValue and self.itemValue > 0:
+            return "fifo"
+        if self.component.internal_price and self.itemValue and self.itemValue > 0:
+            return "internal"
+        if self.component.internal_price and (not self.itemValue or self.itemValue == 0):
+            return "internal_missing"
+        return "unknown"
 
     def get_absolute_url(self):
         return self.component.get_absolute_url()+"?packet="+str(self.pk)

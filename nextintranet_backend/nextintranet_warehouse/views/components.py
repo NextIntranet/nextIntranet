@@ -107,6 +107,7 @@ class ComponentForm(forms.ModelForm):
 class PacketSerializer(serializers.ModelSerializer):
     location = WarehouseSerializer()
     last_used_at = serializers.SerializerMethodField()
+    price_source = serializers.SerializerMethodField()
 
     class Meta:
         model = Packet
@@ -116,6 +117,9 @@ class PacketSerializer(serializers.ModelSerializer):
         if instance.last_operation_id and instance.last_operation:
             return instance.last_operation.timestamp
         return None
+
+    def get_price_source(self, instance):
+        return instance.price_source
 
     def to_representation(self, instance):
         if instance.count == 0 and instance.operations.exists():

@@ -66,19 +66,7 @@ class PacketSerializer(serializers.ModelSerializer):
         ]
 
     def get_price_source(self, instance):
-        if not instance.count or instance.count <= 0:
-            return None
-        has_priced_buy = instance.operations.filter(
-            operation_type__in=['buy', 'add', 'trans_in'],
-            unit_price__gt=0
-        ).exists()
-        if has_priced_buy and instance.itemValue and instance.itemValue > 0:
-            return "fifo"
-        if instance.component.internal_price and instance.itemValue and instance.itemValue > 0:
-            return "internal"
-        if instance.component.internal_price and (not instance.itemValue or instance.itemValue == 0):
-            return "internal_missing"
-        return "unknown"
+        return instance.price_source
 
     def _initial_count(self) -> float:
         raw = self.initial_data.get('count', 0)

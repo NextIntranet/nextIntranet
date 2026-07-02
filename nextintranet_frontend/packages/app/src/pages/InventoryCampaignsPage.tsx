@@ -120,6 +120,7 @@ export function InventoryCampaignsPage() {
   const [reportOpts, setReportOpts] = useState({
     showAll: false,
     showPackets: false,
+    showPriceSource: true,
     uninventoried: "alert" as "show" | "alert" | "hide",
   })
   const [reportLoading, setReportLoading] = useState(false)
@@ -270,6 +271,7 @@ export function InventoryCampaignsPage() {
       const params = new URLSearchParams({
         show_all: String(reportOpts.showAll),
         show_packets: String(reportOpts.showPackets),
+        show_price_source: String(reportOpts.showPriceSource),
         uninventoried: reportOpts.uninventoried,
       })
       const cfg = getApiConfig()
@@ -566,6 +568,13 @@ export function InventoryCampaignsPage() {
                         <Switch
                           checked={reportOpts.showPackets}
                           onCheckedChange={(v) => setReportOpts({ ...reportOpts, showPackets: v })}
+                        />
+                      </label>
+                      <label className="flex items-center justify-between text-sm text-foreground">
+                        <span>Zobrazit příznak interní ceny</span>
+                        <Switch
+                          checked={reportOpts.showPriceSource}
+                          onCheckedChange={(v) => setReportOpts({ ...reportOpts, showPriceSource: v })}
                         />
                       </label>
                       <div className="space-y-1">
