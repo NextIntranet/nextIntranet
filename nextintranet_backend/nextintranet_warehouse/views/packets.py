@@ -39,9 +39,18 @@ from django.db.models import F
 
 from nextintranet_warehouse.models.component import Packet, StockOperation, Component, Identifier
 from nextintranet_warehouse.models.warehouse import Warehouse
+from nextintranet_warehouse.models.packet_recalc_job import PacketRecalcJob
+from django_q.tasks import async_task
 
 from .components import ComponentSerializer, ExternalIdentifierSerializer
 from .locations import WarehouseSerializer
+
+
+class PacketRecalcJobSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PacketRecalcJob
+        fields = ['id', 'status', 'total', 'processed', 'error', 'created_at', 'completed_at']
+        read_only_fields = fields
 
 
 class PacketSerializer(serializers.ModelSerializer):
@@ -224,6 +233,17 @@ class PacketAPIView(viewsets.ModelViewSet):
         print("packet id for calculation:", id)
         Packet.objects.get(id=id).calculate()
         return Response({'status': 'ok'})
+
+    @action(detail=False, methods=['post'], url_path='recalculate-all')
+    def recalculate_all(self, request, *args, **kwargs):
+        job = PacketRecalcJob.objects.create(owner=request.user, total=Packet.objects.count())
+        async_task("nextintranet_warehouse.tasks.recalc_packets.run_packet_recalc_job", str(job.id))
+        return Response(PacketRecalcJobSerializer(job).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='recalculate-all-status/(?P<job_id>[^/.]+)')
+    def recalculate_all_status(self, request, job_id=None, *args, **kwargs):
+        job = get_object_or_404(PacketRecalcJob, id=job_id)
+        return Response(PacketRecalcJobSerializer(job).data)
 
 class PacketListCreateAPIView(generics.ListCreateAPIView):
     queryset = Packet.objects.all()

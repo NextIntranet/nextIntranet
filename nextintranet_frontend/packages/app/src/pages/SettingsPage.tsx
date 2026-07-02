@@ -1,8 +1,8 @@
-import { useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Link } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { apiFetch } from "@nextintranet/core"
-import { Cpu, ImageIcon, KeyRound, Laptop, LayoutTemplate, Tags } from "lucide-react"
+import { apiFetch, getRealtimeClient, type RealtimeEvent } from "@nextintranet/core"
+import { Cpu, ImageIcon, KeyRound, Laptop, LayoutTemplate, RefreshCw, Tags } from "lucide-react"
 import { toast } from "sonner"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -25,6 +25,22 @@ interface UserMe {
   is_superuser?: boolean
 }
 
+interface PacketRecalcJob {
+  id: string
+  status: "queued" | "processing" | "done" | "failed"
+  total: number
+  processed: number
+  error?: string
+}
+
+interface PacketRecalcProgressEvent {
+  job_id: string
+  processed: number
+  total: number
+  status: PacketRecalcJob["status"]
+  error?: string
+}
+
 export function SettingsPage() {
   const quickActionsFabVisible = useQuickActionsFabVisible()
   const queryClient = useQueryClient()
@@ -40,6 +56,42 @@ export function SettingsPage() {
     queryKey: ["branding-settings"],
     queryFn: () => apiFetch<BrandingSettings>("/api/v1/setting/branding/"),
   })
+
+  const [recalcJob, setRecalcJob] = useState<PacketRecalcJob | null>(null)
+
+  useEffect(() => {
+    if (!recalcJob || recalcJob.status === "done" || recalcJob.status === "failed") return
+    const unsubscribe = getRealtimeClient().onMessage((event: RealtimeEvent) => {
+      if (event.type !== "packet_recalc_progress") return
+      const payload = event.payload as PacketRecalcProgressEvent | undefined
+      if (!payload || payload.job_id !== recalcJob.id) return
+      setRecalcJob((prev) => (prev ? { ...prev, ...payload } : prev))
+      if (payload.status === "done") {
+        toast.success(`Recalculated ${payload.total} packets.`)
+      } else if (payload.status === "failed") {
+        toast.error(`Packet recalculation failed: ${payload.error || "unknown error"}`)
+      }
+    })
+    return unsubscribe
+  }, [recalcJob?.id, recalcJob?.status])
+
+  const recalculatePacketsMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<PacketRecalcJob>("/api/warehouse/packet/recalculate-all/", { method: "POST" }),
+    onSuccess: (job) => {
+      setRecalcJob(job)
+      toast.info("Packet recalculation started.")
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "Unknown error"
+      toast.error(`Failed to start recalculation: ${message}`)
+    },
+  })
+
+  const recalcRunning = recalcJob?.status === "queued" || recalcJob?.status === "processing"
+  const recalcPercent = recalcJob && recalcJob.total > 0
+    ? Math.round((recalcJob.processed / recalcJob.total) * 100)
+    : 0
 
   const uploadLogoMutation = useMutation({
     mutationFn: (file: File) => {
@@ -132,6 +184,41 @@ export function SettingsPage() {
             <Button asChild>
               <Link to="/setting/hardware">Open hardware settings</Link>
             </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
+              <RefreshCw className="h-5 w-5 text-muted-foreground" />
+            </div>
+            <CardTitle>Packet recalculation</CardTitle>
+            <CardDescription>
+              Recompute cached count and price fields for every packet in the warehouse.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Button
+              onClick={() => recalculatePacketsMutation.mutate()}
+              disabled={recalcRunning || recalculatePacketsMutation.isPending}
+            >
+              {recalcRunning ? "Recalculating…" : "Recalculate all packets"}
+            </Button>
+            {recalcJob ? (
+              <div className="space-y-1">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-2 rounded-full bg-primary transition-[width] duration-300"
+                    style={{ width: `${recalcJob.status === "done" ? 100 : recalcPercent}%` }}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {recalcJob.status === "failed"
+                    ? `Failed: ${recalcJob.error || "unknown error"}`
+                    : `${recalcJob.processed} / ${recalcJob.total} packets (${recalcJob.status})`}
+                </p>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
 
