@@ -123,6 +123,7 @@ export function InventoryCampaignsPage() {
     hideZeroValue: false,
     showUninventoried: true,
     showWarnings: true,
+    showLinks: false,
   })
   const [reportLoading, setReportLoading] = useState(false)
 
@@ -275,6 +276,7 @@ export function InventoryCampaignsPage() {
         hide_zero_value: String(reportOpts.hideZeroValue),
         show_uninventoried: String(reportOpts.showUninventoried),
         show_warnings: String(reportOpts.showWarnings),
+        show_links: String(reportOpts.showLinks),
       })
       const cfg = getApiConfig()
       const token = cfg.getToken()
@@ -591,6 +593,13 @@ export function InventoryCampaignsPage() {
                         <Switch
                           checked={reportOpts.showWarnings}
                           onCheckedChange={(v) => setReportOpts({ ...reportOpts, showWarnings: v })}
+                        />
+                      </label>
+                      <label className="flex items-center justify-between text-sm text-foreground">
+                        <span>Prokliknout součástky a sáčky na odkazy</span>
+                        <Switch
+                          checked={reportOpts.showLinks}
+                          onCheckedChange={(v) => setReportOpts({ ...reportOpts, showLinks: v })}
                         />
                       </label>
                       <Button

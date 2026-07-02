@@ -3,6 +3,7 @@ import os
 import datetime
 from collections import defaultdict
 
+from django.conf import settings
 from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from fpdf import FPDF
@@ -11,6 +12,14 @@ from rest_framework.views import APIView
 
 from ..models.component import Packet, StockOperation
 from ..models.stocktaking import Stocktaking
+
+
+def _component_url(component_id) -> str:
+    return f"{settings.SITE_URL.rstrip('/')}/store/component/{component_id}"
+
+
+def _packet_url(packet_id) -> str:
+    return f"{settings.SITE_URL.rstrip('/')}/store/packet/{packet_id}"
 
 _FONTS_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
@@ -278,6 +287,7 @@ def _generate_pdf(
     show_packets: bool,
     show_uninventoried: bool,
     show_warnings: bool = True,
+    show_links: bool = False,
 ) -> bytes:
     show_status = show_uninventoried
     pdf = _ReportPDF(show_status=show_status)
@@ -356,7 +366,10 @@ def _generate_pdf(
         name_text = _truncate(pdf, component.name, pdf.col_name - 2)
 
         pdf.set_xy(x, y)
-        pdf.cell(pdf.col_name, ROW_H, name_text)
+        pdf.cell(
+            pdf.col_name, ROW_H, name_text,
+            link=_component_url(component.id) if show_links else '',
+        )
         x += pdf.col_name
 
         pdf.set_font('DejaVu', style='', size=FONT_NORMAL)
@@ -410,7 +423,10 @@ def _generate_pdf(
 
                 loc_text = _truncate(pdf, f'  └ {prow["location"]}', pdf.col_name - 2)
                 pdf.set_xy(x, y)
-                pdf.cell(pdf.col_name, SUB_ROW_H, loc_text)
+                pdf.cell(
+                    pdf.col_name, SUB_ROW_H, loc_text,
+                    link=_packet_url(prow['packet'].id) if show_links else '',
+                )
                 x += pdf.col_name
 
                 pdf.set_xy(x, y)
@@ -490,6 +506,7 @@ class StocktakingReportView(APIView):
         hide_zero_value = request.query_params.get('hide_zero_value', 'false').lower() == 'true'
         show_uninventoried = request.query_params.get('show_uninventoried', 'true').lower() == 'true'
         show_warnings = request.query_params.get('show_warnings', 'true').lower() == 'true'
+        show_links = request.query_params.get('show_links', 'false').lower() == 'true'
 
         components = _collect_data(campaign, show_all, show_uninventoried, hide_zero_value)
 
@@ -510,6 +527,7 @@ class StocktakingReportView(APIView):
             show_packets=show_packets,
             show_uninventoried=show_uninventoried,
             show_warnings=show_warnings,
+            show_links=show_links,
         )
 
         date_str = datetime.date.today().strftime('%Y-%m-%d')
