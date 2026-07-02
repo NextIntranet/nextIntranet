@@ -188,7 +188,7 @@ def _build_inventory_counts(campaign_id) -> dict[str, dict]:
     return inventory_counts
 
 
-def _collect_data(campaign, show_all: bool, uninventoried: str, hide_zero_value: bool = False):
+def _collect_data(campaign, show_all: bool, show_uninventoried: bool, hide_zero_value: bool = False):
     # Counts computed by replaying operations up to the last inventory op
     inventory_counts = _build_inventory_counts(campaign.id)
 
@@ -211,7 +211,7 @@ def _collect_data(campaign, show_all: bool, uninventoried: str, hide_zero_value:
             pid = str(packet.id)
             is_inventoried = pid in inventory_counts
 
-            if not is_inventoried and uninventoried == 'hide':
+            if not is_inventoried and not show_uninventoried:
                 continue
 
             price_source = None
@@ -245,6 +245,7 @@ def _collect_data(campaign, show_all: bool, uninventoried: str, hide_zero_value:
                 'price': price,
                 'value': value,
                 'price_source': price_source,
+                'price_missing': count > 0 and not price,
                 'location': packet.location.full_path if packet.location else '—',
             })
 
@@ -254,9 +255,7 @@ def _collect_data(campaign, show_all: bool, uninventoried: str, hide_zero_value:
         total_count = sum(r['count'] for r in packet_rows)
         total_value = sum(r['value'] for r in packet_rows)
         all_inventoried = all(r['is_inventoried'] for r in packet_rows)
-        uses_internal_price = any(
-            r['price_source'] in ('internal', 'internal_missing') for r in packet_rows
-        )
+        has_price_warning = any(r['price_missing'] for r in packet_rows)
 
         components.append({
             'component': component,
@@ -264,7 +263,7 @@ def _collect_data(campaign, show_all: bool, uninventoried: str, hide_zero_value:
             'total_count': total_count,
             'total_value': total_value,
             'all_inventoried': all_inventoried,
-            'uses_internal_price': uses_internal_price,
+            'has_price_warning': has_price_warning,
         })
 
     return components
@@ -277,10 +276,10 @@ def _generate_pdf(
     total_inventoried: int,
     grand_total_value: float,
     show_packets: bool,
-    uninventoried: str,
-    show_price_source: bool = True,
+    show_uninventoried: bool,
+    show_warnings: bool = True,
 ) -> bytes:
-    show_status = uninventoried in ('show', 'alert')
+    show_status = show_uninventoried
     pdf = _ReportPDF(show_status=show_status)
     pdf.alias_nb_pages()
     pdf.add_fonts()
@@ -310,7 +309,7 @@ def _generate_pdf(
         ('Celková hodnota v reportu:', _fmt_value(grand_total_value)),
         ('Počet součástek v reportu:', str(len(components))),
     ]
-    if uninventoried != 'hide':
+    if show_uninventoried:
         info_rows.append(('Inventarizováno sáčků:', f'{total_inventoried} / {total_active}'))
 
     label_x = MARGIN + 10
@@ -332,12 +331,12 @@ def _generate_pdf(
     pdf.add_page()
     pdf.draw_col_headers()
 
-    any_internal_price_used = False
+    any_price_warning = False
 
     for comp_data in components:
         component = comp_data['component']
         all_inventoried = comp_data['all_inventoried']
-        is_alert = show_status and not all_inventoried and uninventoried == 'alert'
+        is_alert = show_status and not all_inventoried and show_warnings
 
         needed = ROW_H + (SUB_ROW_H * len(comp_data['packet_rows']) if show_packets else 0)
         pdf.check_page_break(needed)
@@ -371,9 +370,9 @@ def _generate_pdf(
 
         pdf.set_xy(x, y)
         value_text = _fmt_value(comp_data['total_value'])
-        if show_price_source and comp_data['uses_internal_price']:
-            value_text += ' *'
-            any_internal_price_used = True
+        if show_warnings and comp_data['has_price_warning']:
+            value_text += ' !'
+            any_price_warning = True
         pdf.cell(pdf.col_value, ROW_H, value_text, align='R')
         x += pdf.col_value
 
@@ -397,7 +396,10 @@ def _generate_pdf(
                 y = pdf.get_y()
                 x = MARGIN
 
-                if not prow['is_inventoried'] and uninventoried == 'alert':
+                prow_uninventoried_alert = not prow['is_inventoried'] and show_warnings
+                prow_price_warning = show_warnings and prow.get('price_missing')
+
+                if prow_uninventoried_alert or prow_price_warning:
                     pdf.set_text_color(160, 50, 50)
                 else:
                     pdf.set_text_color(70, 70, 70)
@@ -411,28 +413,25 @@ def _generate_pdf(
                 pdf.cell(pdf.col_count, SUB_ROW_H, _fmt_count(prow['count']), align='R')
                 x += pdf.col_count
 
-                prow_uses_internal_price = show_price_source and prow.get('price_source') in (
-                    'internal', 'internal_missing',
-                )
-
                 pdf.set_xy(x, y)
-                price_str = _fmt_value(prow['price']) if prow.get('price') else '—'
-                if prow_uses_internal_price:
-                    price_str += ' *'
+                if prow.get('price'):
+                    price_str = _fmt_value(prow['price'])
+                elif prow_price_warning:
+                    price_str = '⚠ neurčeno'
+                    any_price_warning = True
+                else:
+                    price_str = '—'
                 pdf.cell(pdf.col_price, SUB_ROW_H, price_str, align='R')
                 x += pdf.col_price
 
                 pdf.set_xy(x, y)
-                value_str = _fmt_value(prow['value'])
-                if prow_uses_internal_price:
-                    value_str += ' *'
-                    any_internal_price_used = True
+                value_str = '⚠ neurčeno' if (not prow.get('price') and prow_price_warning) else _fmt_value(prow['value'])
                 pdf.cell(pdf.col_value, SUB_ROW_H, value_str, align='R')
                 x += pdf.col_value
 
                 if show_status:
                     pdf.set_xy(x, y)
-                    if not prow['is_inventoried'] and uninventoried == 'alert':
+                    if prow_uninventoried_alert or prow_price_warning:
                         pdf.set_font('DejaVu', style='B', size=FONT_SMALL - 1)
                         pdf.cell(pdf.col_status, SUB_ROW_H, '!')
                         pdf.set_font('DejaVu', style='', size=FONT_SMALL)
@@ -461,12 +460,12 @@ def _generate_pdf(
     pdf.cell(180, 5, 'Konec seznamu', align='C')
     pdf.set_text_color(0)
 
-    if any_internal_price_used:
+    if any_price_warning:
         pdf.check_page_break(8)
         pdf.set_font('DejaVu', style='', size=7)
-        pdf.set_text_color(100, 100, 100)
+        pdf.set_text_color(160, 50, 50)
         pdf.set_xy(MARGIN, pdf.get_y() + 6)
-        pdf.cell(180, 5, '* Cena vychází z interní ceníkové ceny (internal price)', align='C')
+        pdf.cell(180, 5, '! U některých položek nelze určit cenu (chybí nákupní i interní cena)', align='C')
         pdf.set_text_color(0)
 
     return pdf.output()
@@ -480,13 +479,11 @@ class StocktakingReportView(APIView):
 
         show_all = request.query_params.get('show_all', 'false').lower() == 'true'
         show_packets = request.query_params.get('show_packets', 'false').lower() == 'true'
-        show_price_source = request.query_params.get('show_price_source', 'true').lower() == 'true'
         hide_zero_value = request.query_params.get('hide_zero_value', 'false').lower() == 'true'
-        uninventoried = request.query_params.get('uninventoried', 'alert')
-        if uninventoried not in ('show', 'alert', 'hide'):
-            uninventoried = 'alert'
+        show_uninventoried = request.query_params.get('show_uninventoried', 'true').lower() == 'true'
+        show_warnings = request.query_params.get('show_warnings', 'true').lower() == 'true'
 
-        components = _collect_data(campaign, show_all, uninventoried, hide_zero_value)
+        components = _collect_data(campaign, show_all, show_uninventoried, hide_zero_value)
 
         total_active = Packet.objects.filter(is_active=True).count()
         total_inventoried = StockOperation.objects.filter(
@@ -503,8 +500,8 @@ class StocktakingReportView(APIView):
             total_inventoried=total_inventoried,
             grand_total_value=grand_total_value,
             show_packets=show_packets,
-            uninventoried=uninventoried,
-            show_price_source=show_price_source,
+            show_uninventoried=show_uninventoried,
+            show_warnings=show_warnings,
         )
 
         date_str = datetime.date.today().strftime('%Y-%m-%d')

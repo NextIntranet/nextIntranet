@@ -120,9 +120,9 @@ export function InventoryCampaignsPage() {
   const [reportOpts, setReportOpts] = useState({
     showAll: false,
     showPackets: false,
-    showPriceSource: true,
     hideZeroValue: false,
-    uninventoried: "alert" as "show" | "alert" | "hide",
+    showUninventoried: true,
+    showWarnings: true,
   })
   const [reportLoading, setReportLoading] = useState(false)
 
@@ -272,9 +272,9 @@ export function InventoryCampaignsPage() {
       const params = new URLSearchParams({
         show_all: String(reportOpts.showAll),
         show_packets: String(reportOpts.showPackets),
-        show_price_source: String(reportOpts.showPriceSource),
         hide_zero_value: String(reportOpts.hideZeroValue),
-        uninventoried: reportOpts.uninventoried,
+        show_uninventoried: String(reportOpts.showUninventoried),
+        show_warnings: String(reportOpts.showWarnings),
       })
       const cfg = getApiConfig()
       const token = cfg.getToken()
@@ -573,45 +573,26 @@ export function InventoryCampaignsPage() {
                         />
                       </label>
                       <label className="flex items-center justify-between text-sm text-foreground">
-                        <span>Zobrazit příznak interní ceny</span>
-                        <Switch
-                          checked={reportOpts.showPriceSource}
-                          onCheckedChange={(v) => setReportOpts({ ...reportOpts, showPriceSource: v })}
-                        />
-                      </label>
-                      <label className="flex items-center justify-between text-sm text-foreground">
                         <span>Skrýt položky s nulovou celkovou cenou</span>
                         <Switch
                           checked={reportOpts.hideZeroValue}
                           onCheckedChange={(v) => setReportOpts({ ...reportOpts, hideZeroValue: v })}
                         />
                       </label>
-                      <div className="space-y-1">
-                        <p className="text-sm text-foreground">Neinventované položky</p>
-                        {(
-                          [
-                            ["alert", "Zobrazit s upozorněním"],
-                            ["show", "Zobrazit normálně"],
-                            ["hide", "Skrýt"],
-                          ] as const
-                        ).map(([value, label]) => (
-                          <label
-                            key={value}
-                            className="flex cursor-pointer items-center gap-2 text-sm text-muted-foreground"
-                          >
-                            <input
-                              type="radio"
-                              name="uninventoried"
-                              value={value}
-                              checked={reportOpts.uninventoried === value}
-                              onChange={() =>
-                                setReportOpts({ ...reportOpts, uninventoried: value })
-                              }
-                            />
-                            {label}
-                          </label>
-                        ))}
-                      </div>
+                      <label className="flex items-center justify-between text-sm text-foreground">
+                        <span>Zobrazit needinventarizované položky</span>
+                        <Switch
+                          checked={reportOpts.showUninventoried}
+                          onCheckedChange={(v) => setReportOpts({ ...reportOpts, showUninventoried: v })}
+                        />
+                      </label>
+                      <label className="flex items-center justify-between text-sm text-foreground">
+                        <span>Zobrazit upozornění (needinventarizované položky, nezjištěná cena)</span>
+                        <Switch
+                          checked={reportOpts.showWarnings}
+                          onCheckedChange={(v) => setReportOpts({ ...reportOpts, showWarnings: v })}
+                        />
+                      </label>
                       <Button
                         className="w-full gap-2"
                         onClick={handleDownloadReport}
