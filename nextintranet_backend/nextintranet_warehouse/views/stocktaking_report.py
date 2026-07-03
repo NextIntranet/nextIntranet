@@ -255,6 +255,7 @@ def _collect_data(campaign, show_all: bool, show_uninventoried: bool, hide_zero_
                 'value': value,
                 'price_source': price_source,
                 'price_missing': count > 0 and not price,
+                'count_negative': count < 0,
                 'location': packet.location.full_path if packet.location else '—',
             })
 
@@ -265,6 +266,7 @@ def _collect_data(campaign, show_all: bool, show_uninventoried: bool, hide_zero_
         total_value = sum(r['value'] for r in packet_rows)
         all_inventoried = all(r['is_inventoried'] for r in packet_rows)
         has_price_warning = any(r['price_missing'] for r in packet_rows)
+        has_negative_count = any(r['count_negative'] for r in packet_rows)
 
         components.append({
             'component': component,
@@ -273,6 +275,7 @@ def _collect_data(campaign, show_all: bool, show_uninventoried: bool, hide_zero_
             'total_value': total_value,
             'all_inventoried': all_inventoried,
             'has_price_warning': has_price_warning,
+            'has_negative_count': has_negative_count,
         })
 
     return components
@@ -342,11 +345,15 @@ def _generate_pdf(
     pdf.draw_col_headers()
 
     any_price_warning = False
+    any_negative_warning = False
 
     for comp_data in components:
         component = comp_data['component']
         all_inventoried = comp_data['all_inventoried']
         is_alert = show_status and not all_inventoried and show_warnings
+        comp_negative_warning = show_warnings and comp_data['has_negative_count']
+        if comp_negative_warning:
+            any_negative_warning = True
 
         needed = ROW_H + (SUB_ROW_H * len(comp_data['packet_rows']) if show_packets else 0)
         pdf.check_page_break(needed)
@@ -355,7 +362,7 @@ def _generate_pdf(
         y = pdf.get_y()
         x = MARGIN
 
-        if is_alert:
+        if is_alert or comp_negative_warning:
             pdf.set_text_color(180, 30, 30)
             style = 'B'
         else:
@@ -392,7 +399,10 @@ def _generate_pdf(
 
         if show_status:
             pdf.set_xy(x, y)
-            if is_alert:
+            if comp_negative_warning:
+                pdf.set_font('DejaVu', style='B', size=FONT_SMALL)
+                pdf.cell(pdf.col_status, ROW_H, '! záporné')
+            elif is_alert:
                 pdf.set_font('DejaVu', style='B', size=FONT_SMALL)
                 pdf.cell(pdf.col_status, ROW_H, '! neinv.')
             elif comp_price_warning:
@@ -415,8 +425,9 @@ def _generate_pdf(
 
                 prow_uninventoried_alert = not prow['is_inventoried'] and show_warnings
                 prow_price_warning = show_warnings and prow.get('price_missing')
+                prow_negative_warning = show_warnings and prow.get('count_negative')
 
-                if prow_uninventoried_alert or prow_price_warning:
+                if prow_uninventoried_alert or prow_price_warning or prow_negative_warning:
                     pdf.set_text_color(160, 50, 50)
                 else:
                     pdf.set_text_color(70, 70, 70)
@@ -444,7 +455,11 @@ def _generate_pdf(
 
                 if show_status:
                     pdf.set_xy(x, y)
-                    if prow_uninventoried_alert and prow_price_warning:
+                    if prow_negative_warning:
+                        pdf.set_font('DejaVu', style='B', size=FONT_SMALL - 1)
+                        pdf.cell(pdf.col_status, SUB_ROW_H, '! záporné')
+                        pdf.set_font('DejaVu', style='', size=FONT_SMALL)
+                    elif prow_uninventoried_alert and prow_price_warning:
                         pdf.set_font('DejaVu', style='B', size=FONT_SMALL - 1)
                         pdf.cell(pdf.col_status, SUB_ROW_H, '! neinv.+cena')
                         pdf.set_font('DejaVu', style='', size=FONT_SMALL)
@@ -483,6 +498,14 @@ def _generate_pdf(
     pdf.set_xy(MARGIN, y + 3)
     pdf.cell(180, 5, 'Konec seznamu', align='C')
     pdf.set_text_color(0)
+
+    if any_negative_warning:
+        pdf.check_page_break(8)
+        pdf.set_font('DejaVu', style='', size=7)
+        pdf.set_text_color(160, 50, 50)
+        pdf.set_xy(MARGIN, pdf.get_y() + 6)
+        pdf.cell(180, 5, '! Některé sáčky mají záporný počet kusů — opravte je před uzavřením inventury', align='C')
+        pdf.set_text_color(0)
 
     if any_price_warning:
         pdf.check_page_break(8)
