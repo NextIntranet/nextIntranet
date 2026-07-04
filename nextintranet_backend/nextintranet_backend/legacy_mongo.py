@@ -38,6 +38,71 @@ def build_legacy_iso15434_barcode(mongo_oid: str) -> str:
     return f"[)>{RS}06{GS}S{serial}{GS}5D{prod_date}{RS}{EOT}"
 
 
+def iter_stock_components(dump_path: Path) -> Iterator[tuple[str, str | None, list[str], list[str]]]:
+    """
+    Yield (mongo_oid, component_name, barcodes, packet_oids) from stock.json or stock.bson.
+    Each entry corresponds to one component (top-level document).
+    packet_oids contains ObjectId hex strings for all packets of the component.
+    """
+    json_path = dump_path / "stock.json"
+    bson_path = dump_path / "stock.bson"
+
+    if json_path.is_file():
+        yield from _iter_components_json(json_path)
+        return
+
+    if bson_path.is_file():
+        yield from _iter_components_bson(bson_path)
+        return
+
+    raise FileNotFoundError(
+        f"No stock.json or stock.bson found in {dump_path}"
+    )
+
+
+def _extract_component_entry(entry: dict) -> tuple[str, str | None, list[str], list[str]] | None:
+    oid = _extract_oid(entry.get("_id"))
+    if not oid:
+        return None
+    component_name = entry.get("name") or None
+    raw_barcodes = entry.get("barcode", [])
+    barcodes = [str(b).strip() for b in raw_barcodes if str(b).strip()]
+    packet_oids = [
+        p_oid
+        for packet in entry.get("packets", [])
+        if (p_oid := _extract_oid(packet.get("_id")))
+    ]
+    return oid, component_name, barcodes, packet_oids
+
+
+def _iter_components_json(path: Path) -> Iterator[tuple[str, str | None, list[str], list[str]]]:
+    with path.open(encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            entry = json.loads(line)
+            result = _extract_component_entry(entry)
+            if result:
+                yield result
+
+
+def _iter_components_bson(path: Path) -> Iterator[tuple[str, str | None, list[str], list[str]]]:
+    try:
+        import bson as bson_lib
+    except ImportError as exc:
+        raise ImportError(
+            "Reading stock.bson requires the 'bson' package. "
+            "Use stock.json or install bson/pymongo."
+        ) from exc
+
+    data = bson_lib.decode_all(path.read_bytes())
+    for entry in data:
+        result = _extract_component_entry(entry)
+        if result:
+            yield result
+
+
 def iter_stock_packets(dump_path: Path) -> Iterator[tuple[str, str | None]]:
     """
     Yield (mongo_oid, component_name) from stock.json or stock.bson in a dump folder.
