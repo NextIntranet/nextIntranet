@@ -1,6 +1,19 @@
 from django.db import migrations
 
 
+OPERATION_LABELS = {
+    "add": "Add",
+    "remove": "Remove",
+    "adjust": "Adjust",
+    "trans_in": "Transfer in",
+    "trans_out": "Transfer out",
+    "inventory": "Inventory",
+    "service": "Service withdrawal",
+    "buy": "Buy",
+    "sell": "Sell",
+}
+
+
 def _activity_source(operation):
     metadata = operation.metadata or {}
     description = (operation.description or "").lower()
@@ -24,7 +37,6 @@ def backfill_stock_operation_activities(apps, schema_editor):
         .values_list("stock_operation_id", flat=True)
     )
 
-    operation_labels = dict(StockOperation.OPERATION_TYPE)
     operations = (
         StockOperation.objects.exclude(id__in=existing_operation_ids)
         .select_related("packet__component", "author")
@@ -60,7 +72,7 @@ def backfill_stock_operation_activities(apps, schema_editor):
                 activity_type="stock_operation",
                 source=_activity_source(operation),
                 stock_operation=operation,
-                description=operation.description or operation_labels.get(operation.operation_type, operation.operation_type),
+                description=operation.description or OPERATION_LABELS.get(operation.operation_type, operation.operation_type),
                 metadata=activity_metadata,
                 before=before,
                 after=after,
