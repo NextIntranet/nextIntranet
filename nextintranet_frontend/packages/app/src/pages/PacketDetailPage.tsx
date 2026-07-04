@@ -946,13 +946,23 @@ export function PacketDetailPage() {
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <span className="cursor-default">
-                                  {activity.relative_quantity === false ? "= " : ""}{activity.quantity}
+                                  {activity.relative_quantity === false
+                                    ? `= ${activity.quantity}`
+                                    : `${flow === "in" ? "+" : flow === "out" ? "−" : ""}${
+                                        flow === "in" || flow === "out"
+                                          ? Math.abs(Number(activity.quantity))
+                                          : activity.quantity
+                                      }`}
                                 </span>
                               </TooltipTrigger>
                               <TooltipContent>
                                 {activity.relative_quantity === false
                                   ? `Absolute count set to ${activity.quantity}`
-                                  : `Relative change: ${activity.quantity}`}
+                                  : `Relative change: ${flow === "in" ? "+" : flow === "out" ? "−" : ""}${
+                                      flow === "in" || flow === "out"
+                                        ? Math.abs(Number(activity.quantity))
+                                        : activity.quantity
+                                    }`}
                               </TooltipContent>
                             </Tooltip>
                           ) : (
