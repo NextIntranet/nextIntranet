@@ -352,8 +352,11 @@ def _generate_pdf(
         all_inventoried = comp_data['all_inventoried']
         is_alert = show_status and not all_inventoried and show_warnings
         comp_negative_warning = show_warnings and comp_data['has_negative_count']
+        comp_price_warning = show_warnings and comp_data['has_price_warning']
         if comp_negative_warning:
             any_negative_warning = True
+        if comp_price_warning:
+            any_price_warning = True
 
         needed = ROW_H + (SUB_ROW_H * len(comp_data['packet_rows']) if show_packets else 0)
         pdf.check_page_break(needed)
@@ -362,12 +365,11 @@ def _generate_pdf(
         y = pdf.get_y()
         x = MARGIN
 
-        if is_alert or comp_negative_warning:
+        if is_alert or comp_negative_warning or comp_price_warning:
             pdf.set_text_color(180, 30, 30)
-            style = 'B'
         else:
             pdf.set_text_color(0)
-            style = 'B'
+        style = 'B'
 
         pdf.set_font('DejaVu', style=style, size=FONT_NORMAL)
         name_text = _truncate(pdf, component.name, pdf.col_name - 2)
@@ -393,24 +395,18 @@ def _generate_pdf(
         pdf.cell(pdf.col_value, ROW_H, value_text, align='R')
         x += pdf.col_value
 
-        comp_price_warning = show_warnings and comp_data['has_price_warning']
-        if comp_price_warning:
-            any_price_warning = True
-
         if show_status:
             pdf.set_xy(x, y)
             if comp_negative_warning:
-                pdf.set_font('DejaVu', style='B', size=FONT_SMALL)
-                pdf.cell(pdf.col_status, ROW_H, '! záporné')
+                status_text = '! záporné'
             elif is_alert:
-                pdf.set_font('DejaVu', style='B', size=FONT_SMALL)
-                pdf.cell(pdf.col_status, ROW_H, '! neinv.')
+                status_text = '! neinv.'
             elif comp_price_warning:
-                pdf.set_font('DejaVu', style='B', size=FONT_SMALL)
-                pdf.cell(pdf.col_status, ROW_H, '! cena')
+                status_text = '! cena'
             else:
-                pdf.set_font('DejaVu', style='', size=FONT_SMALL)
-                pdf.cell(pdf.col_status, ROW_H, 'ok')
+                status_text = 'ok'
+            pdf.set_font('DejaVu', style='B' if status_text != 'ok' else '', size=FONT_SMALL)
+            pdf.cell(pdf.col_status, ROW_H, status_text)
 
         pdf.set_text_color(0)
         pdf.ln(ROW_H)
@@ -456,20 +452,18 @@ def _generate_pdf(
                 if show_status:
                     pdf.set_xy(x, y)
                     if prow_negative_warning:
-                        pdf.set_font('DejaVu', style='B', size=FONT_SMALL - 1)
-                        pdf.cell(pdf.col_status, SUB_ROW_H, '! záporné')
-                        pdf.set_font('DejaVu', style='', size=FONT_SMALL)
+                        prow_status = '! záporné'
                     elif prow_uninventoried_alert and prow_price_warning:
-                        pdf.set_font('DejaVu', style='B', size=FONT_SMALL - 1)
-                        pdf.cell(pdf.col_status, SUB_ROW_H, '! neinv.+cena')
-                        pdf.set_font('DejaVu', style='', size=FONT_SMALL)
+                        prow_status = '! neinv.+cena'
                     elif prow_uninventoried_alert:
-                        pdf.set_font('DejaVu', style='B', size=FONT_SMALL - 1)
-                        pdf.cell(pdf.col_status, SUB_ROW_H, '! neinv.')
-                        pdf.set_font('DejaVu', style='', size=FONT_SMALL)
+                        prow_status = '! neinv.'
                     elif prow_price_warning:
+                        prow_status = '! cena'
+                    else:
+                        prow_status = ''
+                    if prow_status:
                         pdf.set_font('DejaVu', style='B', size=FONT_SMALL - 1)
-                        pdf.cell(pdf.col_status, SUB_ROW_H, '! cena')
+                        pdf.cell(pdf.col_status, SUB_ROW_H, prow_status)
                         pdf.set_font('DejaVu', style='', size=FONT_SMALL)
                     else:
                         pdf.cell(pdf.col_status, SUB_ROW_H, '')
