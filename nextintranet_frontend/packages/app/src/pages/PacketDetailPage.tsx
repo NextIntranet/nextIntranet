@@ -822,14 +822,13 @@ export function PacketDetailPage() {
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <span className="cursor-default">
-                                {flow === "in" ? "+" : flow === "out" ? "−" : ""}
-                                {operation.quantity}
+                                {operation.relative_quantity === false ? "= " : ""}{operation.quantity}
                               </span>
                             </TooltipTrigger>
                             <TooltipContent>
                               {operation.relative_quantity === false
                                 ? `Absolute count set to ${operation.quantity}`
-                                : `Relative change: ${flow === "in" ? "+" : flow === "out" ? "−" : ""}${operation.quantity}`}
+                                : `Relative change: ${operation.quantity}`}
                             </TooltipContent>
                           </Tooltip>
                         </TableCell>
