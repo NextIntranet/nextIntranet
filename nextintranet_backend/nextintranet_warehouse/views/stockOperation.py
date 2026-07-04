@@ -131,6 +131,10 @@ class StockOperationSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"absolute_quantity": "Only supported for inventory operations."}
                 )
+            if absolute_quantity < 0:
+                raise serializers.ValidationError(
+                    {"absolute_quantity": "Counted quantity cannot be negative."}
+                )
             attrs["_absolute_quantity"] = absolute_quantity
         elif self.instance is None and operation_type == "inventory" and "quantity" not in attrs:
             raise serializers.ValidationError(
