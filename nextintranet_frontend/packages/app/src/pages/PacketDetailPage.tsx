@@ -69,16 +69,31 @@ interface StockOperationMetadata {
   counted_price?: number | null
 }
 
-interface StockOperation {
+interface WarehouseActivity {
   id: string
-  operation_type: string
-  quantity: number
-  relative_quantity?: boolean
+  activity_type: string
+  source: string
+  occurred_at: string
+  user_name?: string | null
+  stock_operation_id?: string | null
+  stock_operation_type?: string | null
+  quantity?: number | null
+  relative_quantity?: boolean | null
   unit_price?: number | null
-  timestamp: string
   description?: string | null
+  before?: Record<string, unknown> | null
+  after?: Record<string, unknown> | null
   author_name?: string | null
   metadata?: StockOperationMetadata | null
+}
+
+interface PaginatedActivities {
+  count: number
+  total_pages: number
+  current_page: number
+  next?: string | null
+  previous?: string | null
+  results: WarehouseActivity[]
 }
 
 interface PacketHistoryEntry {
@@ -112,8 +127,8 @@ function OperationTypeIcon({ operationType }: { operationType: string }) {
   return <RefreshCw className="h-4 w-4 shrink-0 text-muted-foreground" />
 }
 
-function OperationMetaCell({ op }: { op: StockOperation }) {
-  const m = op.metadata
+function OperationMetaCell({ metadata }: { metadata?: StockOperationMetadata | null }) {
+  const m = metadata
   if (!m) return <>-</>
   const parts: React.ReactNode[] = []
 
@@ -175,6 +190,64 @@ function OperationMetaCell({ op }: { op: StockOperation }) {
   return <div className="flex flex-col gap-0.5">{parts}</div>
 }
 
+function formatActivityType(activity: WarehouseActivity) {
+  if (activity.activity_type === "stock_operation" && activity.stock_operation_type) {
+    return getOperationLabel(activity.stock_operation_type)
+  }
+  const labels: Record<string, string> = {
+    scan: "Scan",
+    packet_created: "Created",
+    packet_updated: "Edited",
+    packet_moved: "Moved",
+    packet_status_changed: "Status",
+    component_created: "Component created",
+    component_updated: "Component edited",
+    identifier_added: "Identifier added",
+    identifier_removed: "Identifier removed",
+  }
+  return labels[activity.activity_type] ?? activity.activity_type.replaceAll("_", " ")
+}
+
+function ActivityTypeIcon({ activity }: { activity: WarehouseActivity }) {
+  if (activity.activity_type === "stock_operation" && activity.stock_operation_type) {
+    return <OperationTypeIcon operationType={activity.stock_operation_type} />
+  }
+  if (activity.activity_type === "scan") return <Database className="h-4 w-4 shrink-0 text-blue-600" />
+  if (activity.activity_type.includes("removed")) return <ArrowUpCircle className="h-4 w-4 shrink-0 text-red-600" />
+  if (activity.activity_type.includes("added") || activity.activity_type.includes("created")) {
+    return <ArrowDownCircle className="h-4 w-4 shrink-0 text-emerald-600" />
+  }
+  return <RefreshCw className="h-4 w-4 shrink-0 text-muted-foreground" />
+}
+
+function formatChangeMap(value?: Record<string, unknown> | null) {
+  if (!value || Object.keys(value).length === 0) return ""
+  return Object.entries(value)
+    .map(([key, entry]) => `${key}: ${entry == null ? "-" : String(entry)}`)
+    .join(", ")
+}
+
+function ActivityDetailsCell({ activity }: { activity: WarehouseActivity }) {
+  if (activity.activity_type === "stock_operation") {
+    return <OperationMetaCell metadata={activity.metadata} />
+  }
+  const before = formatChangeMap(activity.before)
+  const after = formatChangeMap(activity.after)
+  if (!before && !after) return <>-</>
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="block truncate text-xs text-muted-foreground">
+          {[before ? `Before: ${before}` : "", after ? `After: ${after}` : ""].filter(Boolean).join(" | ")}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-md">
+        {[before ? `Before: ${before}` : "", after ? `After: ${after}` : ""].filter(Boolean).join(" | ")}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
 export function PacketDetailPage() {
   const { id } = useParams<{ id: string }>()
   const queryClient = useQueryClient()
@@ -182,6 +255,9 @@ export function PacketDetailPage() {
   const [operationSheetOpen, setOperationSheetOpen] = useState(false)
   const [identifierSheetOpen, setIdentifierSheetOpen] = useState(false)
   const [identifierForm, setIdentifierForm] = useState({ scheme: "", identifier: "" })
+  const [activityMode, setActivityMode] = useState<"all" | "count">("all")
+  const [activityPage, setActivityPage] = useState(1)
+  const [activityPageSize, setActivityPageSize] = useState(25)
   const identifierInputRef = useRef<HTMLInputElement>(null)
 
   const { data: user } = useQuery<User>({
@@ -217,10 +293,12 @@ export function PacketDetailPage() {
     enabled: canEdit,
   })
 
-  const { data: operations, isLoading: operationsLoading } = useQuery<StockOperation[]>({
-    queryKey: ["packet-operations", id],
+  const { data: activitiesData, isLoading: activitiesLoading } = useQuery<PaginatedActivities>({
+    queryKey: ["packet-activities", id, activityMode, activityPage, activityPageSize],
     queryFn: () =>
-      apiFetch<StockOperation[]>(`/api/v1/store/packet/operation/?packet=${id}`),
+      apiFetch<PaginatedActivities>(
+        `/api/v1/store/packet/${id}/activities/?mode=${activityMode}&page=${activityPage}&page_size=${activityPageSize}`,
+      ),
     enabled: !!id,
   })
 
@@ -269,6 +347,7 @@ export function PacketDetailPage() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["packet", id] })
+      queryClient.invalidateQueries({ queryKey: ["packet-activities", id] })
       setEditMode(false)
       toast.success("Packet updated.")
     },
@@ -285,6 +364,7 @@ export function PacketDetailPage() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["packet", id] })
+      queryClient.invalidateQueries({ queryKey: ["packet-activities", id] })
       setIdentifierSheetOpen(false)
       setIdentifierForm({ scheme: "", identifier: "" })
       toast.success("External identifier added.")
@@ -301,6 +381,7 @@ export function PacketDetailPage() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["packet", id] })
+      queryClient.invalidateQueries({ queryKey: ["packet-activities", id] })
       toast.success("External identifier removed.")
     },
     onError: () => {
@@ -365,7 +446,8 @@ export function PacketDetailPage() {
   })
 
   const formattedCount = packet?.count ?? 0
-  const operationsList = useMemo(() => operations ?? [], [operations])
+  const activitiesList = useMemo(() => activitiesData?.results ?? [], [activitiesData?.results])
+  const totalActivityPages = activitiesData?.total_pages ?? 1
 
   const historyChartConfig = useMemo<ChartConfig>(
     () => ({
@@ -775,75 +857,119 @@ export function PacketDetailPage() {
               </Button>
             )}
           </div>
-          {operationsLoading ? (
+          <div className="flex flex-col gap-2 rounded-lg border border-border/70 bg-muted/20 p-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="inline-flex rounded-md border border-border bg-background p-0.5">
+              <Button
+                type="button"
+                size="sm"
+                variant={activityMode === "all" ? "secondary" : "ghost"}
+                onClick={() => {
+                  setActivityMode("all")
+                  setActivityPage(1)
+                }}
+              >
+                All
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={activityMode === "count" ? "secondary" : "ghost"}
+                onClick={() => {
+                  setActivityMode("count")
+                  setActivityPage(1)
+                }}
+              >
+                Count operations only
+              </Button>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span>Page size</span>
+              <select
+                value={activityPageSize}
+                onChange={(event) => {
+                  setActivityPageSize(Number(event.target.value))
+                  setActivityPage(1)
+                }}
+                className="h-8 rounded-md border border-input bg-background px-2 text-sm text-foreground"
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+              </select>
+            </div>
+          </div>
+          {activitiesLoading ? (
               <Skeleton className="h-32 w-full" />
-            ) : operationsList.length ? (
+            ) : activitiesList.length ? (
               <div className="overflow-hidden rounded-lg border border-border/70">
                 <Table className="w-full table-fixed">
                   <TableHeader className="bg-muted/40">
                     <TableRow className="border-border/50">
-                      <TableHead className="h-9 w-[12%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      <TableHead className="h-8 w-[16%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                         Type
                       </TableHead>
-                      <TableHead className="h-9 w-[8%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      <TableHead className="h-8 w-[8%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                         Qty
                       </TableHead>
-                      <TableHead className="h-9 w-[12%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      <TableHead className="h-8 w-[10%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                         Price
                       </TableHead>
-                      <TableHead className="h-9 w-[16%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Date / Author
+                      <TableHead className="h-8 w-[18%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Date / User
                       </TableHead>
-                      <TableHead className="h-9 w-[22%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Description
+                      <TableHead className="h-8 w-[24%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Summary
                       </TableHead>
-                      <TableHead className="h-9 w-[22%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      <TableHead className="h-8 w-[24%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                         Details
                       </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {operationsList.map((operation) => {
-                      const flow = getOperationFlow(operation.operation_type)
+                    {activitiesList.map((activity) => {
+                      const flow = activity.stock_operation_type ? getOperationFlow(activity.stock_operation_type) : "neutral"
                       return (
-                      <TableRow key={operation.id} className="border-border/40">
-                        <TableCell className="h-9 px-3 text-sm text-foreground">
-                          <div className="flex items-center gap-1.5" title={getOperationLabel(operation.operation_type)}>
-                            <OperationTypeIcon operationType={operation.operation_type} />
-                            <span className="truncate">{getOperationLabel(operation.operation_type)}</span>
+                      <TableRow key={activity.id} className="border-border/40">
+                        <TableCell className="h-8 px-3 text-sm text-foreground">
+                          <div className="flex items-center gap-1.5" title={formatActivityType(activity)}>
+                            <ActivityTypeIcon activity={activity} />
+                            <span className="truncate">{formatActivityType(activity)}</span>
                           </div>
                         </TableCell>
                         <TableCell
                           className={
-                            "h-9 px-3 text-sm font-bold " +
+                            "h-8 px-3 text-sm font-bold " +
                             (flow === "in" ? "text-emerald-600" : flow === "out" ? "text-red-600" : "text-foreground")
                           }
                         >
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="cursor-default">
-                                {flow === "in" ? "+" : flow === "out" ? "−" : ""}
-                                {operation.quantity}
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              {operation.relative_quantity === false
-                                ? `Absolute count set to ${operation.quantity}`
-                                : `Relative change: ${flow === "in" ? "+" : flow === "out" ? "−" : ""}${operation.quantity}`}
-                            </TooltipContent>
-                          </Tooltip>
+                          {activity.quantity != null ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="cursor-default">
+                                  {activity.relative_quantity === false ? "= " : ""}{activity.quantity}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                {activity.relative_quantity === false
+                                  ? `Absolute count set to ${activity.quantity}`
+                                  : `Relative change: ${activity.quantity}`}
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
                         </TableCell>
-                        <TableCell className="px-3 py-2 text-sm align-top">
-                          {operation.unit_price != null && operation.unit_price > 0 ? (
+                        <TableCell className="px-3 py-1.5 text-sm align-top">
+                          {activity.unit_price != null && activity.unit_price > 0 ? (
                             <div className="flex flex-col gap-0.5">
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <span className="font-medium text-foreground cursor-default">{operation.unit_price.toFixed(2)}</span>
+                                  <span className="font-medium text-foreground cursor-default">{activity.unit_price.toFixed(2)}</span>
                                 </TooltipTrigger>
                                 <TooltipContent>Unit price recorded on this operation</TooltipContent>
                               </Tooltip>
                               {packet?.itemValue != null && packet.itemValue > 0 && (() => {
-                                const diff = operation.unit_price - Number(packet.itemValue)
+                                const diff = Number(activity.unit_price) - Number(packet.itemValue)
                                 if (Math.abs(diff) < 0.001) return null
                                 return (
                                   <Tooltip>
@@ -863,44 +989,44 @@ export function PacketDetailPage() {
                             <span className="text-muted-foreground">—</span>
                           )}
                         </TableCell>
-                        <TableCell className="px-3 py-2 text-sm text-muted-foreground align-top">
+                        <TableCell className="px-3 py-1.5 text-sm text-muted-foreground align-top">
                           <div className="flex flex-col gap-0.5">
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <span className="cursor-default">{new Date(operation.timestamp).toLocaleString()}</span>
+                                <span className="cursor-default">{new Date(activity.occurred_at).toLocaleString()}</span>
                               </TooltipTrigger>
-                              <TooltipContent>{operation.timestamp}</TooltipContent>
+                              <TooltipContent>{activity.occurred_at}</TooltipContent>
                             </Tooltip>
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <span className="text-xs text-muted-foreground/80 cursor-default">{operation.author_name || "-"}</span>
+                                <span className="text-xs text-muted-foreground/80 cursor-default">{activity.user_name || "-"}</span>
                               </TooltipTrigger>
-                              <TooltipContent>{operation.author_name ? `Recorded by ${operation.author_name}` : "No author recorded"}</TooltipContent>
+                              <TooltipContent>{activity.user_name ? `Recorded by ${activity.user_name}` : "No user recorded"}</TooltipContent>
                             </Tooltip>
                           </div>
                         </TableCell>
-                        <TableCell className="px-3 py-2 text-sm text-muted-foreground align-top">
-                          {operation.description ? (
+                        <TableCell className="px-3 py-1.5 text-sm text-muted-foreground align-top">
+                          {activity.description ? (
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <span className="block whitespace-normal break-words leading-relaxed">
-                                  {operation.description}
+                                <span className="block truncate">
+                                  {activity.description}
                                 </span>
                               </TooltipTrigger>
-                              <TooltipContent>{operation.description}</TooltipContent>
+                              <TooltipContent>{activity.description}</TooltipContent>
                             </Tooltip>
                           ) : (
                             "-"
                           )}
                         </TableCell>
-                        <TableCell className="px-3 py-2 text-sm text-muted-foreground align-top">
+                        <TableCell className="px-3 py-1.5 text-sm text-muted-foreground align-top">
                           <div className="flex flex-col gap-0.5">
-                            <OperationMetaCell op={operation} />
-                            {user?.is_superuser && (
+                            <ActivityDetailsCell activity={activity} />
+                            {user?.is_superuser && activity.stock_operation_id && (
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <a
-                                    href={`/admin/nextintranet_warehouse/stockoperation/${operation.id}/change/`}
+                                    href={`/admin/nextintranet_warehouse/stockoperation/${activity.stock_operation_id}/change/`}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="inline-flex text-muted-foreground/40 hover:text-muted-foreground transition-colors w-fit"
@@ -920,8 +1046,33 @@ export function PacketDetailPage() {
                 </Table>
               </div>
             ) : (
-              <div className="text-sm text-muted-foreground">No operations available.</div>
+              <div className="text-sm text-muted-foreground">No activity available.</div>
             )}
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">
+              Page {activitiesData?.current_page ?? activityPage} of {totalActivityPages} · {activitiesData?.count ?? 0} activities
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!activitiesData?.previous}
+                onClick={() => setActivityPage((page) => Math.max(1, page - 1))}
+              >
+                Previous
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!activitiesData?.next}
+                onClick={() => setActivityPage((page) => page + 1)}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -988,8 +1139,9 @@ export function PacketDetailPage() {
         showPacketSelect={false}
         componentId={packet?.component.id}
         onOperationCreated={() => {
-          queryClient.invalidateQueries({ queryKey: ["packet-operations", id] })
+          queryClient.invalidateQueries({ queryKey: ["packet-activities", id] })
           queryClient.invalidateQueries({ queryKey: ["packet", id] })
+          queryClient.invalidateQueries({ queryKey: ["packet-history", id] })
         }}
       />
 

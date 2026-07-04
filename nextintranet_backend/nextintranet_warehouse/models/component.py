@@ -14,6 +14,7 @@ from nextintranet_backend.models import NIModel
 from nextintranet_backend.models.plugin import PluginInstance
 from nextintranet_backend.models.user import User
 from django.urls import reverse
+from django.utils import timezone
 
 from ..services.parameter_values import coerce_decimal_for_storage
 
@@ -597,10 +598,96 @@ class StockOperation(NIModel):
     #     last_purchase = cls.objects.filter(operation_type='purchase').order_by('-timestamp').first()
     #     return last_purchase.unit_price if last_purchase else None
     def save(self, *args, **kwargs):
+        is_create = self._state.adding
         super().save(*args, **kwargs)
+        if is_create:
+            from nextintranet_warehouse.services.activity import log_stock_operation_activity
+
+            log_stock_operation_activity(self)
         # Keep packet.count in sync: availability and UI use precomputed count.
         if self.packet:
             self.packet.calculate()
+
+
+class WarehouseActivity(NIModel):
+    ACTIVITY_TYPES = (
+        ("scan", _("Scan")),
+        ("stock_operation", _("Stock operation")),
+        ("packet_created", _("Packet created")),
+        ("packet_updated", _("Packet updated")),
+        ("packet_moved", _("Packet moved")),
+        ("packet_status_changed", _("Packet status changed")),
+        ("component_created", _("Component created")),
+        ("component_updated", _("Component updated")),
+        ("identifier_added", _("Identifier added")),
+        ("identifier_removed", _("Identifier removed")),
+    )
+
+    SOURCE_CHOICES = (
+        ("api", _("API")),
+        ("scanner", _("Scanner")),
+        ("inventory", _("Inventory")),
+        ("production", _("Production")),
+        ("stock_operation", _("Stock operation")),
+        ("system", _("System")),
+    )
+
+    packet = models.ForeignKey(
+        Packet,
+        on_delete=models.CASCADE,
+        related_name="activities",
+        blank=True,
+        null=True,
+        verbose_name=_("Packet"),
+    )
+    component = models.ForeignKey(
+        Component,
+        on_delete=models.CASCADE,
+        related_name="activities",
+        blank=True,
+        null=True,
+        verbose_name=_("Component"),
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        related_name="warehouse_activities",
+        blank=True,
+        null=True,
+        verbose_name=_("User"),
+    )
+    occurred_at = models.DateTimeField(default=timezone.now, verbose_name=_("Occurred at"))
+    activity_type = models.CharField(max_length=50, choices=ACTIVITY_TYPES, verbose_name=_("Activity type"))
+    source = models.CharField(max_length=50, choices=SOURCE_CHOICES, default="api", verbose_name=_("Source"))
+    stock_operation = models.ForeignKey(
+        StockOperation,
+        on_delete=models.SET_NULL,
+        related_name="activities",
+        blank=True,
+        null=True,
+        verbose_name=_("Stock operation"),
+    )
+    description = models.TextField(blank=True, null=True, verbose_name=_("Description"))
+    metadata = models.JSONField(blank=True, null=True, default=dict, verbose_name=_("Metadata"))
+    before = models.JSONField(blank=True, null=True, default=dict, verbose_name=_("Before"))
+    after = models.JSONField(blank=True, null=True, default=dict, verbose_name=_("After"))
+
+    class Meta:
+        ordering = ["-occurred_at", "-created_at"]
+        indexes = [
+            models.Index(fields=["packet", "-occurred_at"], name="wh_act_packet_time_idx"),
+            models.Index(fields=["component", "-occurred_at"], name="wh_act_component_time_idx"),
+            models.Index(fields=["user", "-occurred_at"], name="wh_act_user_time_idx"),
+            models.Index(fields=["activity_type", "-occurred_at"], name="wh_act_type_time_idx"),
+            models.Index(fields=["source", "-occurred_at"], name="wh_act_source_time_idx"),
+            models.Index(fields=["stock_operation"], name="wh_act_stock_op_idx"),
+        ]
+        verbose_name = _("Warehouse activity")
+        verbose_name_plural = _("Warehouse activities")
+
+    def __str__(self):
+        target = self.packet_id or self.component_id or "-"
+        return f"{self.activity_type} {target} at {self.occurred_at}"
 
 class Reservation(NIModel):
     # Rezervace součástek
