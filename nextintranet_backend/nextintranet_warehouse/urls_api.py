@@ -12,6 +12,7 @@ from .views.components import (
     ComponentListAPIView,
     ComponentDetailAPIView,
     ComponentDuplicateAPIView,
+    ComponentActivitiesAPIView,
     ComponentHistoryAPIView,
     PacketHistoryAPIView,
     ComponentIdentifierListCreateAPIView,
@@ -26,6 +27,7 @@ from .views.packets import (
     PacketListCreateAPIView,
     PDFGeneratorView,
     PacketOperationsAPIView,
+    PacketActivitiesAPIView,
     PacketIdentifierListCreateAPIView,
     PacketIdentifierDetailAPIView,
 )
@@ -56,6 +58,7 @@ urlpatterns = [
     path('components/', ComponentListAPIView.as_view(), name='api_warehouse_components'),
     path('component/<uuid:pk>/', ComponentDetailAPIView.as_view(), name='api_warehouse_component_detail'),
     path('component/<uuid:pk>/duplicate/', ComponentDuplicateAPIView.as_view(), name='api_warehouse_component_duplicate'),
+    path('component/<uuid:pk>/activities/', ComponentActivitiesAPIView.as_view(), name='api_warehouse_component_activities'),
     path('component/<uuid:pk>/history/', ComponentHistoryAPIView.as_view(), name='api_warehouse_component_history'),
     path('component/<uuid:pk>/identifiers/', ComponentIdentifierListCreateAPIView.as_view(), name='api_warehouse_component_identifiers'),
     path('component/<uuid:component_pk>/identifiers/<uuid:identifier_pk>/', ComponentIdentifierDetailAPIView.as_view(), name='api_warehouse_component_identifier_detail'),
@@ -72,6 +75,7 @@ urlpatterns = [
 # Packets
     path('packet/operation/', include(StockOperationRouter.urls), name='api_warehouse_operations'),
     path('packet/<uuid:pk>/identifiers/', PacketIdentifierListCreateAPIView.as_view(), name='api_warehouse_packet_identifiers'),
+    path('packet/<uuid:pk>/activities/', PacketActivitiesAPIView.as_view(), name='api_warehouse_packet_activities'),
     path('packet/<uuid:pk>/history/', PacketHistoryAPIView.as_view(), name='api_warehouse_packet_history'),
     path('packet/<uuid:packet_pk>/identifiers/<uuid:identifier_pk>/', PacketIdentifierDetailAPIView.as_view(), name='api_warehouse_packet_identifier_detail'),
     path('packet/', include(PacketRouter.urls), name='api_warehouse_packet_detail'),

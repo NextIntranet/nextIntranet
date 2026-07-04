@@ -25,6 +25,7 @@ from ..models.component import (
     Packet,
     StockOperation,
     Reservation,
+    WarehouseActivity,
 )
 from rest_framework.response import Response
 
@@ -62,6 +63,12 @@ from nextintranet_backend.help.crud import NIT_Table
 
 from django.forms.models import inlineformset_factory
 from nextintranet_warehouse.models.component import ComponentParameter, ParameterType
+from nextintranet_warehouse.services.activity import (
+    actor_from_request,
+    compact_changes,
+    component_snapshot,
+    log_activity,
+)
 
 from crispy_forms.helper import FormHelper
 from crispy_forms.layout import Layout, Row, Column
@@ -178,6 +185,22 @@ class ComponentCreateSerializer(serializers.ModelSerializer):
         model = Component
         fields = ['id', 'name', 'description', 'category', 'tags', 'unit_type']
         read_only_fields = ['id']
+
+    def create(self, validated_data):
+        tags = validated_data.pop('tags', [])
+        component = Component.objects.create(**validated_data)
+        if tags:
+            component.tags.set(tags)
+        request = self.context.get('request')
+        log_activity(
+            activity_type="component_created",
+            source="api",
+            component=component,
+            user=actor_from_request(request),
+            description="Component created",
+            after=component_snapshot(component),
+        )
+        return component
 
 
 class ComponentListSerializer(serializers.ModelSerializer):
@@ -391,6 +414,24 @@ class ComponentSerializer(serializers.ModelSerializer):
         data['tags'] = TagSerializer(instance.tags, many=True).data
         return data
 
+    def update(self, instance, validated_data):
+        before = component_snapshot(instance)
+        component = super().update(instance, validated_data)
+        after = component_snapshot(component)
+        changed_before, changed_after = compact_changes(before, after)
+        if changed_before:
+            request = self.context.get('request')
+            log_activity(
+                activity_type="component_updated",
+                source="api",
+                component=component,
+                user=actor_from_request(request),
+                description="Component updated",
+                before=changed_before,
+                after=changed_after,
+            )
+        return component
+
     class Meta:
         model = Component
         fields = '__all__'
@@ -576,7 +617,16 @@ class ComponentIdentifierListCreateAPIView(APIView):
         serializer = ExternalIdentifierSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         ct = ContentType.objects.get_for_model(Component)
-        serializer.save(content_type=ct, object_id=str(component.pk))
+        identifier = serializer.save(content_type=ct, object_id=str(component.pk))
+        log_activity(
+            activity_type="identifier_added",
+            source="api",
+            component=component,
+            user=actor_from_request(request),
+            description="Component identifier added",
+            metadata={"scheme": identifier.scheme, "identifier": identifier.identifier},
+            after={"scheme": identifier.scheme, "identifier": identifier.identifier},
+        )
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
@@ -592,7 +642,17 @@ class ComponentIdentifierDetailAPIView(APIView):
             content_type=ct,
             object_id=str(component.pk),
         )
+        payload = {"scheme": identifier.scheme, "identifier": identifier.identifier}
         identifier.delete()
+        log_activity(
+            activity_type="identifier_removed",
+            source="api",
+            component=component,
+            user=actor_from_request(request),
+            description="Component identifier removed",
+            metadata=payload,
+            before=payload,
+        )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -674,7 +734,101 @@ class ComponentDuplicateAPIView(APIView):
             .get(pk=duplicate.pk)
         )
         serializer = ComponentSerializer(duplicate, context=self._serializer_context(request))
+        log_activity(
+            activity_type="component_created",
+            source="api",
+            component=duplicate,
+            user=actor_from_request(request),
+            description="Component duplicated",
+            metadata={"source_component": str(source.id)},
+            after=component_snapshot(duplicate),
+        )
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class WarehouseActivitySerializer(serializers.ModelSerializer):
+    user_name = serializers.SerializerMethodField()
+    packet_id = serializers.UUIDField(source="packet.id", read_only=True)
+    component_id = serializers.UUIDField(source="component.id", read_only=True)
+    packet_label = serializers.SerializerMethodField()
+    stock_operation_id = serializers.UUIDField(source="stock_operation.id", read_only=True)
+    stock_operation_type = serializers.CharField(source="stock_operation.operation_type", read_only=True)
+    quantity = serializers.FloatField(source="stock_operation.quantity", read_only=True)
+    relative_quantity = serializers.BooleanField(source="stock_operation.relative_quantity", read_only=True)
+    unit_price = serializers.FloatField(source="stock_operation.unit_price", read_only=True)
+
+    class Meta:
+        model = WarehouseActivity
+        fields = [
+            "id",
+            "packet_id",
+            "packet_label",
+            "component_id",
+            "user",
+            "user_name",
+            "occurred_at",
+            "activity_type",
+            "source",
+            "stock_operation_id",
+            "stock_operation_type",
+            "quantity",
+            "relative_quantity",
+            "unit_price",
+            "description",
+            "metadata",
+            "before",
+            "after",
+        ]
+
+    def get_user_name(self, instance):
+        user = instance.user
+        if not user:
+            return None
+        full_name = user.get_full_name().strip()
+        return full_name or user.username
+
+    def get_packet_label(self, instance):
+        packet = instance.packet
+        if not packet:
+            return None
+        if packet.location:
+            return packet.location.full_path
+        return str(packet.id)
+
+
+class ActivityPagination(PageNumberPagination):
+    page_size = 25
+    page_size_query_param = "page_size"
+    max_page_size = 100
+
+    def get_paginated_response(self, data):
+        return Response({
+            "count": self.page.paginator.count,
+            "total_pages": self.page.paginator.num_pages,
+            "current_page": self.page.number,
+            "next": self.get_next_link(),
+            "previous": self.get_previous_link(),
+            "results": data,
+        })
+
+
+class ComponentActivitiesAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+    pagination_class = ActivityPagination
+
+    def get(self, request, pk):
+        component = get_object_or_404(Component, pk=pk)
+        qs = (
+            WarehouseActivity.objects.filter(component=component)
+            .select_related("user", "packet__location", "component", "stock_operation")
+            .order_by("-occurred_at", "-created_at")
+        )
+        if request.query_params.get("mode") == "count":
+            qs = qs.filter(activity_type="stock_operation", stock_operation__isnull=False)
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(qs, request, view=self)
+        serializer = WarehouseActivitySerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
 
 class ComponentHistoryAPIView(APIView):

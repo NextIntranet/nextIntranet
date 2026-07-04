@@ -37,13 +37,19 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django.db.models import F
 
-from nextintranet_warehouse.models.component import Packet, StockOperation, Component, Identifier
+from nextintranet_warehouse.models.component import Packet, StockOperation, Component, Identifier, WarehouseActivity
 from nextintranet_warehouse.models.warehouse import Warehouse
 from nextintranet_warehouse.models.packet_recalc_job import PacketRecalcJob
 from django_q.tasks import async_task
 
 from .components import ComponentSerializer, ExternalIdentifierSerializer
 from .locations import WarehouseSerializer
+from nextintranet_warehouse.services.activity import (
+    actor_from_request,
+    compact_changes,
+    log_activity,
+    packet_snapshot,
+)
 
 
 class PacketRecalcJobSerializer(serializers.ModelSerializer):
@@ -100,6 +106,41 @@ class PacketSerializer(serializers.ModelSerializer):
                     author=request.user if request and request.user.is_authenticated else None,
                 )
                 packet.refresh_from_db()
+            log_activity(
+                activity_type="packet_created",
+                source="api",
+                packet=packet,
+                user=actor_from_request(request),
+                description="Packet created",
+                after=packet_snapshot(packet),
+            )
+        return packet
+
+    def update(self, instance, validated_data):
+        before = packet_snapshot(instance)
+        packet = super().update(instance, validated_data)
+        after = packet_snapshot(packet)
+        changed_before, changed_after = compact_changes(before, after)
+        if changed_before:
+            request = self.context.get('request')
+            if "location" in changed_before:
+                activity_type = "packet_moved"
+                description = "Packet moved"
+            elif "is_active" in changed_before:
+                activity_type = "packet_status_changed"
+                description = "Packet activated" if changed_after.get("is_active") else "Packet deactivated"
+            else:
+                activity_type = "packet_updated"
+                description = "Packet updated"
+            log_activity(
+                activity_type=activity_type,
+                source="api",
+                packet=packet,
+                user=actor_from_request(request),
+                description=description,
+                before=changed_before,
+                after=changed_after,
+            )
         return packet
 
     def get_external_identifiers(self, instance):
@@ -132,6 +173,81 @@ class StockOperationSerializer(serializers.ModelSerializer):
             return None
         full_name = author.get_full_name().strip()
         return full_name or author.username
+
+
+class WarehouseActivitySerializer(serializers.ModelSerializer):
+    user_name = serializers.SerializerMethodField()
+    packet_id = serializers.UUIDField(source="packet.id", read_only=True)
+    component_id = serializers.UUIDField(source="component.id", read_only=True)
+    stock_operation_id = serializers.UUIDField(source="stock_operation.id", read_only=True)
+    stock_operation_type = serializers.CharField(source="stock_operation.operation_type", read_only=True)
+    quantity = serializers.FloatField(source="stock_operation.quantity", read_only=True)
+    relative_quantity = serializers.BooleanField(source="stock_operation.relative_quantity", read_only=True)
+    unit_price = serializers.FloatField(source="stock_operation.unit_price", read_only=True)
+
+    class Meta:
+        model = WarehouseActivity
+        fields = [
+            "id",
+            "packet_id",
+            "component_id",
+            "user",
+            "user_name",
+            "occurred_at",
+            "activity_type",
+            "source",
+            "stock_operation_id",
+            "stock_operation_type",
+            "quantity",
+            "relative_quantity",
+            "unit_price",
+            "description",
+            "metadata",
+            "before",
+            "after",
+        ]
+
+    def get_user_name(self, instance):
+        user = instance.user
+        if not user:
+            return None
+        full_name = user.get_full_name().strip()
+        return full_name or user.username
+
+
+class ActivityPagination(PageNumberPagination):
+    page_size = 25
+    page_size_query_param = "page_size"
+    max_page_size = 100
+
+    def get_paginated_response(self, data):
+        return Response({
+            "count": self.page.paginator.count,
+            "total_pages": self.page.paginator.num_pages,
+            "current_page": self.page.number,
+            "next": self.get_next_link(),
+            "previous": self.get_previous_link(),
+            "results": data,
+        })
+
+
+class PacketActivitiesAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+    pagination_class = ActivityPagination
+
+    def get(self, request, pk):
+        packet = get_object_or_404(Packet, pk=pk)
+        qs = (
+            WarehouseActivity.objects.filter(packet=packet)
+            .select_related("user", "packet", "component", "stock_operation")
+            .order_by("-occurred_at", "-created_at")
+        )
+        if request.query_params.get("mode") == "count":
+            qs = qs.filter(activity_type="stock_operation", stock_operation__isnull=False)
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(qs, request, view=self)
+        serializer = WarehouseActivitySerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
 class PacketOperationsAPIView(mixins.RetrieveModelMixin, generics.GenericAPIView):
     queryset = StockOperation.objects.all()
@@ -257,7 +373,7 @@ class PacketListCreateAPIView(generics.ListCreateAPIView):
     def post(self, request, pk, *args, **kwargs):
         component = get_object_or_404(Component, pk=pk)
 
-        serializer = PacketSerializer(data=request.data)
+        serializer = PacketSerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         serializer.save(component=component)
 
@@ -278,7 +394,16 @@ class PacketIdentifierListCreateAPIView(APIView):
         serializer = ExternalIdentifierSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         ct = ContentType.objects.get_for_model(Packet)
-        serializer.save(content_type=ct, object_id=str(packet.pk))
+        identifier = serializer.save(content_type=ct, object_id=str(packet.pk))
+        log_activity(
+            activity_type="identifier_added",
+            source="api",
+            packet=packet,
+            user=actor_from_request(request),
+            description="Packet identifier added",
+            metadata={"scheme": identifier.scheme, "identifier": identifier.identifier},
+            after={"scheme": identifier.scheme, "identifier": identifier.identifier},
+        )
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
@@ -294,7 +419,17 @@ class PacketIdentifierDetailAPIView(APIView):
             content_type=ct,
             object_id=str(packet.pk),
         )
+        payload = {"scheme": identifier.scheme, "identifier": identifier.identifier}
         identifier.delete()
+        log_activity(
+            activity_type="identifier_removed",
+            source="api",
+            packet=packet,
+            user=actor_from_request(request),
+            description="Packet identifier removed",
+            metadata=payload,
+            before=payload,
+        )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

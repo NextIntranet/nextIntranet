@@ -147,12 +147,16 @@ class StockOperationSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         absolute_quantity = validated_data.pop("_absolute_quantity", None)
+        recorded_count = None
+        counted_price = None
 
         if absolute_quantity is not None:
             packet = validated_data["packet"]
             with transaction.atomic():
                 locked_packet = Packet.objects.select_for_update().get(pk=packet.pk)
                 recorded_count = float(locked_packet.count or 0)
+                item_value = float(locked_packet.itemValue or 0)
+                counted_price = item_value if item_value else None
                 validated_data["quantity"] = absolute_quantity - recorded_count
                 validated_data["relative_quantity"] = True
                 validated_data["packet"] = locked_packet
@@ -161,11 +165,10 @@ class StockOperationSerializer(serializers.ModelSerializer):
                 )
 
         validated_data.setdefault("metadata", {})
-        validated_data["metadata"].setdefault("counted_quantity", absolute_quantity)
-        validated_data["metadata"].setdefault("recorded_quantity", recorded_count)
-        if "counted_price" not in validated_data["metadata"]:
-            item_value = float(locked_packet.itemValue or 0)
-            validated_data["metadata"]["counted_price"] = item_value if item_value else None
+        if absolute_quantity is not None:
+            validated_data["metadata"].setdefault("counted_quantity", absolute_quantity)
+            validated_data["metadata"].setdefault("recorded_quantity", recorded_count)
+            validated_data["metadata"].setdefault("counted_price", counted_price)
 
         return super().create(validated_data)
 

@@ -83,6 +83,7 @@ import {
 import { cn } from "@/lib/utils"
 import { PriceLabel } from "@/components/PriceLabel"
 import { PacketOperationSheet } from "@/components/PacketOperationSheet"
+import { getOperationLabel } from "@/lib/stockOperations"
 
 interface Category {
   id: string
@@ -207,6 +208,34 @@ interface ComponentHistoryResponse {
   history: ComponentHistoryEntry[]
 }
 
+interface ComponentActivity {
+  id: string
+  packet_id?: string | null
+  packet_label?: string | null
+  activity_type: string
+  source: string
+  occurred_at: string
+  user_name?: string | null
+  stock_operation_id?: string | null
+  stock_operation_type?: string | null
+  quantity?: number | null
+  relative_quantity?: boolean | null
+  unit_price?: number | null
+  description?: string | null
+  before?: Record<string, unknown> | null
+  after?: Record<string, unknown> | null
+  metadata?: Record<string, unknown> | null
+}
+
+interface PaginatedActivities {
+  count: number
+  total_pages: number
+  current_page: number
+  next?: string | null
+  previous?: string | null
+  results: ComponentActivity[]
+}
+
 interface UsedInManufacturing {
   bom_id: string
   bom_name: string
@@ -286,6 +315,32 @@ const selectStyles: StylesConfig<OptionType, false> = {
   }),
 }
 
+function formatComponentActivityType(activity: ComponentActivity) {
+  if (activity.activity_type === "stock_operation" && activity.stock_operation_type) {
+    return getOperationLabel(activity.stock_operation_type)
+  }
+  const labels: Record<string, string> = {
+    scan: "Scan",
+    stock_operation: "Stock operation",
+    packet_created: "Packet created",
+    packet_updated: "Packet edited",
+    packet_moved: "Packet moved",
+    packet_status_changed: "Packet status",
+    component_created: "Created",
+    component_updated: "Edited",
+    identifier_added: "Identifier added",
+    identifier_removed: "Identifier removed",
+  }
+  return labels[activity.activity_type] ?? activity.activity_type.replaceAll("_", " ")
+}
+
+function formatComponentActivityChange(value?: Record<string, unknown> | null) {
+  if (!value || Object.keys(value).length === 0) return ""
+  return Object.entries(value)
+    .map(([key, entry]) => `${key}: ${entry == null ? "-" : String(entry)}`)
+    .join(", ")
+}
+
 export function ComponentDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -293,6 +348,9 @@ export function ComponentDetailPage() {
   const [editMode, setEditMode] = useState(false)
   const [editedData, setEditedData] = useState<Partial<Component>>({})
   const [isStackedHistory, setIsStackedHistory] = useState(true)
+  const [activityMode, setActivityMode] = useState<"all" | "count">("all")
+  const [activityPage, setActivityPage] = useState(1)
+  const [activityPageSize, setActivityPageSize] = useState(25)
   const [packetSheetOpen, setPacketSheetOpen] = useState(false)
   const [operationSheetOpen, setOperationSheetOpen] = useState(false)
   const [operationPacketId, setOperationPacketId] = useState<string | null>(null)
@@ -428,6 +486,15 @@ export function ComponentDetailPage() {
     enabled: !!id,
   })
 
+  const { data: activitiesData, isLoading: activitiesLoading } = useQuery<PaginatedActivities>({
+    queryKey: ["component-activities", id, activityMode, activityPage, activityPageSize],
+    queryFn: () =>
+      apiFetch<PaginatedActivities>(
+        `/api/v1/store/component/${id}/activities/?mode=${activityMode}&page=${activityPage}&page_size=${activityPageSize}`,
+      ),
+    enabled: !!id,
+  })
+
   const { data: usedInManufacturing = [] } = useQuery<UsedInManufacturing[]>({
     queryKey: ["component-used-in-manufacturing", id],
     queryFn: () =>
@@ -492,6 +559,7 @@ export function ComponentDetailPage() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["component", id] })
+      queryClient.invalidateQueries({ queryKey: ["component-activities", id] })
       setEditMode(false)
       toast.success("Component saved.")
     },
@@ -546,6 +614,8 @@ export function ComponentDetailPage() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["component", id] })
+      queryClient.invalidateQueries({ queryKey: ["component-activities", id] })
+      queryClient.invalidateQueries({ queryKey: ["component-history", id] })
       setPacketSheetOpen(false)
       setPacketForm({ locationId: "", count: "", description: "", isActive: true })
       toast.success("Packet created.")
@@ -658,6 +728,7 @@ export function ComponentDetailPage() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["component", id] })
+      queryClient.invalidateQueries({ queryKey: ["component-activities", id] })
       setIdentifierSheetOpen(false)
       setIdentifierForm({ scheme: "", identifier: "" })
       toast.success("External identifier added.")
@@ -674,6 +745,7 @@ export function ComponentDetailPage() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["component", id] })
+      queryClient.invalidateQueries({ queryKey: ["component-activities", id] })
       toast.success("External identifier removed.")
     },
     onError: () => {
@@ -1863,6 +1935,9 @@ export function ComponentDetailPage() {
     return rows
   }, [historyData?.history, historyPackets])
 
+  const activitiesList = activitiesData?.results ?? []
+  const totalActivityPages = activitiesData?.total_pages ?? 1
+
   const formatHistoryDate = (value: string | number) => {
     const parsed = new Date(value)
     if (Number.isNaN(parsed.getTime())) {
@@ -2829,6 +2904,158 @@ export function ComponentDetailPage() {
             </CardContent>
           </Card>
           </section>
+
+          <section className="space-y-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <h2 className="text-lg font-semibold text-foreground">Operations</h2>
+                <p className="text-sm text-muted-foreground">
+                  Activity across this component and its packets.
+                </p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="inline-flex rounded-md border border-border bg-background p-0.5">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={activityMode === "all" ? "secondary" : "ghost"}
+                    onClick={() => {
+                      setActivityMode("all")
+                      setActivityPage(1)
+                    }}
+                  >
+                    All
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={activityMode === "count" ? "secondary" : "ghost"}
+                    onClick={() => {
+                      setActivityMode("count")
+                      setActivityPage(1)
+                    }}
+                  >
+                    Count operations only
+                  </Button>
+                </div>
+                <select
+                  value={activityPageSize}
+                  onChange={(event) => {
+                    setActivityPageSize(Number(event.target.value))
+                    setActivityPage(1)
+                  }}
+                  className="h-8 rounded-md border border-input bg-background px-2 text-sm text-foreground"
+                  aria-label="Activity page size"
+                >
+                  <option value={10}>10</option>
+                  <option value={25}>25</option>
+                  <option value={50}>50</option>
+                </select>
+              </div>
+            </div>
+            {activitiesLoading ? (
+              <Skeleton className="h-32 w-full" />
+            ) : activitiesList.length ? (
+              <div className="overflow-hidden rounded-lg border border-border/70">
+                <Table className="w-full table-fixed">
+                  <TableHeader className="bg-muted/40">
+                    <TableRow className="border-border/50">
+                      <TableHead className="h-8 w-[14%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Type
+                      </TableHead>
+                      <TableHead className="h-8 w-[18%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Packet
+                      </TableHead>
+                      <TableHead className="h-8 w-[10%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Qty
+                      </TableHead>
+                      <TableHead className="h-8 w-[18%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Date / User
+                      </TableHead>
+                      <TableHead className="h-8 w-[22%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Summary
+                      </TableHead>
+                      <TableHead className="h-8 w-[18%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Details
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {activitiesList.map((activity) => {
+                      const before = formatComponentActivityChange(activity.before)
+                      const after = formatComponentActivityChange(activity.after)
+                      const details = [before ? `Before: ${before}` : "", after ? `After: ${after}` : ""]
+                        .filter(Boolean)
+                        .join(" | ")
+                      return (
+                        <TableRow key={activity.id} className="border-border/40">
+                          <TableCell className="h-8 px-3 text-sm text-foreground">
+                            <span className="block truncate">{formatComponentActivityType(activity)}</span>
+                          </TableCell>
+                          <TableCell className="h-8 px-3 text-sm text-muted-foreground">
+                            {activity.packet_id ? (
+                              <Link
+                                to={`/store/component/${id}?packet=${activity.packet_id}`}
+                                className="block truncate text-primary hover:underline underline-offset-2"
+                              >
+                                {activity.packet_label || activity.packet_id.slice(0, 8)}
+                              </Link>
+                            ) : (
+                              "-"
+                            )}
+                          </TableCell>
+                          <TableCell className="h-8 px-3 text-sm font-medium text-foreground">
+                            {activity.quantity != null ? `${activity.relative_quantity === false ? "= " : ""}${activity.quantity}` : "-"}
+                          </TableCell>
+                          <TableCell className="px-3 py-1.5 text-sm text-muted-foreground align-top">
+                            <div className="flex flex-col gap-0.5">
+                              <span>{new Date(activity.occurred_at).toLocaleString()}</span>
+                              <span className="text-xs text-muted-foreground/80">{activity.user_name || "-"}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="px-3 py-1.5 text-sm text-muted-foreground align-top">
+                            <span className="block truncate">{activity.description || "-"}</span>
+                          </TableCell>
+                          <TableCell className="px-3 py-1.5 text-sm text-muted-foreground align-top">
+                            <span className="block truncate">
+                              {details || (activity.unit_price ? `Unit price: ${activity.unit_price.toFixed(2)}` : "-")}
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">No activity available.</p>
+            )}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-muted-foreground">
+                Page {activitiesData?.current_page ?? activityPage} of {totalActivityPages} · {activitiesData?.count ?? 0} activities
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!activitiesData?.previous}
+                  onClick={() => setActivityPage((page) => Math.max(1, page - 1))}
+                >
+                  Previous
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!activitiesData?.next}
+                  onClick={() => setActivityPage((page) => page + 1)}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          </section>
           </div>
         </div>
       </div>
@@ -2974,6 +3201,7 @@ export function ComponentDetailPage() {
         onOperationCreated={() => {
           queryClient.invalidateQueries({ queryKey: ["component", id] })
           queryClient.invalidateQueries({ queryKey: ["component-history", id] })
+          queryClient.invalidateQueries({ queryKey: ["component-activities", id] })
         }}
       />
 

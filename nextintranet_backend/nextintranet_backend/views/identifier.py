@@ -10,6 +10,7 @@ from nextintranet_warehouse.models.component import Component, Packet
 from nextintranet_warehouse.models.warehouse import Warehouse
 from nextintranet_warehouse.models.purchase import Purchase
 from nextintranet_production.models.production import Production
+from nextintranet_warehouse.services.activity import actor_from_request, log_activity
 
 
 def validate_code(query_string):
@@ -160,4 +161,30 @@ class IdentifierApiView(APIView):
                 _set_action(item["link"])
 
         response_data["result"] = results
+        user = actor_from_request(request)
+        for item in results:
+            if item.get("type") == "packet":
+                packet = Packet.objects.filter(id=item.get("id")).select_related("component").first()
+                if packet:
+                    log_activity(
+                        activity_type="scan",
+                        source="scanner",
+                        packet=packet,
+                        user=user,
+                        description="Packet scanned",
+                        metadata={"scan": raw_scan},
+                        dedupe_seconds=10,
+                    )
+            elif item.get("type") == "component":
+                component = Component.objects.filter(id=item.get("id")).first()
+                if component:
+                    log_activity(
+                        activity_type="scan",
+                        source="scanner",
+                        component=component,
+                        user=user,
+                        description="Component scanned",
+                        metadata={"scan": raw_scan},
+                        dedupe_seconds=10,
+                    )
         return Response(response_data, status=status.HTTP_200_OK)
