@@ -4,9 +4,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiFetch } from "@nextintranet/core"
 import { Copy, Package, Pencil, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
-import Select, { SingleValue } from "react-select"
 
 import { Button } from "@/components/ui/button"
+import { ComponentAsyncSelect } from "@/components/ComponentAsyncSelect"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -50,11 +50,6 @@ interface User {
   }>
 }
 
-interface Component {
-  id: string
-  name: string
-}
-
 interface ComponentDetail {
   id: string
   name: string
@@ -62,15 +57,6 @@ interface ComponentDetail {
   category_name?: string | null
   internal_price?: number | null
   quantity?: number
-}
-
-interface PaginatedComponents {
-  results: Component[]
-}
-
-type OptionType = {
-  value: string
-  label: string
 }
 
 type EditMode = "detail" | "edit"
@@ -224,22 +210,6 @@ export function PurchaseRequestsPage() {
       description: requestDetail.description || "",
     })
   }, [requestDetail?.id])
-
-  const { data: componentsData } = useQuery<Component[] | PaginatedComponents>({
-    queryKey: ["components"],
-    queryFn: () => apiFetch<Component[] | PaginatedComponents>("/api/v1/store/components/?page_size=1000"),
-  })
-
-  const components = Array.isArray(componentsData) ? componentsData : componentsData?.results || []
-
-  const componentOptions = useMemo(
-    () =>
-      components.map((component) => ({
-        value: component.id,
-        label: component.name,
-      })),
-    [components],
-  )
 
   const canEdit =
     user?.is_superuser ||
@@ -412,7 +382,7 @@ export function PurchaseRequestsPage() {
 
   return (
     <TooltipProvider>
-      <div className="mx-auto max-w-6xl px-4 py-6 lg:px-6">
+      <div className="mx-auto max-w-7xl px-4 py-6 lg:px-6">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold text-foreground">Purchase requests</h1>
@@ -594,38 +564,11 @@ export function PurchaseRequestsPage() {
               ) : (
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">Component *</label>
-                  <Select
-                    options={componentOptions}
-                    value={componentOptions.find((opt) => opt.value === createFormState.component_id) || null}
-                    onChange={(option: SingleValue<OptionType>) =>
-                      setCreateFormState({ ...createFormState, component_id: option?.value || "" })
+                  <ComponentAsyncSelect
+                    value={createFormState.component_id}
+                    onChange={(id) =>
+                      setCreateFormState({ ...createFormState, component_id: id })
                     }
-                    placeholder="Select component"
-                    isSearchable
-                    classNamePrefix="rs"
-                    styles={{
-                      control: (base) => ({
-                        ...base,
-                        backgroundColor: 'hsl(var(--background))',
-                        borderColor: 'hsl(var(--border))',
-                        '&:hover': { borderColor: 'hsl(var(--border))' },
-                      }),
-                      menu: (base) => ({
-                        ...base,
-                        backgroundColor: 'hsl(var(--background))',
-                        border: '1px solid hsl(var(--border))',
-                      }),
-                      option: (base, state) => ({
-                        ...base,
-                        backgroundColor: state.isFocused
-                          ? 'hsl(var(--muted))'
-                          : 'hsl(var(--background))',
-                        color: 'hsl(var(--foreground))',
-                        '&:active': { backgroundColor: 'hsl(var(--muted))' },
-                      }),
-                      singleValue: (base) => ({ ...base, color: 'hsl(var(--foreground))' }),
-                      input: (base) => ({ ...base, color: 'hsl(var(--foreground))' }),
-                    }}
                   />
                 </div>
               )}

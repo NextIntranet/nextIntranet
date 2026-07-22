@@ -408,7 +408,7 @@ export function InventoryLocationStatusPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-4 py-6 lg:px-6">
+    <div className="mx-auto w-full max-w-7xl px-4 py-6 lg:px-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Packet status</h1>

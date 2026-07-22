@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiFetch, type ApiError, getApiConfig } from "@nextintranet/core"
 import { Download, ExternalLink, Pencil, Save, Trash2 } from "lucide-react"
 import Select, { type SingleValue } from "react-select"
-import AsyncSelect from "react-select/async"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -21,6 +20,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { LocationParentSelect } from "@/components/LocationParentSelect"
+import { ComponentAsyncSelect } from "@/components/ComponentAsyncSelect"
 
 const addComponentSelectStyles = {
   control: (base: Record<string, unknown>) => ({
@@ -169,15 +169,6 @@ interface PrintQueueOption {
   id: string
   name: string
   is_default?: boolean
-}
-
-interface ComponentSummary {
-  id: string
-  name: string
-}
-
-interface PaginatedComponents {
-  results: ComponentSummary[]
 }
 
 interface ComponentSupplierRelation {
@@ -419,44 +410,6 @@ export function PurchaseDetailPage() {
     [locationsTreeData],
   )
   const printQueues = asList(printQueuesData)
-
-  const loadComponentOptions = useCallback(
-    async (inputValue: string): Promise<SelectOption[]> => {
-      const search = inputValue.trim()
-      const params = new URLSearchParams()
-      params.set("page_size", search ? "25" : "20")
-      if (search) {
-        params.set("search", search)
-      }
-      const data = await apiFetch<ComponentSummary[] | PaginatedComponents>(
-        `/api/v1/store/components/?${params.toString()}`,
-      )
-      const list = Array.isArray(data) ? data : data?.results || []
-      return list.map((c) => ({ value: c.id, label: c.name }))
-    },
-    [],
-  )
-
-  const loadComponentOptionsRequestIdRef = useRef(0)
-  const loadComponentOptionsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const loadComponentOptionsAsync = useCallback(
-    (inputValue: string): Promise<SelectOption[]> =>
-      new Promise((resolve) => {
-        if (loadComponentOptionsTimeoutRef.current) {
-          clearTimeout(loadComponentOptionsTimeoutRef.current)
-        }
-        const requestId = ++loadComponentOptionsRequestIdRef.current
-        loadComponentOptionsTimeoutRef.current = setTimeout(() => {
-          loadComponentOptionsTimeoutRef.current = null
-          loadComponentOptions(inputValue).then((options) => {
-            if (requestId === loadComponentOptionsRequestIdRef.current) {
-              resolve(options)
-            }
-          })
-        }, 300)
-      }),
-    [loadComponentOptions],
-  )
 
   const { data: stockComponentDetail } = useQuery<ComponentWithSuppliers>({
     queryKey: ["component-suppliers", stockComponentId],
@@ -1564,29 +1517,13 @@ export function PurchaseDetailPage() {
                                 <label className="text-xs font-semibold uppercase text-muted-foreground">
                                   Component *
                                 </label>
-                                <AsyncSelect<SelectOption>
-                                  loadOptions={loadComponentOptionsAsync}
-                                  defaultOptions={true}
-                                  value={
-                                    stockComponentId
-                                      ? {
-                                          value: stockComponentId,
-                                          label:
-                                            stockComponentDetail?.name ?? stockComponentId,
-                                        }
-                                      : null
-                                  }
-                                  onChange={(option: SingleValue<SelectOption>) => {
-                                    setStockComponentId(option?.value || "")
+                                <ComponentAsyncSelect
+                                  value={stockComponentId}
+                                  onChange={(id) => {
+                                    setStockComponentId(id)
                                     setStockRelationId("")
                                   }}
-                                  placeholder="Search by name or paste component ID"
-                                  classNamePrefix="rs"
-                                  isSearchable
-                                  styles={addComponentSelectStyles}
                                   isDisabled={mutationBusy}
-                                  menuPortalTarget={typeof document !== "undefined" ? document.body : undefined}
-                                  menuPosition="fixed"
                                 />
                               </div>
                               {stockComponentId && (

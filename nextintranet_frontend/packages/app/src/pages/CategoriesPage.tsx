@@ -349,7 +349,7 @@ export function CategoriesPage() {
 
   return (
     <TooltipProvider>
-      <div className="mx-auto max-w-6xl px-4 py-6 lg:px-6">
+      <div className="mx-auto max-w-7xl px-4 py-6 lg:px-6">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold text-foreground">Categories</h1>

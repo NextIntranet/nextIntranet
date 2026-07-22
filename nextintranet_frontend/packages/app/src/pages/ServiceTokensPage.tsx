@@ -153,7 +153,7 @@ export function ServiceTokensPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
+    <div className="mx-auto w-full max-w-7xl space-y-6">
       <div className="space-y-1">
         <h1 className="text-2xl font-semibold text-foreground">Service tokens</h1>
         <p className="text-sm text-muted-foreground">
