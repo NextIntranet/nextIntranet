@@ -37,7 +37,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django.db.models import F
 
-from nextintranet_warehouse.models.component import Packet, StockOperation, Component, Identifier, WarehouseActivity
+from nextintranet_warehouse.models.component import Packet, StockOperation, Component, Identifier, WarehouseActivity, SupplierRelation
 from nextintranet_warehouse.models.warehouse import Warehouse
 from nextintranet_warehouse.models.packet_recalc_job import PacketRecalcJob
 from django_q.tasks import async_task
@@ -90,21 +90,75 @@ class PacketSerializer(serializers.ModelSerializer):
         except (TypeError, ValueError):
             return 0.0
 
+    def _buy_options(self, component):
+        """Read the optional 'Buy components' params from the raw request data.
+
+        Returns (is_buy, unit_price, relation) where relation is a validated
+        SupplierRelation belonging to the component, or (False, None, None).
+        """
+        raw_buy = self.initial_data.get('buy', False)
+        is_buy = raw_buy in (True, 'true', 'True', '1', 1)
+        if not is_buy:
+            return False, None, None
+
+        relation_id = self.initial_data.get('supplier_relation')
+        if not relation_id:
+            raise serializers.ValidationError(
+                {'supplier_relation': 'Supplier is required when buying components.'}
+            )
+        try:
+            relation = SupplierRelation.objects.select_related('supplier').get(
+                pk=relation_id, component=component
+            )
+        except (SupplierRelation.DoesNotExist, ValueError, TypeError):
+            raise serializers.ValidationError(
+                {'supplier_relation': 'Invalid supplier for this component.'}
+            )
+
+        raw_price = self.initial_data.get('unit_price')
+        unit_price = None
+        if raw_price not in (None, ''):
+            try:
+                unit_price = float(raw_price)
+            except (TypeError, ValueError):
+                raise serializers.ValidationError({'unit_price': 'Invalid unit price.'})
+
+        return True, unit_price, relation
+
     def create(self, validated_data):
         initial_count = self._initial_count()
         request = self.context.get('request')
 
         with transaction.atomic():
             packet = Packet.objects.create(**validated_data, count=0)
+            is_buy, unit_price, relation = self._buy_options(packet.component)
             if initial_count > 0:
-                StockOperation.objects.create(
-                    packet=packet,
-                    operation_type='add',
-                    quantity=initial_count,
-                    relative_quantity=True,
-                    description='Initial stock',
-                    author=request.user if request and request.user.is_authenticated else None,
-                )
+                author = request.user if request and request.user.is_authenticated else None
+                if is_buy:
+                    StockOperation.objects.create(
+                        packet=packet,
+                        operation_type='buy',
+                        quantity=initial_count,
+                        relative_quantity=True,
+                        unit_price=unit_price,
+                        description='Initial buy',
+                        metadata={
+                            'supplier_relation_id': str(relation.id),
+                            'supplier_id': str(relation.supplier_id) if relation.supplier_id else None,
+                            'supplier_name': relation.supplier.name if relation.supplier else None,
+                            'symbol': relation.symbol,
+                        },
+                        author=author,
+                    )
+                else:
+                    StockOperation.objects.create(
+                        packet=packet,
+                        operation_type='add',
+                        quantity=initial_count,
+                        relative_quantity=True,
+                        description='Initial stock',
+                        author=author,
+                    )
                 packet.refresh_from_db()
             log_activity(
                 activity_type="packet_created",

@@ -64,3 +64,4 @@ nav:
       - Service tokens: guide/settings/service-tokens.md
   - Developer:
     - Plugin system: developer/plugin-system.md
+    - Supplier API mapping: developer/supplier-api-mapping.md

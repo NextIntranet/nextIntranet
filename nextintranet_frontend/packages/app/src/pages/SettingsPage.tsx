@@ -7,6 +7,7 @@ import { toast } from "sonner"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import {
@@ -16,7 +17,14 @@ import {
 import { resolveFileUrl } from "@/lib/printing"
 
 interface BrandingSettings {
+  company_name: string
+  company_short_name: string
+  theme_color: string
+  background_color: string
   logo_url?: string | null
+  pwa_icon_192_url?: string | null
+  pwa_icon_512_url?: string | null
+  pwa_icon_maskable_url?: string | null
   updated_at?: string | null
 }
 
@@ -56,6 +64,23 @@ export function SettingsPage() {
     queryKey: ["branding-settings"],
     queryFn: () => apiFetch<BrandingSettings>("/api/v1/setting/branding/"),
   })
+
+  const [brandingForm, setBrandingForm] = useState({
+    company_name: "",
+    company_short_name: "",
+    theme_color: "#0f172a",
+    background_color: "#ffffff",
+  })
+
+  useEffect(() => {
+    if (!branding) return
+    setBrandingForm({
+      company_name: branding.company_name || "",
+      company_short_name: branding.company_short_name || "",
+      theme_color: branding.theme_color || "#0f172a",
+      background_color: branding.background_color || "#ffffff",
+    })
+  }, [branding])
 
   const [recalcJob, setRecalcJob] = useState<PacketRecalcJob | null>(null)
 
@@ -97,13 +122,14 @@ export function SettingsPage() {
     mutationFn: (file: File) => {
       const data = new FormData()
       data.append("logo", file)
-      return apiFetch("/api/v1/setting/branding/", {
+      return apiFetch<BrandingSettings>("/api/v1/setting/branding/", {
         method: "POST",
         body: data,
       })
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["branding-settings"] })
+      window.dispatchEvent(new CustomEvent("branding-updated", { detail: data }))
       toast.success("Logo uploaded.")
     },
     onError: (error) => {
@@ -123,6 +149,31 @@ export function SettingsPage() {
       toast.error(`Failed to remove logo: ${message}`)
     },
   })
+
+  const saveBrandingMutation = useMutation({
+    mutationFn: (data: typeof brandingForm) =>
+      apiFetch<BrandingSettings>("/api/v1/setting/branding/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["branding-settings"] })
+      window.dispatchEvent(new CustomEvent("branding-updated", { detail: data }))
+      toast.success("Branding settings saved.")
+    },
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : "Unknown error"
+      toast.error(`Failed to save branding: ${message}`)
+    },
+  })
+
+  const hasBrandingChanges = branding
+    ? brandingForm.company_name !== (branding.company_name || "") ||
+      brandingForm.company_short_name !== (branding.company_short_name || "") ||
+      brandingForm.theme_color !== (branding.theme_color || "#0f172a") ||
+      brandingForm.background_color !== (branding.background_color || "#ffffff")
+    : false
 
   const handleLogoFile = (file: File | null) => {
     if (!file) {
@@ -273,64 +324,207 @@ export function SettingsPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="md:col-span-2">
           <CardHeader>
             <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
               <ImageIcon className="h-5 w-5 text-muted-foreground" />
             </div>
             <CardTitle>Branding</CardTitle>
             <CardDescription>
-              Organization logo printed on labels (PNG or JPEG).
+              Organization identity used on labels, the page title, and the PWA install prompt.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {branding?.logo_url ? (
-              <div className="flex items-center gap-3">
-                <div className="flex h-16 w-40 items-center justify-center overflow-hidden rounded-md border border-border bg-white p-1.5">
-                  <img
-                    src={resolveFileUrl(branding.logo_url)}
-                    alt="Organization logo"
-                    className="max-h-full max-w-full object-contain"
+          <CardContent className="space-y-6">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="space-y-2">
+                <Label htmlFor="company-name">Company name</Label>
+                <Input
+                  id="company-name"
+                  value={brandingForm.company_name}
+                  onChange={(e) =>
+                    setBrandingForm((prev) => ({ ...prev, company_name: e.target.value }))
+                  }
+                  placeholder="NextIntranet"
+                  disabled={!canManageBranding}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="company-short-name">Short name</Label>
+                <Input
+                  id="company-short-name"
+                  value={brandingForm.company_short_name}
+                  onChange={(e) =>
+                    setBrandingForm((prev) => ({ ...prev, company_short_name: e.target.value }))
+                  }
+                  placeholder="NextIntranet"
+                  disabled={!canManageBranding}
+                />
+                <p className="text-xs text-muted-foreground">Shown under the app icon.</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="theme-color">Theme color</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="theme-color"
+                    type="color"
+                    value={brandingForm.theme_color}
+                    onChange={(e) =>
+                      setBrandingForm((prev) => ({ ...prev, theme_color: e.target.value }))
+                    }
+                    className="h-10 w-12 px-1 py-1"
+                    disabled={!canManageBranding}
+                  />
+                  <Input
+                    value={brandingForm.theme_color}
+                    onChange={(e) =>
+                      setBrandingForm((prev) => ({ ...prev, theme_color: e.target.value }))
+                    }
+                    disabled={!canManageBranding}
                   />
                 </div>
-                <span className="text-xs text-muted-foreground">Current logo</span>
               </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">No logo uploaded yet.</p>
-            )}
-            {canManageBranding ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  ref={logoInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg"
-                  className="hidden"
-                  onChange={(event) => {
-                    handleLogoFile(event.target.files?.[0] ?? null)
-                    event.target.value = ""
-                  }}
-                />
+              <div className="space-y-2">
+                <Label htmlFor="background-color">Background color</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="background-color"
+                    type="color"
+                    value={brandingForm.background_color}
+                    onChange={(e) =>
+                      setBrandingForm((prev) => ({ ...prev, background_color: e.target.value }))
+                    }
+                    className="h-10 w-12 px-1 py-1"
+                    disabled={!canManageBranding}
+                  />
+                  <Input
+                    value={brandingForm.background_color}
+                    onChange={(e) =>
+                      setBrandingForm((prev) => ({ ...prev, background_color: e.target.value }))
+                    }
+                    disabled={!canManageBranding}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+              <div className="space-y-2">
+                <Label>Logo</Label>
+                {branding?.logo_url ? (
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-md border border-border bg-white p-1.5"
+                      style={{ backgroundColor: brandingForm.background_color }}
+                    >
+                      <img
+                        src={resolveFileUrl(branding.logo_url)}
+                        alt="Organization logo"
+                        className="max-h-full max-w-full object-contain"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No logo uploaded yet.</p>
+                )}
+                {canManageBranding && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      ref={logoInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg"
+                      className="hidden"
+                      onChange={(event) => {
+                        handleLogoFile(event.target.files?.[0] ?? null)
+                        event.target.value = ""
+                      }}
+                    />
+                    <Button
+                      size="sm"
+                      onClick={() => logoInputRef.current?.click()}
+                      disabled={uploadLogoMutation.isPending}
+                    >
+                      {uploadLogoMutation.isPending ? "Uploading..." : "Upload logo"}
+                    </Button>
+                    {branding?.logo_url && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => deleteLogoMutation.mutate()}
+                        disabled={deleteLogoMutation.isPending}
+                      >
+                        Remove logo
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label>PWA preview</Label>
+                <div
+                  className="flex items-center gap-3 rounded-lg border border-border p-3"
+                  style={{ backgroundColor: brandingForm.background_color }}
+                >
+                  <div
+                    className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-xl shadow-sm"
+                    style={{ backgroundColor: brandingForm.theme_color }}
+                  >
+                    {branding?.pwa_icon_192_url || branding?.logo_url ? (
+                      <img
+                        src={
+                          branding.pwa_icon_192_url
+                            ? resolveFileUrl(branding.pwa_icon_192_url)
+                            : resolveFileUrl(branding.logo_url!)
+                        }
+                        alt="App icon preview"
+                        className="max-h-full max-w-full object-contain"
+                      />
+                    ) : (
+                      <img
+                        src="/pwa-192x192.png"
+                        alt="Default app icon"
+                        className="max-h-full max-w-full object-contain"
+                      />
+                    )}
+                  </div>
+                  <div>
+                    <p className="font-medium text-foreground">{brandingForm.company_short_name || brandingForm.company_name || "NextIntranet"}</p>
+                    <p className="text-xs text-muted-foreground">Home screen icon</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {canManageBranding && (
+              <div className="flex items-center gap-2">
                 <Button
                   size="sm"
-                  onClick={() => logoInputRef.current?.click()}
-                  disabled={uploadLogoMutation.isPending}
+                  onClick={() => saveBrandingMutation.mutate(brandingForm)}
+                  disabled={!hasBrandingChanges || saveBrandingMutation.isPending}
                 >
-                  {uploadLogoMutation.isPending ? "Uploading..." : "Upload logo"}
+                  {saveBrandingMutation.isPending ? "Saving..." : "Save branding"}
                 </Button>
-                {branding?.logo_url && (
+                {hasBrandingChanges && (
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => deleteLogoMutation.mutate()}
-                    disabled={deleteLogoMutation.isPending}
+                    onClick={() =>
+                      setBrandingForm({
+                        company_name: branding?.company_name || "",
+                        company_short_name: branding?.company_short_name || "",
+                        theme_color: branding?.theme_color || "#0f172a",
+                        background_color: branding?.background_color || "#ffffff",
+                      })
+                    }
                   >
-                    Remove logo
+                    Reset
                   </Button>
                 )}
               </div>
-            ) : (
+            )}
+            {!canManageBranding && (
               <p className="text-xs text-muted-foreground">
-                Only administrators can change the logo.
+                Only administrators can change branding.
               </p>
             )}
           </CardContent>

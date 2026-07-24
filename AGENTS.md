@@ -1,91 +1,82 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
-- `nextintranet_backend/` is the Django backend (apps like `nextintranet_invoicing/`, `nextintranet_warehouse/`, plus `manage.py`).
-- `nextintranet_frontend/` is the current React frontend (Vite + pnpm workspace).
-- The previous Angular frontend is kept outside the repo at `../nextintranet_frontend_old/`.
-- `NextIntranet_browser/` is the Electron desktop shell (Vue + Electron Forge).
-- `nginx_config/` and `docker-compose.yml` provide local infra; `.data/` is used for local volumes.
-- The repo may include legacy or unused code; confirm a module is active before refactors or deletion.
+Source-of-truth companion: `CLAUDE.md` covers the same stack in more detail.
 
-## Build, Test, and Development Commands
-- **Run backend and frontend commands inside Docker Compose** when the stack is containerized: use `docker compose run <service> <command>` from repo root (e.g. `docker compose run web python manage.py makemigrations`, `docker compose run web python manage.py migrate`, `docker compose run frontend_react_v2 pnpm build`). This keeps the same environment as production and avoids “works on my machine” issues.
-- Backend (Django): `python manage.py runserver` from `nextintranet_backend/` to run API locally; or via Docker: `docker compose up web` and run management commands with `docker compose run --rm --entrypoint "" web python manage.py <command>` (empty `--entrypoint` overrides the image’s default `runserver` so the given command runs instead).
-- Frontend (React, `nextintranet_frontend/`, pnpm): `pnpm dev` for Vite dev server; `pnpm build` for production; `pnpm preview` to serve a build locally.
-- Legacy Angular (reference only): `npm run start` (alias for `ng serve`) from `../nextintranet_frontend_old/` to run on `:4200`; `npm run build` to produce `dist/`.
-- Electron app: `npm run start` from `NextIntranet_browser/` to launch Electron; `npm run make` for distributables.
-- Full stack via Docker: `docker compose up --build` from repo root (uses `.env`).
+## What is active
 
-## Adding or Updating Frontend Dependencies (`nextintranet_frontend`)
-- Always update dependencies from the workspace root `nextintranet_frontend/` so that `pnpm-lock.yaml` stays in sync.
-  - For app package deps: `pnpm add <pkg> -C packages/app`
-  - For core/ui/etc.: `pnpm add <pkg> -C packages/<workspace>`
-- After adding or updating a dependency, **always regenerate the lockfile**:
-  - `pnpm install --no-frozen-lockfile`
-- Before running Docker, make sure `pnpm-lock.yaml` is committed together with the `package.json` changes. This avoids `ERR_PNPM_OUTDATED_LOCKFILE` during `pnpm install --frozen-lockfile` in the image build.
-- If you hit `ERR_PNPM_OUTDATED_LOCKFILE` in CI or Docker:
-  - On host: run `pnpm install --no-frozen-lockfile` in `nextintranet_frontend/`.
-  - Rebuild the image without cache for the frontend:
-    - `docker compose build --no-cache frontend_react_v2`
-    - `docker compose up -d frontend_react_v2`
+- `nextintranet_backend/` — Django 6 API. Entry: `manage.py`. Apps: `nextintranet_backend` (users, auth, service tokens), `nextintranet_warehouse` (components, stock, labels, KiCad, MCP), `nextintranet_invoicing`, `nextintranet_production`.
+- `nextintranet_frontend/` — React + Vite + pnpm workspace. Real packages: `packages/app` (SPA) and `packages/core` (API client, auth, realtime, HW bridge).
+- `nextintranet_agent/` — local hardware agent (printer/scanner), runs **outside** Docker. Entry: `app.py`.
+- `NextIntranet_browser/` — Electron/Vue desktop shell; less active.
+- `nia/`, `nextIntranet_tools/`, root `package.json`/`node_modules` are legacy or side experiments. Confirm a module is active before editing.
 
-## User Access & Permissions
-- The system uses a user access control system for managing permissions.
-- User roles and permissions are managed through Django's authentication system in the backend.
-- Access control should be implemented at both the API level (Django) and enforced in the frontend clients.
-- `/api/v1/me/` now returns `access_permissions` via `UserSerializer`. Keep the field in the serializer and ensure auth token refresh preserves it.
+## Local development (Docker Compose)
 
-## Coding Style & Naming Conventions
-- React frontend: prefer framework-provided styles and components (shadcn/ui, TanStack Query, Radix) before introducing custom CSS; reuse shared UI in `nextintranet_frontend/packages/ui`.
-- React frontend: use the shared `LocationParentSelect` component (`nextintranet_frontend/packages/app/src/components/LocationParentSelect.tsx`) for hierarchical parent selection with search.
-- URL paths should use singular nouns (e.g., `/user`, `/store/category`).
-- Favor long-term maintainability when choosing approaches; avoid short-term hacks that increase future upkeep.
-- Notifications: use `sonner` for success/error confirmations on API requests and clipboard actions; include a short, user-facing problem statement on failures.
-- Links: provide copy-link actions for external URLs wherever practical.
-- TypeScript/JS: follow existing file patterns; avoid reformatting unrelated code.
-- Python (Django): follow module layout under `nextintranet_backend/` and keep app-level names consistent with existing apps.
-- S3 naming: use lowercase, hyphenated bucket names with environment suffixes (e.g., `nextintranet-dev`), and object keys like `uploads/<module>/<yyyy>/<mm>/<uuid>.<ext>`.
-- **UI Language**: All web interface elements (labels, buttons, descriptions, tooltips, etc.) must be in English.
+- Full stack: `docker compose up --build` → `http://localhost:9000`.
+- Build images with version metadata: `make build` or `make build-prod` (sets `GIT_COMMIT`, `GIT_BRANCH`, `BUILD_DATE`, `BUILD_METHOD` so `/api/v1/version/` works).
+- Django management commands must override the `web` entrypoint:
+  - `docker compose run --rm --entrypoint "" web python manage.py <command>`
+  - Common: `makemigrations`, `migrate`, `test`, `shell`
+- `web_asgi` container serves WebSockets at `/ws/`; `worker` runs Django-Q and does **not** hot-reload — restart it after task changes: `docker compose restart worker`.
+- Frontend:
+  - Dev: `cd nextintranet_frontend && pnpm dev` (or `docker compose run --rm frontend pnpm dev`)
+  - Typecheck: `pnpm typecheck` (root script recurses through packages that define it)
+  - Build: `pnpm build`
+- Root `package.json` and root `node_modules` are **not** the React workspace; do not run `yarn`/`npm` there for frontend work.
 
-## Testing Guidelines
-- Testing is not a priority at this stage; focus on feature development.
-- When tests are needed: React app uses `pnpm typecheck` today; Django uses `python manage.py test`.
-- Keep test names descriptive when they are written.
+## Frontend workspace quirks
 
-## Commit & Pull Request Guidelines
-- Commit messages are short, sentence-style phrases (no strict prefixes). Example: `layout improvement, isMobile signal for responsibility`.
-- PRs should describe the change, include reproduction steps, and add screenshots for UI changes.
-- Link related issues or tasks if applicable.
+- Package manager: `pnpm@9.15.0`. Workspace root: `nextintranet_frontend/`.
+- Add dependencies from the workspace root:
+  - `pnpm add <pkg> -C packages/app`
+  - `pnpm add <pkg> -C packages/core`
+  - Then `pnpm install --no-frozen-lockfile` to regenerate `pnpm-lock.yaml`.
+- Commit `package.json` and `pnpm-lock.yaml` together. If Docker hits `ERR_PNPM_OUTDATED_LOCKFILE`, run `pnpm install --no-frozen-lockfile` on the host and rebuild: `docker compose build --no-cache frontend`.
+- `tsconfig.json` still aliases `@nextintranet/ui` and `@nextintranet/warehouse`, but those packages do not exist yet; don't create them unless asked.
+- `packages/core` exports: `.`, `./api`, `./realtime`, `./auth`, `./hw`. Import aliases in `packages/app`: `@/` → `src/`, `@nextintranet/core` → `packages/core/src`.
 
-## Security & Configuration Tips
-- Keep secrets in `.env` (used by `docker-compose.yml`); do not commit credentials.
-- Backend expects Postgres and Redis when running via Docker.
-- Store uploaded data in S3-compatible storage; when using Docker locally, use MinIO as the S3 backend.
+## Backend conventions
 
-## Documentation (Markdown, dual publish)
+- Settings auto-load `.env` from the repo root (`nextintranet_backend/settings.py`). Keep real secrets in a local `.env` (gitignored).
+- Auth: JWT (`rest_framework_simplejwt`) + service tokens (`ServiceTokenAuthentication`). `/api/v1/me/` returns `access_permissions` via `UserSerializer`; keep it and preserve it on token refresh.
+- S3/MinIO is the default storage when `S3_ENDPOINT_URL` and `S3_STORAGE_BUCKET_NAME` are set. Bucket names: lowercase, hyphenated, env suffix (e.g. `nextintranet-dev`).
+- `nextintranet_plugins/` is imported as a plain Python package (not a Django app); it holds the plugin registry and driver definitions.
 
-- Source of truth: `documentation/content/**/*.md` with frontmatter (`title`, `description`, optional `draft: true`).
-- Public site: MkDocs Material → GitHub Pages (`.github/workflows/docs.yml`, config `documentation/mkdocs.yml`).
-- Intranet: authenticated routes `/docs/*` render the same Markdown; use `DocLink` for full-page deep links (`page`, `hash`) and `DocHelpButton` for contextual help in a sheet (`?help=` / `helpHash=` URL params supported).
-- After adding or renaming pages: update `documentation/mkdocs.yml` nav and run `pnpm docs:manifest` from `nextintranet_frontend/` (writes `documentation/manifest.json`).
-- Internal plans stay in `docs/` (see `docs/README.md`).
+## Code & UI conventions
 
-## Plugin System (In-Repo, Separatable Later)
-- Keep plugins isolated under dedicated modules; avoid cross-imports between core app and plugin internals.
-- Register plugins by `definition_key` and expose only stable API contracts; do not depend on internal module paths.
-- Support multiple instances per plugin with a user-facing name, `enabled` flag, and per-instance config.
-- Enforce access via role mappings; superadmin bypasses role checks.
-- Extension points in scope: `page.status`, `packets.actions`, `locations.actions`, `component.actions`, `printqueue.actions`, `documents.actions`.
-- Printing plugins must declare supported document/label types and enforce restrictions both in UI and backend.
-- Plugin actions may require runtime configuration; drive these forms from a schema to keep UI generic.
+- All UI text must be in English.
+- Frontend: prefer shadcn/ui, Radix, TanStack Query; avoid custom CSS. Shared code goes in `packages/core`. Reuse `LocationParentSelect` (`packages/app/src/components/LocationParentSelect.tsx`). Use `sonner` for notifications. Provide copy-link actions for external URLs.
+- URL paths use singular nouns (e.g. `/store/component`, `/store/location`).
+- S3 object keys: prefer `uploads/<module>/<yyyy>/<mm>/<uuid>.<ext>` for new uploads; existing modules vary, so follow the model you are touching.
 
-## MCP Server (Model Context Protocol)
+## Documentation
 
-NextIntranet exposes a warehouse MCP server at `/mcp` for AI agents (Claude Code, Claude Desktop, Cursor, etc.).
+- Source: `documentation/content/**/*.md` with frontmatter (`title`, `description`, optional `draft: true`).
+- Intranet renders authenticated `/docs/*`. Use `DocLink` for deep links and `DocHelpButton` for contextual help sheets.
+- Public site: MkDocs Material → GitHub Pages (`documentation/mkdocs.yml`, `.github/workflows/docs.yml`).
+- After adding/renaming pages, update `documentation/mkdocs.yml` nav and run `pnpm docs:manifest` from `nextintranet_frontend/` (writes `documentation/manifest.json`).
 
-- **User guide** (full tool list and setup): `documentation/content/guide/settings/mcp.md` — intranet `/docs/guide/settings/mcp`, public site after GitHub Pages deploy.
-- **Setup in UI**: Settings → Software (`/settings/software`) → Generate MCP config.
-- **Backend**: `nextintranet_warehouse/mcp_tools.py`; auth via ServiceToken scopes `mcp:read` / `mcp:write` and `X-Service-Token` header.
-- **Service tokens** (shared mechanics): `documentation/content/guide/settings/service-tokens.md`.
-- Nginx proxies `/mcp` to the Django container with SSE buffering disabled
-- After deploying MCP changes, restart **all** `web` containers/replicas together. Mixed versions behind a load balancer cause intermittent `Unknown tool` errors (discovery from one worker, execution on another).
+## Plugins
+
+- Keep plugins isolated; avoid cross-imports between core and plugin internals.
+- Register by `definition_key`; expose only stable API contracts.
+- Extension points: `page.status`, `packets.actions`, `locations.actions`, `component.actions`, `printqueue.actions`, `documents.actions`.
+- Enforce role mappings in UI and backend; superuser bypasses.
+- Printing plugins must declare supported document/label types and enforce them in UI + backend.
+
+## MCP server
+
+- Exposed at `/mcp` via `django-mcp-server`; tools live in `nextintranet_warehouse/mcp_tools.py`.
+- Auth: `X-Service-Token` header, scopes `mcp:read` / `mcp:write`.
+- After MCP changes, restart **all** `web` replicas together. Mixed versions behind a load balancer cause intermittent `Unknown tool` errors.
+
+## Hardware agent & KiCad
+
+- Hardware agent runs locally, not in Docker. See `nextintranet_agent/README.md` and root `README.md` for env vars (`NEXT_AGENT_TOKEN`, `NEXT_AGENT_ALLOWED_ORIGINS`, etc.).
+- KiCad HTTP library config is served at `/api/kicad/nextIntranet.kicad_httplib`; `root_url` comes from `SITE_URL` (`.env` / settings).
+
+## Testing & CI
+
+- Testing is not a current priority. When needed: Django `python manage.py test` (inside container), React `pnpm typecheck` (no unit test suite yet).
+- `.github/workflows/build.yml` builds/pushes backend and frontend images to GHCR on `main` and version tags.
+- `.github/workflows/docs.yml` deploys MkDocs to GitHub Pages when `documentation/**` changes.

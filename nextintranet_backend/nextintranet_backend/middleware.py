@@ -83,6 +83,9 @@ class LoginRequiredMiddleware:
         # Public build/version info
         if request.path.startswith('/api/v1/version'):
             return True
+        # Public PWA manifest (browser fetches it during install without auth)
+        if request.path.startswith('/api/v1/setting/branding/pwa-manifest.json'):
+            return True
         return any(request.path.startswith(path) for path in exempt_paths)
 
     def _has_service_token_header(self, request):

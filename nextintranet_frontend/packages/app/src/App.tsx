@@ -1,4 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { apiFetch, tokenStorage } from '@nextintranet/core';
 import { LoginPage } from './pages/LoginPage';
 import { HomePage } from './pages/HomePage';
 import { StorePage } from './pages/StorePage';
@@ -37,8 +40,35 @@ import { ProductionBomPage } from './pages/ProductionBomPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Layout } from './components/Layout';
 import { RequirePermission } from './components/RequirePermission';
+import { applyBrandingMeta, type BrandingSettings } from './lib/branding';
+
+function useBrandingMeta() {
+  const isAuthenticated = tokenStorage.isAuthenticated();
+  const { data: branding } = useQuery({
+    queryKey: ['branding-settings'],
+    queryFn: () => apiFetch<BrandingSettings>('/api/v1/setting/branding/'),
+    enabled: isAuthenticated,
+    staleTime: 1000 * 60 * 5,
+    retry: 1,
+  });
+
+  useEffect(() => {
+    applyBrandingMeta(branding);
+  }, [branding]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<BrandingSettings | null>).detail;
+      applyBrandingMeta(detail);
+    };
+    window.addEventListener('branding-updated', handler);
+    return () => window.removeEventListener('branding-updated', handler);
+  }, []);
+}
 
 export function App() {
+  useBrandingMeta();
+
   return (
     <BrowserRouter>
       <Routes>

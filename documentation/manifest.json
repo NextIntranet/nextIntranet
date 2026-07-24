@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-01T18:07:54.791356+00:00",
+  "generatedAt": "2026-07-22T12:32:12.835Z",
   "pages": [
     {
       "path": "",
@@ -126,6 +126,80 @@
           "level": 2,
           "text": "Extracting Later",
           "id": "extracting-later"
+        }
+      ]
+    },
+    {
+      "path": "developer/supplier-api-mapping",
+      "file": "developer/supplier-api-mapping.md",
+      "title": "Supplier API mapping",
+      "description": "How supplier API data is fetched and mapped into component fields.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "Supplier API Mapping",
+          "id": "supplier-api-mapping"
+        },
+        {
+          "level": 2,
+          "text": "Overview",
+          "id": "overview"
+        },
+        {
+          "level": 2,
+          "text": "Data model",
+          "id": "data-model"
+        },
+        {
+          "level": 2,
+          "text": "Step 1 — Fetch",
+          "id": "step-1--fetch"
+        },
+        {
+          "level": 2,
+          "text": "Step 2 — Apply",
+          "id": "step-2--apply"
+        },
+        {
+          "level": 3,
+          "text": "Mapping configuration shape",
+          "id": "mapping-configuration-shape"
+        },
+        {
+          "level": 3,
+          "text": "`source` — reading a value from the payload",
+          "id": "source--reading-a-value-from-the-payload"
+        },
+        {
+          "level": 3,
+          "text": "`target` — where the value is written",
+          "id": "target--where-the-value-is-written"
+        },
+        {
+          "level": 3,
+          "text": "`policy` — when to write",
+          "id": "policy--when-to-write"
+        },
+        {
+          "level": 3,
+          "text": "Collections: documents and parameters",
+          "id": "collections-documents-and-parameters"
+        },
+        {
+          "level": 3,
+          "text": "Result",
+          "id": "result"
+        },
+        {
+          "level": 2,
+          "text": "API endpoints",
+          "id": "api-endpoints"
+        },
+        {
+          "level": 2,
+          "text": "Adding a new mapped field",
+          "id": "adding-a-new-mapped-field"
         }
       ]
     },

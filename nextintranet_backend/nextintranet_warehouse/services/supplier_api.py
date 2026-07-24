@@ -311,7 +311,15 @@ def apply_supplier_mapping(
 
         if target.startswith("supplier_relation."):
             field_name = target.split(".", 1)[1]
-            if field_name not in {"api_price", "api_availability"}:
+            if field_name not in {
+                "api_price",
+                "api_availability",
+                "custom_url",
+                "symbol",
+                "description",
+            }:
+                continue
+            if not _policy_allows_update(policy, getattr(supplier_relation, field_name, None)):
                 continue
             if field_name == "api_price":
                 try:

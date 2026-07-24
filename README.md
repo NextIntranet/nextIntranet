@@ -1,118 +1,157 @@
 # NextIntranet
 
-## Documentation
+Warehouse management, production BOMs, label printing, and hardware integration — all in one self-hosted intranet platform.
 
-User and product documentation is maintained as Markdown in [`documentation/content/`](documentation/content/).
+## What it does
 
-- **Intranet** (after login): sidebar **Documentation** or `/docs/…`
-- **Public site**: built with MkDocs to GitHub Pages — see [`documentation/README.md`](documentation/README.md)
+- **Warehouse** — Components, stock packets, hierarchical locations, suppliers, reservations, and inventory campaigns
+- **Production** — Products, BOMs, and manufacturing notes
+- **Print** — Label queues and async render jobs with CUPS-based printer drivers
+- **KiCad** — HTTP library integration: pull symbols and footprints straight from your warehouse into KiCad
+- **MCP server** — Expose warehouse data to AI agents (Cursor, Claude, etc.) with scoped read/write access
+- **Hardware agent** — Local service bridging label printers and barcode scanners over HTTP/WebSocket
+- **Plugin system** — In-repo extension points for custom workflows, print drivers, and actions
+- **Granular access** — Role-based permissions plus service tokens for machine-to-machine auth
 
-Regenerate the intranet page index after edits: `pnpm docs:manifest` from `nextintranet_frontend/`.
-
-## KiCad Integration - HTTP Library
-
-NextIntranet provides a KiCad HTTP Library integration, allowing you to use components from the warehouse directly in KiCad.
-
-### Setup
-
-1. Download the library configuration file from:
-   ```
-   http://<your-server>/api/kicad/nextIntranet.kicad_httplib
-   ```
-
-2. In KiCad, go to **Preferences → Manage Symbol Libraries**
-
-3. Click **+** to add a new library
-
-4. Select library type **HTTP Library**
-
-5. Point to the downloaded `.kicad_httplib` file
-
-### Configuration
-
-The `root_url` in the `.kicad_httplib` file is automatically generated based on the `SITE_URL` setting in `nextintranet_backend/nextintranet_backend/settings.py`.
-
-To change the public URL, set the `SITE_URL` variable in your `.env` file or directly in `settings.py`:
+## Architecture
 
 ```
-SITE_URL=https://your-public-domain.com
+┌──────────────┐    ┌──────────────┐    ┌──────────────┐
+│   Frontend   │    │   Backend    │    │  HW Agent    │
+│ React + Vite │    │  Django 6    │    │  FastAPI     │
+│  shadcn/ui   │◄──►│  DRF + ASGI  │    │  (printers,  │
+│ pnpm ws      │    │  Channels    │    │   scanners)  │
+└──────┬───────┘    └──────┬───────┘    └──────┬───────┘
+       │                   │                   │
+       │       ┌───────────┴───────────┐       │
+       └───────┤    nginx :9000        ├───────┘
+               └───────────┬───────────┘
+                           │
+                   ┌───────┴───────┐
+                   │  Postgres 18  │
+                   │  Redis        │
+                   │  MinIO (S3)   │
+                   └───────────────┘
 ```
+
+| Component | Stack | Location |
+|-----------|-------|----------|
+| Backend API | Django 6, DRF, Django-Q, Daphne | `nextintranet_backend/` |
+| Frontend | React 19, Vite, shadcn/ui, TanStack Query | `nextintranet_frontend/packages/app` |
+| Core library | API client, auth, WebSocket, HW bridge | `nextintranet_frontend/packages/core` |
+| HW Agent | FastAPI, aiohttp, pycups | `nextintranet_agent/` |
+| Docs | MkDocs Material → GitHub Pages | `documentation/` |
+
+## Quick start
+
+```bash
+# 1. Clone and set up environment
+cp .env.example .env    # edit with your secrets
+
+# 2. Start everything
+docker compose up --build
+
+# 3. Open http://localhost:9000
+```
+
+The stack includes Postgres 18, Redis, MinIO (S3-compatible storage), and nginx.
+All services run inside Docker except the [HW Agent](#hw-agent), which runs locally on the machine with physical printers/scanners.
+
+Build production images with version metadata:
+
+```bash
+make build-prod    # sets GIT_COMMIT, GIT_BRANCH, BUILD_DATE
+```
+
+## Django management
+
+Management commands run through the `web` container:
+
+```bash
+docker compose run --rm --entrypoint "" web python manage.py <command>
+# Examples:
+docker compose run --rm --entrypoint "" web python manage.py migrate
+docker compose run --rm --entrypoint "" web python manage.py test
+docker compose run --rm --entrypoint "" web python manage.py shell
+```
+
+After changing background task code, restart the worker (it does **not** hot-reload):
+
+```bash
+docker compose restart worker
+```
+
+## Frontend development
+
+The frontend is a pnpm workspace at `nextintranet_frontend/`:
+
+```bash
+cd nextintranet_frontend
+pnpm dev                 # Vite dev server
+pnpm --filter @nextintranet/app typecheck
+pnpm --filter @nextintranet/app build
+```
+
+Package manager: `pnpm@9.15.0`. Add dependencies from the workspace root:
+
+```bash
+pnpm add <pkg> -C packages/app     # app-specific
+pnpm add <pkg> -C packages/core    # shared core
+pnpm install --no-frozen-lockfile  # regenerate lockfile
+```
+
+Commit `package.json` and `pnpm-lock.yaml` together.
+
+## KiCad Integration
+
+Use warehouse components directly in KiCad via HTTP library:
+
+1. Download the config from `http://<your-server>/api/kicad/nextIntranet.kicad_httplib`
+2. In KiCad → **Preferences → Manage Symbol Libraries** → add **HTTP Library**
+3. Point to the downloaded file
+
+Set `SITE_URL` in `.env` to control the public URL the config file advertises.
 
 ## HW Agent
 
-Local service for printing and serial device access (barcode scanners). The agent runs on the machine with connected printers/scanners and exposes an HTTP/WebSocket API.
-
-### Running the Agent
+The hardware agent connects physical printers and barcode scanners to NextIntranet. It runs **outside Docker** on the machine with the hardware.
 
 ```bash
 cd nextintranet_agent
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-# Run with configuration
 NEXT_AGENT_ALLOWED_ORIGINS="http://localhost:9000" \
 NEXT_AGENT_TOKEN="your-secret-token" \
 python3 app.py
 ```
 
-For background execution (e.g. via tmux):
-
-```bash
-tmux new-session -d -s agent '
-  NEXT_AGENT_ALLOWED_ORIGINS="http://localhost:9000,http://localhost:5173" \
-  NEXT_AGENT_TOKEN="token" \
-  python3 /path/to/nextintranet_agent/app.py
-'
-```
-
-### Environment Variables
-
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `NEXT_AGENT_ID` | `agent-local` | Agent identifier |
-| `NEXT_AGENT_TOKEN` | _(none)_ | Auth token (required for secure access) |
-| `NEXT_AGENT_ALLOWED_ORIGINS` | _(none)_ | Comma-separated CORS origins (e.g. `http://localhost:9000`) |
-| `NEXT_AGENT_STATION_ID` | _(none)_ | Default station ID for events |
+| `NEXT_AGENT_TOKEN` | *(required)* | Auth token for secure access |
+| `NEXT_AGENT_ALLOWED_ORIGINS` | *(required)* | CORS origins (comma-separated) |
 | `NEXT_AGENT_HOST` | `0.0.0.0` | Bind address |
 | `NEXT_AGENT_PORT` | `9101` | Listen port |
+| `NEXT_AGENT_STATION_ID` | *(none)* | Default station identifier |
 
-### Frontend Configuration
+Then add the agent in NextIntranet UI → **Hardware** → **Add agent** with the base URL and token.
 
-In NextIntranet UI, go to **Hardware** page and add a new agent:
+## MCP Server
 
-- **Base URL:** `http://localhost:9101`
-- **Token:** value of `NEXT_AGENT_TOKEN`
-- **Capabilities:** `print` (or leave empty for all)
-- **Agent config (JSON):**
+The MCP server is exposed at `/mcp` and lets AI agents search and update warehouse data. Auth is via service token with `X-Service-Token` header and `mcp:read` / `mcp:write` scopes.
 
-```json
-{
-  "print": {
-    "defaultPrinter": "TSC_TE310_Network",
-    "options": {
-      "media": "Custom.60x40mm"
-    }
-  }
-}
-```
+See [MCP integration](documentation/content/guide/settings/mcp.md) for setup instructions.
 
-For A4 printer as default:
+## Documentation
 
-```json
-{
-  "print": {
-    "defaultPrinter": "Canon-LBP663C-UFR-II"
-  }
-}
-```
+- **Source**: `documentation/content/**/*.md`
+- **In-app**: authenticated at `/docs/…`
+- **Public**: MkDocs Material → GitHub Pages — see `documentation/mkdocs.yml`
+- After editing docs, regenerate the intranet index: `cd nextintranet_frontend && pnpm docs:manifest`
 
-### Troubleshooting
+## Further reading
 
-**WebSocket connection failed:**
-- Check that `NEXT_AGENT_ALLOWED_ORIGINS` includes the frontend origin (e.g. `http://localhost:9000`)
-- Verify agent is running: `curl -H "X-Agent-Token: <token>" http://localhost:9101/v1/status`
-
-**No printers found:**
-- Ensure CUPS is installed and printers are configured: `lpstat -a`
-- Install `pycups`: `pip install pycups`
+- [Product overview](documentation/content/product/overview.md) — capabilities and audience
+- [Getting started](documentation/content/guide/getting-started.md) — first steps inside the app
+- [Plugin system](documentation/content/developer/plugin-system.md) — how to extend NextIntranet
+- `CLAUDE.md` and `AGENTS.md` — detailed development conventions and stack notes

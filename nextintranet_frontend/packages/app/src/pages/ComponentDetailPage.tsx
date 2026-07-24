@@ -132,6 +132,7 @@ interface SupplierRelation {
   description?: string | null
   custom_url?: string | null
   url?: string | null
+  api_price?: number | string | null
   api_fetched_at?: string | null
   api_applied_at?: string | null
 }
@@ -365,6 +366,9 @@ export function ComponentDetailPage() {
     count: "",
     description: "",
     isActive: true,
+    buyComponents: false,
+    supplierRelationId: "",
+    unitPrice: "",
   })
   const [supplierForm, setSupplierForm] = useState({
     supplierId: "",
@@ -607,6 +611,9 @@ export function ComponentDetailPage() {
       count: number
       description?: string
       is_active?: boolean
+      buy?: boolean
+      supplier_relation?: string
+      unit_price?: number
     }) =>
       apiFetch(`/api/v1/store/component/${id}/packet/`, {
         method: "POST",
@@ -617,7 +624,7 @@ export function ComponentDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["component-activities", id] })
       queryClient.invalidateQueries({ queryKey: ["component-history", id] })
       setPacketSheetOpen(false)
-      setPacketForm({ locationId: "", count: "", description: "", isActive: true })
+      setPacketForm({ locationId: "", count: "", description: "", isActive: true, buyComponents: false, supplierRelationId: "", unitPrice: "" })
       toast.success("Packet created.")
     },
     onError: () => {
@@ -925,6 +932,9 @@ export function ComponentDetailPage() {
       count: "",
       description: "",
       isActive: true,
+      buyComponents: false,
+      supplierRelationId: "",
+      unitPrice: "",
     })
     setPacketSheetOpen(true)
   }
@@ -934,12 +944,26 @@ export function ComponentDetailPage() {
     if (!id || !packetForm.locationId || Number.isNaN(countValue)) {
       return
     }
+    if (packetForm.buyComponents && !packetForm.supplierRelationId) {
+      toast.error("Select a supplier to buy from.")
+      return
+    }
+    const priceValue = packetForm.unitPrice.trim()
     createPacketMutation.mutate({
       component: id,
       location: packetForm.locationId,
       count: countValue,
       description: packetForm.description || undefined,
       is_active: packetForm.isActive,
+      ...(packetForm.buyComponents
+        ? {
+            buy: true,
+            supplier_relation: packetForm.supplierRelationId,
+            ...(priceValue !== "" && !Number.isNaN(Number(priceValue))
+              ? { unit_price: Number(priceValue) }
+              : {}),
+          }
+        : {}),
     })
   }
 
@@ -1171,6 +1195,13 @@ export function ComponentDetailPage() {
   }))
   const selectedLocationOption = locationOptions.find(
     (option) => option.value === packetForm.locationId,
+  )
+  const buySupplierOptions: OptionType[] = (component?.suppliers ?? []).map((relation) => ({
+    value: relation.id,
+    label: `${relation.supplier?.name || "Supplier"}${relation.symbol ? ` · ${relation.symbol}` : ""}`,
+  }))
+  const selectedBuySupplierOption = buySupplierOptions.find(
+    (option) => option.value === packetForm.supplierRelationId,
   )
   const selectedSupplierOption = supplierOptions.find(
     (option) => option.value === supplierForm.supplierId,
@@ -3104,6 +3135,69 @@ export function ComponentDetailPage() {
                 }
               />
             </div>
+            <div className="space-y-3 rounded-lg border border-border/70 px-4 py-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Buy components</p>
+                  <p className="text-xs text-muted-foreground">
+                    Record the initial stock as a purchase with price and supplier.
+                  </p>
+                </div>
+                <Switch
+                  checked={packetForm.buyComponents}
+                  onCheckedChange={(checked) =>
+                    setPacketForm({
+                      ...packetForm,
+                      buyComponents: checked,
+                      supplierRelationId: checked ? packetForm.supplierRelationId : "",
+                      unitPrice: checked ? packetForm.unitPrice : "",
+                    })
+                  }
+                />
+              </div>
+              {packetForm.buyComponents && (
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Supplier *</label>
+                    <Select
+                      classNamePrefix="rs"
+                      isSearchable
+                      options={buySupplierOptions}
+                      value={selectedBuySupplierOption || null}
+                      placeholder={
+                        buySupplierOptions.length ? "Select supplier" : "No suppliers assigned"
+                      }
+                      noOptionsMessage={() => "No suppliers assigned to this component"}
+                      styles={selectStyles}
+                      onChange={(option: SingleValue<OptionType>) => {
+                        const relationId = option?.value || ""
+                        const relation = component?.suppliers?.find((r) => r.id === relationId)
+                        const apiPrice =
+                          relation?.api_price != null ? String(relation.api_price) : ""
+                        setPacketForm((prev) => ({
+                          ...prev,
+                          supplierRelationId: relationId,
+                          unitPrice: apiPrice || prev.unitPrice,
+                        }))
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">
+                      Unit price (optional)
+                    </label>
+                    <Input
+                      type="number"
+                      value={packetForm.unitPrice}
+                      onChange={(e) =>
+                        setPacketForm({ ...packetForm, unitPrice: e.target.value })
+                      }
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">Description</label>
               <textarea
@@ -3240,7 +3334,18 @@ export function ComponentDetailPage() {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Supplier symbol</label>
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-foreground">Supplier symbol</label>
+                {component?.name && (
+                  <button
+                    type="button"
+                    onClick={() => setSupplierForm({ ...supplierForm, symbol: component.name })}
+                    className="text-xs text-primary hover:underline underline-offset-2"
+                  >
+                    Use component name
+                  </button>
+                )}
+              </div>
               <Input
                 value={supplierForm.symbol}
                 onChange={(e) => setSupplierForm({ ...supplierForm, symbol: e.target.value })}
