@@ -230,7 +230,7 @@ def _extract_tstamp(comp: ET.Element) -> str | None:
 
 def _parse_netlist_components(xml_bytes: bytes):
     root = ET.fromstring(xml_bytes)
-    groups: dict[tuple[str, str, str, bool], dict[str, Any]] = {}
+    groups: dict[tuple[str, str, str, bool, bool], dict[str, Any]] = {}
 
     for comp in root.findall(".//components/comp") or root.findall(".//comp"):
         ref = _normalize_text(comp.get("ref"))
@@ -238,6 +238,7 @@ def _parse_netlist_components(xml_bytes: bytes):
         props = _extract_properties(comp)
 
         dnp = any(name.lower() == "dnp" for name in props.keys())
+        exclude_from_bom = any(name.lower() == "exclude_from_bom" for name in props.keys())
 
         libsource = comp.find("libsource")
         lib_part = _normalize_text(libsource.get("part") if libsource is not None else "")
@@ -257,6 +258,7 @@ def _parse_netlist_components(xml_bytes: bytes):
             footprint,
             str(linked_component.id) if linked_component else "",
             dnp,
+            exclude_from_bom,
         )
 
         if group_key not in groups:
@@ -267,6 +269,7 @@ def _parse_netlist_components(xml_bytes: bytes):
                 "datasheet": datasheet,
                 "bom_description": description,
                 "dnp": dnp,
+                "exclude_from_bom": exclude_from_bom,
                 "needs_review": needs_review,
                 "component": linked_component,
                 "shop": _extract_shop(fields, props),
@@ -291,6 +294,7 @@ def _parse_netlist_components(xml_bytes: bytes):
                 "datasheet": datasheet,
                 "description": description,
                 "dnp": dnp,
+                "exclude_from_bom": exclude_from_bom,
                 "fields": fields,
                 "properties": props,
                 "raw": _element_to_dict(comp),
@@ -311,6 +315,7 @@ def _parse_netlist_components(xml_bytes: bytes):
             "datasheet": group["datasheet"],
             "bom_description": group["bom_description"],
             "dnp": group["dnp"],
+            "exclude_from_bom": group["exclude_from_bom"],
         }
         rows.append(
             {
@@ -322,6 +327,7 @@ def _parse_netlist_components(xml_bytes: bytes):
                 "datasheet": group["datasheet"],
                 "bom_description": group["bom_description"],
                 "dnp": group["dnp"],
+                "exclude_from_bom": group["exclude_from_bom"],
                 "needs_review": group["needs_review"],
                 "component": group["component"],
                 "source_type": "imported",
@@ -599,6 +605,7 @@ def _assign_component_to_refs(
         datasheet=line.datasheet,
         bom_description=line.bom_description,
         dnp=line.dnp,
+        exclude_from_bom=line.exclude_from_bom,
         needs_review=line.needs_review,
         import_snapshot={},
     )
@@ -638,6 +645,7 @@ def _apply_import_rows(template: Template, parsed_rows: list[dict[str, Any]], mo
             datasheet=row.get("datasheet"),
             bom_description=row.get("bom_description"),
             dnp=bool(row.get("dnp")),
+            exclude_from_bom=bool(row.get("exclude_from_bom")),
             needs_review=bool(row.get("needs_review")),
             import_snapshot=row.get("import_snapshot") or {},
         )
@@ -708,6 +716,7 @@ def _clone_template_series(
             datasheet=item.datasheet,
             bom_description=item.bom_description,
             dnp=item.dnp,
+            exclude_from_bom=item.exclude_from_bom,
             needs_review=item.needs_review,
             import_snapshot=item.import_snapshot,
             sourced_total=0,
@@ -958,6 +967,7 @@ class TemplateViewSet(viewsets.ModelViewSet):
                     "placed_total": float(line.placed_total),
                     "qty_per_board": line.qty_per_board,
                     "dnp": line.dnp,
+                    "exclude_from_bom": line.exclude_from_bom,
                 }
             )
         return Response(
@@ -1255,6 +1265,7 @@ class TemplateViewSet(viewsets.ModelViewSet):
                 "value": line.value,
                 "footprint": line.footprint,
                 "dnp": line.dnp,
+                "exclude_from_bom": line.exclude_from_bom,
                 "linked_component": str(line.component_id) if line.component_id else None,
                 "linked_component_name": line.component.name if line.component else None,
                 "needed_total": float(needed_total),
@@ -1356,6 +1367,7 @@ class TemplateViewSet(viewsets.ModelViewSet):
                     datasheet="",
                     bom_description="Added from scanner in production mode.",
                     dnp=False,
+                    exclude_from_bom=False,
                     needs_review=False,
                     import_snapshot={},
                 )
@@ -1527,7 +1539,7 @@ class TemplateViewSet(viewsets.ModelViewSet):
 
         lines = template.components.select_related("component").all().order_by("position", "id")
         if not include_dnp:
-            lines = lines.filter(dnp=False)
+            lines = lines.filter(dnp=False, exclude_from_bom=False)
 
         pdf = FPDF(orientation="P", unit="mm", format="A4")
         pdf.set_auto_page_break(auto=True, margin=12)

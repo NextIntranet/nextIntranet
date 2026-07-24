@@ -75,7 +75,7 @@ class TemplateComponentSerializer(serializers.ModelSerializer):
             'source_type', 'ref_group', 'refs', 'ref_items',
             'qty_per_board', 'qty_override_total',
             'value', 'footprint', 'datasheet', 'bom_description',
-            'dnp', 'needs_review', 'import_snapshot',
+            'dnp', 'exclude_from_bom', 'needs_review', 'import_snapshot',
             'sourced_total', 'placed_total', 'scans',
             'created_at'
         ]

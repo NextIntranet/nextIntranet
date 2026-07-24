@@ -328,6 +328,11 @@ class TemplateComponent(NIModel):
         default=False,
         verbose_name=_('Do not populate'),
     )
+    exclude_from_bom = models.BooleanField(
+        default=False,
+        verbose_name=_('Exclude from BOM'),
+        help_text=_('Component is populated on the board but omitted from the BOM printout.'),
+    )
     needs_review = models.BooleanField(
         default=False,
         verbose_name=_('Needs review'),

@@ -83,11 +83,17 @@ type BomRow = {
   datasheet?: string | null
   bom_description?: string | null
   dnp: boolean
+  exclude_from_bom: boolean
   needs_review: boolean
   import_snapshot?: Record<string, unknown> | null
   sourced_total?: string | number | null
   placed_total?: string | number | null
   scans?: BomRowScan[]
+  _grouped?: boolean
+  _valueMismatch?: boolean
+  _footprintMismatch?: boolean
+  _bomDescriptionMismatch?: boolean
+  _groupedLineIds?: string[]
 }
 
 type BomRowScan = {
@@ -160,6 +166,7 @@ type AvailabilityRow = {
   value?: string | null
   footprint?: string | null
   dnp: boolean
+  exclude_from_bom: boolean
   linked_component?: string | null
   linked_component_name?: string | null
   needed_total: number
@@ -309,7 +316,8 @@ const lineBadge = (line: BomRow) => {
     String((snapshot as Record<string, unknown>).footprint ?? "") !== String(line.footprint ?? "") ||
     String((snapshot as Record<string, unknown>).bom_description ?? "") !== String(line.bom_description ?? "") ||
     String((snapshot as Record<string, unknown>).datasheet ?? "") !== String(line.datasheet ?? "") ||
-    Boolean((snapshot as Record<string, unknown>).dnp) !== Boolean(line.dnp)
+    Boolean((snapshot as Record<string, unknown>).dnp) !== Boolean(line.dnp) ||
+    Boolean((snapshot as Record<string, unknown>).exclude_from_bom) !== Boolean(line.exclude_from_bom)
   return changed ? "Modified" : "Imported"
 }
 
@@ -421,7 +429,9 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
 
   const [activeTab, setActiveTab] = useState<TabKey>("bom")
   const [hideDnp, setHideDnp] = useState(true)
+  const [hideExcluded, setHideExcluded] = useState(true)
   const [groupedView, setGroupedView] = useState(true)
+  const [groupByComponent, setGroupByComponent] = useState(false)
   const [autoSyncIbomCompletion, setAutoSyncIbomCompletion] = useState(true)
   const [followIbomHover, setFollowIbomHover] = useState(true)
   const [importMode, setImportMode] = useState<"replace" | "merge">("replace")
@@ -1109,13 +1119,85 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     if (hideDnp) {
       rows = rows.filter((line) => !line.dnp)
     }
+    if (hideExcluded) {
+      rows = rows.filter((line) => !line.exclude_from_bom)
+    }
+
+    if (groupByComponent) {
+      const byComponent = new Map<string | null, BomRow[]>()
+      for (const line of rows) {
+        const key = line.component || null
+        const group = byComponent.get(key) || []
+        group.push(line)
+        byComponent.set(key, group)
+      }
+
+      const aggregated: BomRow[] = []
+      for (const [componentId, group] of byComponent.entries()) {
+        if (!componentId || group.length === 1) {
+          aggregated.push(...group)
+          continue
+        }
+
+        const allRefs = group.flatMap((line) => line.refs || [])
+        const refGroups = group.map((line) => line.ref_group).filter(Boolean) as string[]
+        const allValues = new Set(group.map((line) => line.value).filter(Boolean))
+        const allFootprints = new Set(group.map((line) => line.footprint).filter(Boolean))
+        const allDescriptions = new Set(group.map((line) => line.bom_description).filter(Boolean))
+        const allSources = new Set(group.map((line) => line.source_type))
+
+        const qtyPerBoard = group.reduce((sum, line) => sum + toNumber(line.qty_per_board), 0)
+        const neededTotal = group.reduce(
+          (sum, line) =>
+            sum +
+            (line.qty_override_total != null
+              ? toNumber(line.qty_override_total)
+              : toNumber(line.qty_per_board) * toNumber(selectedBom.qty_planned)),
+          0,
+        )
+
+        const first = group[0]
+        aggregated.push({
+          ...first,
+          id: first.id,
+          refs: [...new Set(allRefs)].sort(),
+          ref_group: refGroups.join(", ") || null,
+          qty_per_board: qtyPerBoard,
+          qty_override_total: neededTotal,
+          value: allValues.size === 1 ? first.value : `(${allValues.size} values)`,
+          footprint: allFootprints.size === 1 ? first.footprint : `(${allFootprints.size} footprints)`,
+          bom_description: allDescriptions.size === 1 ? first.bom_description : null,
+          dnp: group.some((line) => line.dnp),
+          exclude_from_bom: group.some((line) => line.exclude_from_bom),
+          needs_review: group.some((line) => line.needs_review),
+          source_type: allSources.size === 1 ? first.source_type : "manual",
+          import_snapshot: first.import_snapshot,
+          component_detail: first.component_detail,
+          component_name: first.component_name,
+          component_kicad_footprint: first.component_kicad_footprint,
+          _grouped: true,
+          _valueMismatch: allValues.size > 1,
+          _footprintMismatch: allFootprints.size > 1,
+          _bomDescriptionMismatch: allDescriptions.size > 1,
+          _groupedLineIds: group.map((line) => line.id),
+        } as BomRow)
+      }
+
+      aggregated.sort((a, b) => {
+        const nameA = a.component_name || a.value || ""
+        const nameB = b.component_name || b.value || ""
+        return nameA.localeCompare(nameB)
+      })
+      return aggregated
+    }
+
     rows.sort((a, b) => {
       const pa = `${a.footprint || ""}|${a.value || ""}|${a.ref_group || ""}`
       const pb = `${b.footprint || ""}|${b.value || ""}|${b.ref_group || ""}`
       return pa.localeCompare(pb)
     })
     return rows
-  }, [selectedBom, selectedBomComponents, hideDnp])
+  }, [selectedBom, selectedBomComponents, hideDnp, hideExcluded, groupByComponent])
 
   const ungroupedRows = useMemo(() => {
     return groupedRows.flatMap((line) => {
@@ -2278,7 +2360,21 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                 onClick={() => setGroupedView((value) => !value)}
                               >
                                 {groupedView ? "Ungrouped" : "Grouped"}
-                            </Button>
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setHideExcluded((value) => !value)}
+                              >
+                                {hideExcluded ? "Show Excl." : "Hide Excl."}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setGroupByComponent((value) => !value)}
+                              >
+                                {groupByComponent ? "By line" : "By component"}
+                              </Button>
                               {(() => {
                                 const linkedLines = selectedBomComponents.filter(
                                   (line) => line.component && !line.dnp,
@@ -2353,7 +2449,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                     <TableHead className="h-10 w-[400px] px-3 py-2 align-top">BOM</TableHead>
                                     <TableHead className="h-10 w-[320px] px-3 py-2 align-top">Component</TableHead>
                                     <TableHead className="h-10 px-3 py-2 align-top">Warehouse</TableHead>
-                                    <TableHead className="h-10 px-3 py-2 align-top">Actions</TableHead>
+                                    <TableHead className="h-10 w-[180px] px-3 py-2 align-top">Actions</TableHead>
                                   </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -2491,9 +2587,29 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                                   DNP
                                                 </span>
                                               ) : null}
+                                              {line.exclude_from_bom ? (
+                                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                                                  Excl. BOM
+                                                </span>
+                                              ) : null}
                                               {line.needs_review ? (
                                                 <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">
                                                   Needs review
+                                                </span>
+                                              ) : null}
+                                              {line._valueMismatch ? (
+                                                <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700" title="Multiple values across grouped lines">
+                                                  ! Value
+                                                </span>
+                                              ) : null}
+                                              {line._footprintMismatch ? (
+                                                <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700" title="Multiple footprints across grouped lines">
+                                                  ! Footprint
+                                                </span>
+                                              ) : null}
+                                              {line._bomDescriptionMismatch ? (
+                                                <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-semibold text-rose-700" title="Multiple descriptions across grouped lines">
+                                                  ! Desc
                                                 </span>
                                               ) : null}
                                             </div>
@@ -2660,7 +2776,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                                   })
                                                 }
                                               >
-                                                Unlink
+                                                Unlnk
                                               </button>
                                             ) : null}
                                             <button
@@ -2674,7 +2790,20 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                                 })
                                               }
                                             >
-                                              Toggle DNP
+                                              {line.dnp ? "DNP on" : "DNP off"}
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
+                                              disabled={selectedBom.status === "locked"}
+                                              onClick={() =>
+                                                updateLineMutation.mutate({
+                                                  lineId,
+                                                  payload: { exclude_from_bom: !line.exclude_from_bom },
+                                                })
+                                              }
+                                            >
+                                              {line.exclude_from_bom ? "Excl. on" : "Excl. off"}
                                             </button>
                                             <button
                                               type="button"
@@ -2685,7 +2814,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                                 deleteLineMutation.mutate(lineId)
                                               }}
                                             >
-                                              Delete
+                                              Del
                                             </button>
                                           </div>
                                         </TableCell>

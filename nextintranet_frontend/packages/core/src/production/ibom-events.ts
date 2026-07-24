@@ -62,5 +62,6 @@ export interface IbomStateResponse {
     placed_total: number;
     qty_per_board: number;
     dnp: boolean;
+    exclude_from_bom: boolean;
   }[];
 }
