@@ -40,7 +40,7 @@ import { ProductionBomPage } from './pages/ProductionBomPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Layout } from './components/Layout';
 import { RequirePermission } from './components/RequirePermission';
-import { applyBrandingMeta, type BrandingSettings } from './lib/branding';
+import { applyBrandingMeta, setInstallPrompt, type BrandingSettings, type BeforeInstallPromptEvent } from './lib/branding';
 
 function useBrandingMeta() {
   const isAuthenticated = tokenStorage.isAuthenticated();
@@ -68,6 +68,15 @@ function useBrandingMeta() {
 
 export function App() {
   useBrandingMeta();
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      event.preventDefault();
+      setInstallPrompt(event as BeforeInstallPromptEvent);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
 
   return (
     <BrowserRouter>

@@ -2,7 +2,16 @@ import { useEffect, useRef, useState } from "react"
 import { Link } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiFetch, getRealtimeClient, type RealtimeEvent } from "@nextintranet/core"
-import { Cpu, ImageIcon, KeyRound, Laptop, LayoutTemplate, RefreshCw, Tags } from "lucide-react"
+import {
+  Cpu,
+  Download,
+  ImageIcon,
+  KeyRound,
+  Laptop,
+  LayoutTemplate,
+  RefreshCw,
+  Tags,
+} from "lucide-react"
 import { toast } from "sonner"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -15,6 +24,7 @@ import {
   useQuickActionsFabVisible,
 } from "@/lib/quickActionsFabVisibility"
 import { resolveFileUrl } from "@/lib/printing"
+import { usePwaInstall } from "@/lib/branding"
 
 interface BrandingSettings {
   company_name: string
@@ -174,6 +184,8 @@ export function SettingsPage() {
       brandingForm.theme_color !== (branding.theme_color || "#0f172a") ||
       brandingForm.background_color !== (branding.background_color || "#ffffff")
     : false
+
+  const { isInstallable, isInstalled, isIos, prompt: installApp } = usePwaInstall()
 
   const handleLogoFile = (file: File | null) => {
     if (!file) {
@@ -527,6 +539,27 @@ export function SettingsPage() {
                 Only administrators can change branding.
               </p>
             )}
+
+            <div className="space-y-2 border-t border-border pt-4">
+              <Label>Install app</Label>
+              {isInstalled ? (
+                <p className="text-sm text-muted-foreground">App is installed.</p>
+              ) : isInstallable ? (
+                <Button size="sm" onClick={() => installApp()}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Install app
+                </Button>
+              ) : isIos ? (
+                <p className="text-sm text-muted-foreground">
+                  On iOS, tap Share → Add to Home Screen to install.
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Install prompt is not available in this browser. Use the browser menu to install
+                  the app.
+                </p>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>

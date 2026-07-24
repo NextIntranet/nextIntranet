@@ -1,3 +1,6 @@
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
+
 export interface BrandingSettings {
   company_name: string;
   company_short_name: string;
@@ -72,4 +75,93 @@ export function resetBrandingMeta() {
   setMetaTag('meta[name="apple-mobile-web-app-title"]', 'content', DEFAULT_NAME);
   setMetaTag('meta[name="msapplication-TileColor"]', 'content', DEFAULT_THEME_COLOR);
   setLinkTag('link[rel="apple-touch-icon"]', '/apple-touch-icon.png');
+}
+
+// ------------------------------------------------------------------
+// PWA manual install prompt
+// ------------------------------------------------------------------
+
+export interface BeforeInstallPromptEvent extends Event {
+  readonly platforms: string[];
+  readonly userChoice: Promise<{
+    outcome: 'accepted' | 'dismissed';
+    platform: string;
+  }>;
+  prompt(): Promise<void>;
+}
+
+let deferredInstallPrompt: BeforeInstallPromptEvent | null = null;
+
+function notifyInstallableChanged() {
+  window.dispatchEvent(
+    new CustomEvent('pwa-installable', { detail: { installable: !!deferredInstallPrompt } })
+  );
+}
+
+export function setInstallPrompt(event: BeforeInstallPromptEvent | null) {
+  deferredInstallPrompt = event;
+  notifyInstallableChanged();
+}
+
+export function getInstallPrompt(): BeforeInstallPromptEvent | null {
+  return deferredInstallPrompt;
+}
+
+function isRunningAsInstalledPwa(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    // iOS standalone mode
+    ('standalone' in window.navigator && Boolean(window.navigator.standalone))
+  );
+}
+
+export interface PwaInstallState {
+  isInstallable: boolean;
+  isInstalled: boolean;
+  isIos: boolean;
+  prompt: () => Promise<void>;
+}
+
+export function usePwaInstall(): PwaInstallState {
+  const [isInstallable, setIsInstallable] = useState(() => !!deferredInstallPrompt);
+  const [isInstalled, setIsInstalled] = useState(() => isRunningAsInstalledPwa());
+
+  useEffect(() => {
+    const handleInstallable = () => setIsInstallable(!!deferredInstallPrompt && !isRunningAsInstalledPwa());
+    const handleInstalled = () => {
+      deferredInstallPrompt = null;
+      setIsInstallable(false);
+      setIsInstalled(true);
+    };
+
+    window.addEventListener('pwa-installable', handleInstallable);
+    window.addEventListener('appinstalled', handleInstalled);
+
+    return () => {
+      window.removeEventListener('pwa-installable', handleInstallable);
+      window.removeEventListener('appinstalled', handleInstalled);
+    };
+  }, []);
+
+  const prompt = async () => {
+    if (!deferredInstallPrompt) {
+      toast.info('Install is not available in this browser.');
+      return;
+    }
+    await deferredInstallPrompt.prompt();
+    const choice = await deferredInstallPrompt.userChoice;
+    if (choice.outcome === 'accepted') {
+      toast.success('App installed.');
+    } else {
+      toast.info('Install dismissed.');
+    }
+  };
+
+  return {
+    isInstallable,
+    isInstalled,
+    isIos: /iPad|iPhone|iPod/.test(navigator.userAgent),
+    prompt,
+  };
 }
