@@ -1,6 +1,10 @@
+import datetime
+
+import requests
 from mcp_server import MCPToolset
 from rest_framework.exceptions import PermissionDenied
 
+from django.core.cache import cache
 from django.db.models import Q, Sum
 
 from nextintranet_backend.models.serviceToken import ServiceToken
@@ -84,11 +88,41 @@ def _set_document_primary(document: Document) -> None:
 MCP_LIST_DEFAULT_LIMIT = 500
 MCP_LIST_MAX_LIMIT = 2000
 
+CNB_EXRATES_URL = "https://api.cnb.cz/cnbapi/exrates/daily"
+CNB_RATE_CACHE_TTL = 60 * 60 * 24  # published daily rates never change retroactively
+CNB_RATE_LOOKBACK_DAYS = 7  # covers weekends and short holiday runs
+
 
 def _clamp_list_limit(limit: int, default: int = MCP_LIST_DEFAULT_LIMIT, maximum: int = MCP_LIST_MAX_LIMIT) -> int:
     if limit <= 0:
         return default
     return min(max(limit, 1), maximum)
+
+
+def _cnb_rates_for_date(day: datetime.date) -> list[dict]:
+    cache_key = f"cnb_exrates_daily:{day.isoformat()}"
+    rates = cache.get(cache_key)
+    if rates is None:
+        response = requests.get(CNB_EXRATES_URL, params={"date": day.isoformat()}, timeout=10)
+        response.raise_for_status()
+        rates = response.json().get("rates", [])
+        cache.set(cache_key, rates, CNB_RATE_CACHE_TTL)
+    return rates
+
+
+def _cnb_rate_for_currency(date_str: str, currency: str):
+    """Find the CNB rate (CZK per 1 unit of `currency`) for `date_str` (YYYY-MM-DD),
+    walking backwards up to CNB_RATE_LOOKBACK_DAYS if no rate was published that day
+    (weekends, public holidays). Returns (rate, actual_rate_date) or None.
+    """
+    currency = currency.upper()
+    day = datetime.date.fromisoformat(date_str)
+    for _ in range(CNB_RATE_LOOKBACK_DAYS):
+        for entry in _cnb_rates_for_date(day):
+            if entry["currencyCode"] == currency:
+                return entry["rate"] / entry["amount"], day.isoformat()
+        day -= datetime.timedelta(days=1)
+    return None
 
 
 def _has_scope(request, *scopes):
@@ -636,6 +670,41 @@ class WarehouseReadToolset(MCPToolset):
             .order_by("-created_at")[:row_limit]
         )
         return MCPPrintQueueItemSerializer(items, many=True).data
+
+    def convert_currency(
+        self,
+        amount: float,
+        currency: str,
+        date: str,
+    ) -> dict:
+        """Convert an amount from a foreign currency to CZK using the official
+        Czech National Bank (CNB) daily exchange rate. Useful when entering
+        purchased components priced in USD/EUR/etc. to compute internal_price in CZK.
+
+        Falls back to the most recent earlier day if no rate was published for the
+        exact date (e.g. weekends, public holidays).
+
+        Args:
+            amount: Amount in the source currency.
+            currency: ISO 4217 currency code (e.g. "USD", "EUR").
+            date: Date the rate should apply to, in YYYY-MM-DD format (typically the
+                purchase/order date).
+        """
+        _require_read(self.request)
+
+        result = _cnb_rate_for_currency(date, currency)
+        if result is None:
+            raise ValueError(f"No CNB exchange rate found for {currency.upper()} near {date}.")
+        rate, rate_date = result
+
+        return {
+            "original_amount": amount,
+            "original_currency": currency.upper(),
+            "requested_date": date,
+            "rate_date": rate_date,
+            "rate_czk_per_unit": round(rate, 5),
+            "amount_czk": round(amount * rate, 2),
+        }
 
 
 class WarehouseWriteToolset(MCPToolset):
