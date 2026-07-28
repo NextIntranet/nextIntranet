@@ -4,10 +4,13 @@ import { Link } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
 import { CopyActions } from "@/components/CopyActions"
+import { SerialBadge, serialCodeFromPacket } from "@/components/packetSerial"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
 interface PacketInfo {
   id: string
+  serial_number?: number | null
+  serial_code?: string | null
   count?: number | string | null
   is_active?: boolean
   component?: {
@@ -97,7 +100,10 @@ export function PacketInfoPopover({
         <div className="flex items-start gap-2">
           <Package className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
           <div className="min-w-0">
-            <p className="break-all font-mono text-xs text-foreground">{packet.id}</p>
+            <p className="flex flex-wrap items-center gap-1.5 break-all font-mono text-xs text-foreground">
+              <SerialBadge code={serialCodeFromPacket(packet)} />
+              {packet.id}
+            </p>
             {packet.component?.name && (
               <p className="mt-1 truncate text-sm font-medium text-foreground">
                 {packet.component.name}

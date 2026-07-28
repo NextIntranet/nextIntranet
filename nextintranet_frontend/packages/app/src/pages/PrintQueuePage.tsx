@@ -22,6 +22,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Trash2 } from "lucide-react"
 import { ExtensionPoint } from "@/plugins/ExtensionPoint"
 import { PdfPrintDialog } from "@/components/PdfPrintDialog"
+import { QueueItemTarget } from "@/components/QueueItemTarget"
 import { cn } from "@/lib/utils"
 
 interface AgentPrinter {
@@ -609,19 +610,13 @@ export function PrintQueuePage() {
                   </TableRow>
                 ) : items.length ? (
                   items.map((item) => {
-                    const targetLabel =
-                      item.content_label ||
-                      (item.content_type_model
-                        ? `${item.content_type_model} ${item.object_id}`
-                        : item.object_id)
-
                     return (
                       <TableRow key={item.id} className="border-border/40">
                         <TableCell className="h-9 px-3 text-sm font-medium">
                           {formatKind(item.kind)}
                         </TableCell>
                         <TableCell className="h-9 px-3 text-sm text-muted-foreground">
-                          {targetLabel}
+                          <QueueItemTarget item={item} className="w-full" />
                         </TableCell>
                         <TableCell className="h-9 px-3 text-sm text-muted-foreground">
                           {formatStatus(item.status)}

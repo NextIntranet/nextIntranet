@@ -19,6 +19,7 @@ import { CopyActions } from "@/components/CopyActions"
 import { LocationDisplay } from "@/components/LocationDisplay"
 import { LocationParentSelect } from "@/components/LocationParentSelect"
 import { PacketInfoPopover } from "@/components/PacketInfoPopover"
+import { SerialBadge, serialCodeFromPacket } from "@/components/packetSerial"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -72,6 +73,8 @@ interface PacketLocation {
 
 interface Packet {
   id: string
+  serial_number?: number | null
+  serial_code?: string | null
   // DRF serializes the Decimal field as a string.
   count?: number | string | null
   is_active?: boolean
@@ -894,9 +897,10 @@ export function InventoryPacketListPage() {
                                 >
                                   <PacketInfoPopover packet={packet} openOnHover>
                                     <span
-                                      className={`truncate font-mono text-[10px] leading-tight ${inactiveRowClass || "text-muted-foreground"}`}
+                                      className={`inline-flex min-w-0 items-center gap-1 font-mono text-[10px] leading-tight ${inactiveRowClass || "text-muted-foreground"}`}
                                     >
-                                      {packet.id}
+                                      <SerialBadge code={serialCodeFromPacket(packet)} />
+                                      <span className="truncate">{packet.id}</span>
                                     </span>
                                   </PacketInfoPopover>
                                   <CopyActions

@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, transaction
 from django.core import validators
 from django.utils.translation import gettext_lazy as _
 from django.contrib.contenttypes.fields import GenericForeignKey
@@ -397,6 +397,13 @@ class Packet(NIModel):
         blank=True, null=True
     )
     description = models.TextField(blank=True, null=True, verbose_name=_('Description'))
+    serial_number = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        editable=False,
+        verbose_name=_('Serial number'),
+        help_text=_('Sequential number of the packet within the component (displayed as S001, S002, ...).'),
+    )
     is_trackable = models.BooleanField(default=False, help_text=_('Indicates if the component is trackable by individual pieces.'), verbose_name=_('Is trackable'))
     is_active = models.BooleanField(default=True, verbose_name=_('Is active'))
     date_added = models.DateTimeField(auto_now_add=True, verbose_name=_('Date added'))
@@ -410,6 +417,25 @@ class Packet(NIModel):
     def is_stocktaked(self, stocktaking):
         return self.operations.filter(reference=stocktaking).exists()
 
+    @property
+    def serial_code(self):
+        """Human-readable per-component packet code, e.g. 'S001'."""
+        if self.serial_number is None:
+            return ""
+        return f"S{self.serial_number:03d}"
+
+    def _next_serial_number(self):
+        """Return the next per-component serial number.
+
+        Must be called inside a transaction while holding a lock on the
+        component row (see save()).
+        """
+        Component.objects.select_for_update().get(pk=self.component_id)
+        last = Packet.objects.filter(
+            component_id=self.component_id,
+        ).aggregate(models.Max('serial_number'))['serial_number__max']
+        return (last or 0) + 1
+
     def __str__(self):
         location_name = self.location.name if self.location else "-"
         return f"{self.component.name} - {location_name}"
@@ -417,7 +443,23 @@ class Packet(NIModel):
     def save(self, *args, **kwargs):
         if self.location and not self.location.can_store_items:
             raise ValueError(_('The selected warehouse cannot store items.'))
+        if self._state.adding and self.serial_number is None:
+            # Assign the serial number and insert in the same transaction,
+            # holding a lock on the component row until commit so concurrent
+            # packet creation cannot pick the same number.
+            with transaction.atomic():
+                self.serial_number = self._next_serial_number()
+                super().save(*args, **kwargs)
+            return
         super().save(*args, **kwargs)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['component', 'serial_number'],
+                name='packet_unique_component_serial',
+            ),
+        ]
 
     def calculate(self):
         """

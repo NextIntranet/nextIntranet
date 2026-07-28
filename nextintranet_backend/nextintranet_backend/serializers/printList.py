@@ -35,6 +35,12 @@ class PrintItemSerializer(serializers.ModelSerializer):
         content = obj.content_object
         if not content:
             return None
+        if obj.content_type and obj.content_type.model == "packet":
+            serial_code = getattr(content, "serial_code", "") or ""
+            component = getattr(content, "component", None)
+            component_name = getattr(component, "name", "") if component else ""
+            detail = " ".join(part for part in [serial_code, component_name] if part)
+            return f"Packet {detail}".strip() if detail else f"Packet {obj.object_id}"
         if hasattr(content, "name") and content.name:
             return content.name
         return str(getattr(content, "id", content))

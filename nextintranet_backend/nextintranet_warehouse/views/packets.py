@@ -66,6 +66,7 @@ class PacketSerializer(serializers.ModelSerializer):
     external_identifiers = serializers.SerializerMethodField()
     inventory_op_count = serializers.IntegerField(read_only=True, required=False)
     price_source = serializers.SerializerMethodField()
+    serial_code = serializers.ReadOnlyField()
 
     class Meta:
         model = Packet
@@ -78,6 +79,8 @@ class PacketSerializer(serializers.ModelSerializer):
             'date_added',
             'inventory_op_count',
             'price_source',
+            'serial_number',
+            'serial_code',
         ]
 
     def get_price_source(self, instance):

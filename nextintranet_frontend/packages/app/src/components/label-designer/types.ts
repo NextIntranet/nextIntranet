@@ -97,6 +97,8 @@ export const PLACEHOLDERS: Record<LabelTargetType, PlaceholderOption[]> = {
     { value: "{component.id}", label: "Component ID" },
     { value: "{packet.uuid}", label: "Packet UUID" },
     { value: "{packet.uuid_short}", label: "Packet UUID (short)" },
+    { value: "{packet.serial_code}", label: "Packet S-code" },
+    { value: "{packet.serial_number}", label: "Packet serial number" },
     { value: "{packet.location}", label: "Packet location" },
     { value: "{packet.count}", label: "Stock count (at print time)" },
     { value: "{packet.barcode_url}", label: "Packet barcode URL" },
@@ -131,6 +133,8 @@ const SAMPLE_CONTEXTS: Record<LabelTargetType, Record<string, Record<string, str
     packet: {
       uuid: SAMPLE_UUID,
       uuid_short: SAMPLE_UUID.slice(0, 8),
+      serial_code: "S003",
+      serial_number: "3",
       location: "Building A/Room 12/Shelf 3",
       count: "100",
       barcode_url: `https://ni.ust.cz/?packet=${SAMPLE_UUID}&component=42`,

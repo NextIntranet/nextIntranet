@@ -12,6 +12,7 @@ import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
 import { LocationDisplay } from "@/components/LocationDisplay"
 import { LocationParentSelect } from "@/components/LocationParentSelect"
 import { PacketOperationSheet } from "@/components/PacketOperationSheet"
+import { SerialBadge, serialCodeFromPacket } from "@/components/packetSerial"
 import { PriceLabel } from "@/components/PriceLabel"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -48,6 +49,8 @@ interface ExternalIdentifier {
 
 interface PacketDetail {
   id: string
+  serial_number?: number | null
+  serial_code?: string | null
   description?: string | null
   count?: number | null
   itemValue?: number | null
@@ -538,7 +541,10 @@ export function PacketDetailPage() {
       <div className="mx-auto max-w-6xl px-4 py-6 lg:px-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
-            <h1 className="text-2xl font-semibold text-foreground">Packet</h1>
+            <h1 className="flex items-center gap-2 text-2xl font-semibold text-foreground">
+              Packet
+              <SerialBadge code={serialCodeFromPacket(packet)} className="px-2 py-1 text-sm" />
+            </h1>
             <div className="flex items-center gap-1">
               <span className="text-sm text-muted-foreground">ID: {packet.id}</span>
               <Tooltip>

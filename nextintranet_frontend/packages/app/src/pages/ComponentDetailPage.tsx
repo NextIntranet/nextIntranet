@@ -71,6 +71,7 @@ import { ExtensionPoint } from "@/plugins/ExtensionPoint"
 import { ActionButtonGroup, ActionIconButton } from "@/components/ActionButtonGroup"
 import { DocumentActionsMenu } from "@/components/DocumentActionsMenu"
 import { PrintActions } from "@/components/PrintActions"
+import { SerialBadge, serialCodeFromPacket } from "@/components/packetSerial"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
@@ -97,6 +98,8 @@ interface TagType {
 
 interface ComponentPacket {
   id: string
+  serial_number?: number | null
+  serial_code?: string | null
   count: number
   itemValue?: number | null
   totalValue?: number | null
@@ -1334,6 +1337,7 @@ export function ComponentDetailPage() {
         header: "Packet",
         cell: ({ row }) => (
           <div className={`flex min-w-0 items-center gap-2 ${inactivePacketClass(row.original)}`}>
+            <SerialBadge code={serialCodeFromPacket(row.original)} />
             <Tooltip>
               <TooltipTrigger asChild>
                 <Link

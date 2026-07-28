@@ -41,6 +41,7 @@ class PacketLabelGenerator(LabelContentGenerator):
         component_description = component.description
         packet_id = uuid
         uuid_short = str(uuid)[:8] if uuid else "UNKNOWN"
+        serial_code = packet.serial_code if packet else ""
         position = packet.location.full_path if packet.location else ''
         barcode = f"https://ni.ust.cz/?packet={uuid}&component={component.id}"
 
@@ -86,11 +87,25 @@ class PacketLabelGenerator(LabelContentGenerator):
         pdf.set_font(DEFAULT_FONT_FAMILY, '', int(font_size_small))
         pdf.set_xy(x0+2, y0+1)
         pdf.cell(label_width/2, 4.5, "Packet", align='L')
-        
-        # Add UUID on the right side - using x0 as base
-        pdf.set_xy(x0+label_width/2, y0+1)
-        pdf.cell(label_width/2-2, 4.5, f"ID: {uuid_short}", align='R')
-        print(f"PacketLabelGenerator: Added 'Packet' header and UUID: {uuid_short}")
+
+        # Add serial code (bold) and short UUID on the right side - using x0 as base
+        if serial_code:
+            pdf.set_font(DEFAULT_FONT_FAMILY, 'B', int(font_size_normal))
+            code_width = pdf.get_string_width(serial_code)
+            pdf.set_font(DEFAULT_FONT_FAMILY, '', int(font_size_small))
+            uuid_text = f" {uuid_short}"
+            uuid_width = pdf.get_string_width(uuid_text)
+            right_x = x0 + label_width - 2 - code_width - uuid_width
+            pdf.set_xy(right_x, y0+1)
+            pdf.set_font(DEFAULT_FONT_FAMILY, 'B', int(font_size_normal))
+            pdf.cell(code_width, 4.5, serial_code, align='L')
+            pdf.set_font(DEFAULT_FONT_FAMILY, '', int(font_size_small))
+            pdf.cell(uuid_width, 4.5, uuid_text, align='L')
+        else:
+            pdf.set_font(DEFAULT_FONT_FAMILY, '', int(font_size_small))
+            pdf.set_xy(x0+label_width/2, y0+1)
+            pdf.cell(label_width/2-2, 4.5, f"ID: {uuid_short}", align='R')
+        print(f"PacketLabelGenerator: Added 'Packet' header with serial code: {serial_code or uuid_short}")
         
         # Component name - full width - using x0, y0 as base
         pdf.set_fill_color(*header_color)

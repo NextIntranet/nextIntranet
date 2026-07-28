@@ -59,6 +59,8 @@ def build_label_context(label_type, data):
             "packet": {
                 "uuid": str(packet_id or ""),
                 "uuid_short": str(packet_id or "")[:8],
+                "serial_code": packet.serial_code if packet else "",
+                "serial_number": packet.serial_number if packet and packet.serial_number is not None else "",
                 "location": location,
                 "count": format_count(packet.count) if packet else "",
                 "barcode_url": f"{BARCODE_BASE_URL}/?packet={packet_id}&component={component_id}",
@@ -111,6 +113,8 @@ def sample_label_context(label_type):
             "packet": {
                 "uuid": sample_uuid,
                 "uuid_short": sample_uuid[:8],
+                "serial_code": "S003",
+                "serial_number": 3,
                 "location": "Building A/Room 12/Shelf 3",
                 "count": "100",
                 "barcode_url": f"{BARCODE_BASE_URL}/?packet={sample_uuid}&component=42",
