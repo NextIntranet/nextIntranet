@@ -25,6 +25,7 @@ import { Switch } from "@/components/ui/switch"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
+import type { ScanSourceContext } from "@/lib/resolveScannedIdentifier"
 
 type Paginated<T> = {
   results: T[]
@@ -473,6 +474,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
   const [pendingNotInBomConfirmation, setPendingNotInBomConfirmation] = useState<PendingNotInBomConfirmation | null>(null)
   const scanInputRef = useRef<HTMLInputElement>(null)
   const lastScannerEventRef = useRef<{ text: string; ts: number } | null>(null)
+  const lastScannerSourceRef = useRef<ScanSourceContext | null>(null)
   const scannerRowRefs = useRef<Record<string, HTMLTableRowElement | null>>({})
   const lastHoveredIbomLineRef = useRef<string | null>(null)
   const lastIbomCompletionSyncRef = useRef<string>("")
@@ -991,7 +993,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     mutationFn: (payload: ScanRequestPayload) =>
       apiFetch<ScanResponse>(`/api/v1/production/templates/${bomId}/scan/`, {
         method: "POST",
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, ...lastScannerSourceRef.current }),
       }),
   })
 
@@ -999,7 +1001,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     mutationFn: (payload: ScanRequestPayload) =>
       apiFetch<ScanResponse>(`/api/v1/production/templates/${bomId}/scan/`, {
         method: "POST",
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, ...lastScannerSourceRef.current }),
       }),
   })
 
@@ -1007,7 +1009,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     mutationFn: (payload: { mode: "SOURCED" | "PLACED"; barcode: string; line_id: string; qty: number }) =>
       apiFetch<{ result?: string; line_id?: string }>(`/api/v1/production/templates/${bomId}/scan/`, {
         method: "POST",
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, ...lastScannerSourceRef.current }),
       }),
     onSuccess: (response: { result?: string; line_id?: string }) => {
       if (response.line_id) {
@@ -1530,6 +1532,11 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
         return
       }
       lastScannerEventRef.current = { text, ts: now }
+      lastScannerSourceRef.current = {
+        stationId: event.stationId ?? null,
+        agentId: event.agentId ?? null,
+        deviceId: event.deviceId ?? null,
+      }
 
       void executeScan(scannerMode, text, { silentBlockedNotice: true })
     })

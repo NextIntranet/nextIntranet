@@ -751,6 +751,8 @@ class WarehouseActivitySerializer(serializers.ModelSerializer):
     packet_id = serializers.UUIDField(source="packet.id", read_only=True)
     component_id = serializers.UUIDField(source="component.id", read_only=True)
     packet_label = serializers.SerializerMethodField()
+    packet_serial_code = serializers.SerializerMethodField()
+    packet_location_leaf = serializers.SerializerMethodField()
     stock_operation_id = serializers.UUIDField(source="stock_operation.id", read_only=True)
     stock_operation_type = serializers.CharField(source="stock_operation.operation_type", read_only=True)
     quantity = serializers.FloatField(source="stock_operation.quantity", read_only=True)
@@ -763,6 +765,8 @@ class WarehouseActivitySerializer(serializers.ModelSerializer):
             "id",
             "packet_id",
             "packet_label",
+            "packet_serial_code",
+            "packet_location_leaf",
             "component_id",
             "user",
             "user_name",
@@ -794,6 +798,19 @@ class WarehouseActivitySerializer(serializers.ModelSerializer):
         if packet.location:
             return packet.location.full_path
         return str(packet.id)
+
+    def get_packet_serial_code(self, instance):
+        packet = instance.packet
+        if not packet:
+            return None
+        return packet.serial_code or None
+
+    def get_packet_location_leaf(self, instance):
+        packet = instance.packet
+        if not packet or not packet.location:
+            return None
+        full_path = packet.location.full_path
+        return full_path.rsplit("/", 1)[-1] if "/" in full_path else full_path
 
 
 class ActivityPagination(PageNumberPagination):

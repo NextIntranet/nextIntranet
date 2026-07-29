@@ -30,6 +30,12 @@ export type ResolveScannedIdentifierOutcome =
   /** API returned matches but no in-app link to follow (same as legacy silent success). */
   | "result_without_link"
 
+export interface ScanSourceContext {
+  stationId?: string | null
+  agentId?: string | null
+  deviceId?: string | null
+}
+
 /**
  * Shared path for barcode text: scanner capture, then identifier API + navigate
  * (same rules as the hardware scanner listener).
@@ -38,6 +44,7 @@ export async function resolveScannedIdentifier(
   rawText: string,
   pathname: string,
   navigate: NavigateFunction,
+  sourceContext?: ScanSourceContext,
 ): Promise<ResolveScannedIdentifierOutcome> {
   const text = rawText.trim()
   if (!text) {
@@ -73,6 +80,9 @@ export async function resolveScannedIdentifier(
         data: text,
         q: null,
         parsedData: {},
+        stationId: sourceContext?.stationId ?? null,
+        agentId: sourceContext?.agentId ?? null,
+        deviceId: sourceContext?.deviceId ?? null,
       }),
     })
 

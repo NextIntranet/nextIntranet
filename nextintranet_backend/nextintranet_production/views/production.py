@@ -51,6 +51,7 @@ from nextintranet_backend.iso15434 import parse_iso15434
 from nextintranet_backend.models.printList import PrintFile, PrintItem, PrintList
 from nextintranet_backend.models.userSettings import UserSetting
 from nextintranet_warehouse.models.component import Component, Packet
+from nextintranet_warehouse.services.activity import actor_from_request, client_info_from_request, log_activity
 from nextintranet_production.services.bom import (
     safe_float as _safe_float,
     safe_decimal as _safe_decimal,
@@ -1185,6 +1186,7 @@ class TemplateViewSet(viewsets.ModelViewSet):
         if template.status in CLOSED_TEMPLATE_STATUSES:
             return Response({"error": "BOM is locked."}, status=status.HTTP_409_CONFLICT)
 
+        qty = _safe_decimal(request.data.get("qty") or 1)
         scan = TemplateComponentScan.objects.create(
             template=template,
             template_component=line,
@@ -1192,7 +1194,30 @@ class TemplateViewSet(viewsets.ModelViewSet):
             barcode=barcode,
             resolved_component=component,
             resolved_packet_id=packet.id if packet else None,
-            qty=_safe_decimal(request.data.get("qty") or 1),
+            qty=qty,
+        )
+
+        station = {
+            key: value
+            for key in ("stationId", "agentId", "deviceId")
+            if (value := request.data.get(key))
+        }
+        log_activity(
+            activity_type="scan",
+            source="production",
+            packet=packet,
+            component=component,
+            user=actor_from_request(request),
+            description=f"Scanned into BOM '{template.name}' ({scan.mode})",
+            metadata={
+                "scan": barcode,
+                "template_id": str(template.id),
+                "mode": scan.mode,
+                "qty": float(qty),
+                "line_id": str(line.id),
+                "client": client_info_from_request(request),
+                **station,
+            },
         )
 
         sourced_total, placed_total = _recalculate_scan_totals(line)
