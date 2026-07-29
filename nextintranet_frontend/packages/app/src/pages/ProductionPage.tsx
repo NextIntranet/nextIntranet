@@ -625,15 +625,11 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     const initialActual: Record<string, string> = {}
     selectedBomComponents.forEach((line) => {
       if (line.dnp) return
-      const needed =
-        line.qty_override_total != null
-          ? toNumber(line.qty_override_total)
-          : toNumber(line.qty_per_board) * toNumber(selectedBom.qty_planned)
       const placed = toNumber(line.placed_total)
       const sourced = toNumber(line.sourced_total)
-      // Reflect real production progress: deduct what was placed, else what was
-      // sourced (pulled from stock), else fall back to the BOM needed total.
-      initialActual[line.id] = String(placed > 0 ? placed : sourced > 0 ? sourced : needed)
+      // Reflect real production progress: deduct what was actually pulled
+      // from stock / used on boards.
+      initialActual[line.id] = String(Math.max(sourced, placed))
     })
     setActualUsed(initialActual)
     setQuickPlaceQtyByScan({})
@@ -3249,7 +3245,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                       <TableCell>{row.placed}</TableCell>
                                       <TableCell>
                                         <Input
-                                          value={actualUsed[row.id] ?? String(row.needed)}
+                                          value={actualUsed[row.id] ?? String(Math.max(row.sourced, row.placed))}
                                           onChange={(e) =>
                                             setActualUsed((prev) => ({
                                               ...prev,
