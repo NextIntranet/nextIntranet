@@ -54,7 +54,7 @@ nav:
     - Features: product/features.md
   - Documentation:
     - Getting started: guide/getting-started.md
-    - Global search: guide/search.md
+    - Search: guide/search.md
     - Warehouse:
       - Components: guide/warehouse/components.md
       - Pricing: guide/warehouse/pricing.md

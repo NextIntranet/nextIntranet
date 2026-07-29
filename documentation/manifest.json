@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-22T12:32:12.835Z",
+  "generatedAt": "2026-07-28T22:05:58.235Z",
   "pages": [
     {
       "path": "",
@@ -240,34 +240,59 @@
     {
       "path": "guide/search",
       "file": "guide/search.md",
-      "title": "Global search",
-      "description": "Search API and barcode resolution.",
+      "title": "Search",
+      "description": "Global search, component catalog search, and identifier resolution.",
       "draft": false,
       "headings": [
         {
           "level": 1,
+          "text": "Search",
+          "id": "search"
+        },
+        {
+          "level": 2,
           "text": "Global search",
           "id": "global-search"
         },
         {
-          "level": 2,
+          "level": 3,
           "text": "Query parameters",
           "id": "query-parameters"
         },
         {
-          "level": 2,
+          "level": 3,
+          "text": "Searched fields per source",
+          "id": "searched-fields-per-source"
+        },
+        {
+          "level": 3,
+          "text": "External identifiers (e.g. legacy IDs such as UST_ID)",
+          "id": "external-identifiers-eg-legacy-ids-such-as-ust_id"
+        },
+        {
+          "level": 3,
           "text": "Source filters",
           "id": "source-filters"
         },
         {
-          "level": 2,
+          "level": 3,
           "text": "Barcode payloads",
           "id": "barcode-payloads"
         },
         {
-          "level": 2,
+          "level": 3,
           "text": "Defaults",
           "id": "defaults"
+        },
+        {
+          "level": 2,
+          "text": "Component catalog search",
+          "id": "component-catalog-search"
+        },
+        {
+          "level": 2,
+          "text": "Which search should I use?",
+          "id": "which-search-should-i-use"
         }
       ]
     },

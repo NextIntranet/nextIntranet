@@ -22,4 +22,5 @@ text today; prefer structured documents for URLs and datasheets.
 ## Related topics
 
 - [Reservations](reservations.md) — hold stock for projects or orders
-- [Global search](../search.md) — find components by name or scanned code
+- [Search](../search.md) — global search across objects (incl. external
+  identifiers) vs. the component catalog search above the list
