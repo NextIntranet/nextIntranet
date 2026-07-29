@@ -60,6 +60,7 @@ from nextintranet_production.services.bom import (
     consume_component as _consume_component,
     merge_lines as _merge_lines,
     assign_component_to_refs as _assign_component_to_refs,
+    unlink_component as _unlink_component,
     bom_availability_rows as _bom_availability_rows,
 )
 
@@ -1443,10 +1444,13 @@ class TemplateComponentViewSet(viewsets.ModelViewSet):
                 return Response({"error": "BOM is locked and cannot be edited."}, status=status.HTTP_409_CONFLICT)
         return super().create(request, *args, **kwargs)
 
+    @transaction.atomic
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
         if instance.template.status in CLOSED_TEMPLATE_STATUSES:
             return Response({"error": "BOM is locked and cannot be edited."}, status=status.HTTP_409_CONFLICT)
+        if "component" in request.data and not request.data.get("component") and instance.component_id:
+            _unlink_component(instance)
         return super().update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):

@@ -16,6 +16,7 @@ from nextintranet_production.mcp_serializers import (
 from nextintranet_production.services.bom import (
     bom_availability_rows,
     assign_component_to_refs,
+    unlink_component,
     line_needed_total,
     consume_component,
     safe_float,
@@ -193,7 +194,8 @@ class ProductionWriteToolset(MCPToolset):
         """Link (or relink) a warehouse component to a BOM line, optionally for only a subset
         of designators. Assigning a subset of refs splits those designators off into a new line;
         assigning a component that already has a line in the same BOM merges the refs into that
-        line.
+        line. To clear a wrongly-linked component instead of relinking, use
+        unlink_bom_line_component — leaving component_id empty here does not unlink.
 
         Args:
             line_id: UUID of the BOM line (TemplateComponent).
@@ -213,6 +215,27 @@ class ProductionWriteToolset(MCPToolset):
             result_line, merged = assign_component_to_refs(line, component, refs)
 
         return {"line": MCPBomLineSerializer(result_line).data, "merged": merged}
+
+    def unlink_bom_line_component(self, line_id: str) -> dict:
+        """Clear the linked component from a BOM line, leaving it unlinked (empty).
+
+        Use this when the currently linked component was wrongly chosen and there is
+        no correct replacement to link yet — an empty line is preferable to one
+        pointing at the wrong component, since availability, scanning, and finalize
+        all key off the linked component.
+
+        Args:
+            line_id: UUID of the BOM line (TemplateComponent).
+        """
+        _require_write(self.request)
+
+        line = TemplateComponent.objects.select_related("template", "component").get(id=line_id)
+        _ensure_bom_editable(line.template)
+
+        with transaction.atomic():
+            result_line = unlink_component(line)
+
+        return {"line": MCPBomLineSerializer(result_line).data}
 
     def lock_bom(self, bom_id: str) -> dict:
         """Lock a BOM, freezing it against further edits. Does not consume stock — use finalize_bom

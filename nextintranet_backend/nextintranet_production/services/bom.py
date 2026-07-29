@@ -8,7 +8,7 @@ from typing import Any
 
 from django.db.models import Sum
 
-from nextintranet_warehouse.models.component import Component, Packet, StockOperation
+from nextintranet_warehouse.models.component import Component, Packet, Reservation, StockOperation
 
 from ..models.production import TemplateComponent, TemplateComponentScan
 
@@ -199,6 +199,57 @@ def merge_lines(target: TemplateComponent, source: TemplateComponent) -> Templat
     recalculate_scan_totals(target)
     source.delete()
     return target
+
+
+def _release_line_reservations(line: TemplateComponent) -> None:
+    """Release stock reservations held specifically for this BOM line.
+
+    Reservations created via "Reserve BOM" tag their `sources` entry with the owning
+    `bom_id`/`line_id` (see Reservation.sources help text) precisely so they can be
+    cleaned up if the line's component changes later — this is that cleanup.
+    """
+    bom_id = str(line.template_id)
+    line_id = str(line.id)
+    for reservation in Reservation.objects.filter(component_id=line.component_id):
+        sources = reservation.sources or []
+        matches = [
+            s
+            for s in sources
+            if isinstance(s, dict)
+            and s.get("type") == "production"
+            and s.get("bom_id") == bom_id
+            and s.get("line_id") == line_id
+        ]
+        if not matches:
+            continue
+        # Only delete when this line is the *sole* reason for the reservation.
+        # Stripping just the matching source while leaving others would keep the
+        # stock held but drop it out of "Unreserve BOM"'s bom_id-based lookup —
+        # an invisible hold, worse than leaving it as-is.
+        if len(matches) == len(sources):
+            reservation.delete()
+
+
+def unlink_component(line: TemplateComponent) -> TemplateComponent:
+    """Clear the linked component from a BOM line, leaving it unlinked.
+
+    Used when a wrong component was picked and no correct replacement is known yet —
+    an empty line is safer than one pointing at the wrong component (availability,
+    scanning and finalize all key off `component`). Also releases any stock
+    reservation held specifically for this line, so the wrong component doesn't stay
+    reserved with no line pointing at it.
+
+    KNOWN LIMITATION: this does not touch sourced_total/placed_total or the line's
+    TemplateComponentScan rows. A line can end up unlinked (no component) while still
+    showing prior scan progress, since scans represent real physical work already
+    done and clearing them isn't obviously safe to do automatically. Revisit once
+    it's clear what should happen to that scan history on unlink.
+    """
+    if line.component_id is not None:
+        _release_line_reservations(line)
+        line.component = None
+        line.save(update_fields=["component"])
+    return line
 
 
 def assign_component_to_refs(
