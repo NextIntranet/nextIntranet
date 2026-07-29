@@ -236,8 +236,9 @@ class ProductionWriteToolset(MCPToolset):
         """Finalize a BOM: irreversibly consumes warehouse stock (FIFO) for every non-DNP line
         and locks the BOM. Defaults each line's consumed quantity to its needed total
         (qty_per_board * qty_planned, or qty_override_total if set); pass actual_used to override
-        specific lines. Fails without changing anything if any line would run out of stock or has
-        no linked component.
+        specific lines. Consumption may drive a packet count negative when book stock is
+        insufficient; fails only when a line has no linked component (or a component with no
+        packet to attach the deduction to), and then nothing is consumed.
 
         Args:
             bom_id: UUID of the BOM (Template).

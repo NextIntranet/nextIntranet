@@ -629,7 +629,11 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
         line.qty_override_total != null
           ? toNumber(line.qty_override_total)
           : toNumber(line.qty_per_board) * toNumber(selectedBom.qty_planned)
-      initialActual[line.id] = String(needed)
+      const placed = toNumber(line.placed_total)
+      const sourced = toNumber(line.sourced_total)
+      // Reflect real production progress: deduct what was placed, else what was
+      // sourced (pulled from stock), else fall back to the BOM needed total.
+      initialActual[line.id] = String(placed > 0 ? placed : sourced > 0 ? sourced : needed)
     })
     setActualUsed(initialActual)
     setQuickPlaceQtyByScan({})
@@ -1054,7 +1058,11 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
       queryClient.invalidateQueries({ queryKey: ["production-availability", bomId] })
       toast.success("Finalize completed and BOM locked.")
     },
-    onError: () => toast.error("Finalize failed."),
+    onError: (error) => {
+      const data = (error as { data?: unknown }).data as { error?: string; details?: string[] } | undefined
+      const details = Array.isArray(data?.details) ? data.details.join("; ") : data?.error
+      toast.error(details ? `Finalize failed: ${details}` : "Finalize failed.")
+    },
   })
 
   const printMutation = useMutation({
@@ -3205,6 +3213,11 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
 
                         {activeTab === "finalize" ? (
                           <div className="space-y-4">
+                            <p className="text-sm text-muted-foreground">
+                              Review sourced/placed components and other materials below. The
+                              listed quantities are deducted from warehouse stock on finalize;
+                              stock may go negative.
+                            </p>
                             <div className="overflow-hidden rounded-lg border border-border/70">
                               <Table>
                                 <TableHeader className="bg-muted/40">
@@ -3212,6 +3225,8 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                     <TableHead>Refs</TableHead>
                                     <TableHead>Linked component</TableHead>
                                     <TableHead>Needed total</TableHead>
+                                    <TableHead>Sourced</TableHead>
+                                    <TableHead>Placed</TableHead>
                                     <TableHead>Actual used</TableHead>
                                   </TableRow>
                                 </TableHeader>
@@ -3219,8 +3234,19 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                   {scannerRows.map((row) => (
                                     <TableRow key={row.id}>
                                       <TableCell>{row.ref_group || "-"}</TableCell>
-                                      <TableCell>{row.component_name || "Unlinked"}</TableCell>
+                                      <TableCell>
+                                        <span className="flex flex-wrap items-center gap-2">
+                                          {row.component_name || "Unlinked"}
+                                          {row.source_type === "manual" ? (
+                                            <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
+                                              material
+                                            </span>
+                                          ) : null}
+                                        </span>
+                                      </TableCell>
                                       <TableCell>{row.needed}</TableCell>
+                                      <TableCell>{row.sourced}</TableCell>
+                                      <TableCell>{row.placed}</TableCell>
                                       <TableCell>
                                         <Input
                                           value={actualUsed[row.id] ?? String(row.needed)}

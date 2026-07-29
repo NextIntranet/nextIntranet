@@ -73,6 +73,13 @@ def recalculate_scan_totals(line: TemplateComponent) -> tuple[Decimal, Decimal]:
 
 
 def consume_component(component: Component, qty: float, reference, user, description: str):
+    """Consume `qty` of a component from warehouse stock, FIFO (oldest packets first).
+
+    When stock runs out before `qty` is satisfied, the remainder is deducted from the
+    newest active packet so its count goes negative instead of aborting — production
+    finalize must record real usage even when book stock lags behind. Only raises
+    when the component has no packet at all to attach the deduction to.
+    """
     remaining = float(qty)
     packets = (
         Packet.objects.filter(component=component, is_active=True, count__gt=0)
@@ -80,6 +87,7 @@ def consume_component(component: Component, qty: float, reference, user, descrip
         .all()
     )
 
+    last_consumed_packet = None
     for packet in packets:
         if remaining <= 0:
             break
@@ -94,15 +102,33 @@ def consume_component(component: Component, qty: float, reference, user, descrip
             operation_type="remove",
             quantity=-float(consume_qty),
             relative_quantity=True,
-            unit_price=packet.itemValue if packet.itemValue is not None else None,
+            unit_price=float(packet.itemValue) if packet.itemValue is not None else None,
             description=description,
             metadata={"production_id": str(reference)} if reference else {},
             author=user,
         )
+        last_consumed_packet = packet
         remaining -= consume_qty
 
     if remaining > 0:
-        raise ValueError(f"Insufficient stock for component '{component.name}'. Missing {remaining:.3f}.")
+        target = last_consumed_packet or (
+            Packet.objects.filter(component=component, is_active=True)
+            .order_by("-date_added", "-id")
+            .first()
+        )
+        if target is None:
+            raise ValueError(f"Component '{component.name}' has no packet to consume {remaining:.3f} from.")
+        StockOperation.objects.create(
+            packet=target,
+            reference=reference,
+            operation_type="remove",
+            quantity=-float(remaining),
+            relative_quantity=True,
+            unit_price=float(target.itemValue) if target.itemValue is not None else None,
+            description=description,
+            metadata={"production_id": str(reference)} if reference else {},
+            author=user,
+        )
 
 
 def bom_availability_rows(template, home_location_ids: set | None = None) -> list[dict[str, Any]]:

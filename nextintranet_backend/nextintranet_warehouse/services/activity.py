@@ -141,7 +141,7 @@ def log_stock_operation_activity(operation):
             "operation_type": operation.operation_type,
             "quantity": operation.quantity,
             "relative_quantity": operation.relative_quantity,
-            "unit_price": operation.unit_price,
+            "unit_price": float(operation.unit_price) if operation.unit_price is not None else None,
             "reference": str(operation.reference) if operation.reference else None,
             **metadata,
         },
