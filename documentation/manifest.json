@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-28T22:05:58.235Z",
+  "generatedAt": "2026-07-29T14:45:12.787Z",
   "pages": [
     {
       "path": "",
@@ -340,6 +340,11 @@
         },
         {
           "level": 2,
+          "text": "Purchases",
+          "id": "purchases"
+        },
+        {
+          "level": 2,
           "text": "Print queue",
           "id": "print-queue"
         },
@@ -479,6 +484,45 @@
           "level": 2,
           "text": "`component.internal_price`",
           "id": "componentinternal_price"
+        }
+      ]
+    },
+    {
+      "path": "guide/warehouse/purchases",
+      "file": "guide/warehouse/purchases.md",
+      "title": "Purchases",
+      "description": "Order components from suppliers, receive them and book them into stock.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "Purchases",
+          "id": "purchases"
+        },
+        {
+          "level": 2,
+          "text": "Lifecycle",
+          "id": "lifecycle"
+        },
+        {
+          "level": 2,
+          "text": "Stock locations and expected packets",
+          "id": "stock-locations-and-expected-packets"
+        },
+        {
+          "level": 2,
+          "text": "Receiving and stocking",
+          "id": "receiving-and-stocking"
+        },
+        {
+          "level": 2,
+          "text": "Purchase requests",
+          "id": "purchase-requests"
+        },
+        {
+          "level": 2,
+          "text": "Automation",
+          "id": "automation"
         }
       ]
     },

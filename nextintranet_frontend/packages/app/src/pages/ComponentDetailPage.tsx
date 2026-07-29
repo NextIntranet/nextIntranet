@@ -85,6 +85,7 @@ import { cn } from "@/lib/utils"
 import { PriceLabel } from "@/components/PriceLabel"
 import { PacketOperationSheet } from "@/components/PacketOperationSheet"
 import { ActivityLogTable } from "@/components/ActivityLogTable"
+import { packetStateLabel } from "@/lib/packetState"
 
 interface Category {
   id: string
@@ -107,6 +108,7 @@ interface ComponentPacket {
   description: string
   created_at: string
   last_used_at?: string | null
+  state?: string | null
   is_active?: boolean
   location?: {
     id: string
@@ -1489,7 +1491,7 @@ export function ComponentDetailPage() {
         header: "Status",
         cell: ({ row }) => (
           <span className={inactivePacketClass(row.original) || "text-foreground"}>
-            {row.original.is_active === false ? "Inactive" : "Active"}
+            {packetStateLabel(row.original)}
           </span>
         ),
       },

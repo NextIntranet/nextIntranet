@@ -102,6 +102,13 @@ Create the file if it does not exist yet.
 - `get_component_document` — single document by ID
 - `list_print_queues` — print queues available to the token (`limit` default 50, max 200)
 - `list_print_queue_items` — items in a queue (`print_list_id` optional; uses default queue)
+- `list_purchase_requests` / `get_purchase_request` — purchase requests (filter by `assigned`, component, purchase)
+- `list_purchases` / `get_purchase` — supplier orders, with items, deliveries and attached requests
+- `get_purchase_export_csv` — supplier import CSV (Mouser style) for a purchase
+
+Production BOM tools (`nextintranet_production`) are registered on the same server:
+`list_boms`, `get_bom`, `get_bom_availability`, `list_productions`, `get_production` (read) and
+`update_bom`, `set_bom_line_component`, `lock_bom`, `finalize_bom` (write).
 
 ### Write (`mcp:write` scope, includes all read tools)
 
@@ -120,9 +127,37 @@ Create the file if it does not exist yet.
 - `create_supplier` / `update_supplier` / `delete_supplier` — suppliers
 - `link_component_supplier` / `update_supplier_relation` / `delete_supplier_relation` — component–supplier links
 - `create_reservation` / `update_reservation` / `delete_reservation` — reservations
+- `create_print_queue` — create a queue owned by the token's user
 - `add_to_print_queue` — add a component, packet, or location label to a queue
 - `add_targets_to_print_queue` — add multiple labels in one call
 - `remove_print_queue_item` — remove an item from a queue
+- `create_purchase_request` / `update_purchase_request` / `delete_purchase_request` — purchase requests
+- `assign_purchase_requests` — attach requests to a purchase
+- `create_purchase` / `set_purchase_items` / `set_purchase_item_location` — build the order
+- `transition_purchase` — move the order through its lifecycle
+- `receive_purchase_items` / `stock_purchase_deliveries` / `complete_purchase` — receiving and stocking
+
+## Purchases
+
+The whole ordering flow is available over MCP, in this order:
+
+1. `create_purchase_request` — file wishes as they come up.
+2. `create_purchase` for a supplier, then `assign_purchase_requests` to cover the open wishes.
+3. `set_purchase_items` — add lines (`component_id` or `supplier_relation_id`, `quantity`,
+   `unit_price_original`, and **`stock_location_id`**). The stock location is assignable while
+   the order is still being built; `set_purchase_item_location` changes a single line.
+4. `transition_purchase` through `items_defined` → `priced` → `closed` → `exported`.
+   **Exporting creates a draft packet** (state `expected`) for every component line at its stock
+   location, so labels can be printed before the goods arrive. Every component line therefore
+   needs a stock location before export, otherwise the transition is rejected.
+5. `receive_purchase_items` — record what arrived. Partial deliveries are supported; call it
+   repeatedly until the line is complete. Set `queue_labels` to enqueue packet labels.
+6. `stock_purchase_deliveries` — book the goods into stock. The expected packets flip to
+   `stocked`, and the purchase completes automatically once everything is delivered and stocked.
+   Use `complete_purchase` for the receiving → completed shortcut when nothing needs stocking.
+
+Expected packets carry no stock (`count` 0) and derive `is_active=false`, so they never show up
+in inventory totals or location searches until they are stocked.
 
 ## Print queue
 
@@ -134,6 +169,10 @@ MCP can enqueue labels for **components**, **packets** (stock batches), and **wa
 - `kind`: `label` (default) or `document`
 
 Tokens created in **Settings → Software → Generate MCP config** use the creating user’s queues (including public queues). Service tokens with `allowed_print_lists` configured are limited to those queues (same as print render).
+
+`create_print_queue` makes a new queue owned by the token’s user (so the token must be linked to
+one). When the token is restricted via `allowed_print_lists`, the new queue is added to that list
+so the token can immediately use it.
 
 ## Component documents
 

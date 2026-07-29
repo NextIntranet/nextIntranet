@@ -6,6 +6,9 @@ from nextintranet_warehouse.models.component import (
 )
 from nextintranet_warehouse.models.warehouse import Warehouse
 from nextintranet_warehouse.models.category import Category
+from nextintranet_warehouse.models.purchase import (
+    Purchase, PurchaseDelivery, PurchaseItem, PurchaseRequest,
+)
 from nextintranet_warehouse.services.parameter_values import format_parameter_display_value
 
 
@@ -70,7 +73,7 @@ class MCPPacketSerializer(serializers.ModelSerializer):
         model = Packet
         fields = [
             "id", "component_id", "location_id", "location_name",
-            "count", "description", "is_trackable", "is_active",
+            "count", "description", "is_trackable", "state", "is_active",
             "itemValue", "totalValue", "price_source",
         ]
 
@@ -263,3 +266,84 @@ class MCPPrintQueueItemSerializer(serializers.ModelSerializer):
         if hasattr(content, "name") and content.name:
             return content.name
         return str(getattr(content, "id", content))
+
+
+class MCPPurchaseRequestSerializer(serializers.ModelSerializer):
+    component_name = serializers.CharField(source="component.name", read_only=True, default=None)
+    requested_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PurchaseRequest
+        fields = [
+            "id", "created_at", "quantity", "item_name", "description",
+            "component", "component_name", "purchase", "requested_by_name",
+        ]
+
+    def get_requested_by_name(self, obj):
+        if not obj.requested_by:
+            return None
+        return obj.requested_by.get_full_name() or obj.requested_by.username
+
+
+class MCPPurchaseDeliverySerializer(serializers.ModelSerializer):
+    stock_location_id = serializers.UUIDField(source="stock_location.id", read_only=True, allow_null=True)
+    stock_location_name = serializers.CharField(source="stock_location.full_path", read_only=True, default=None)
+    packet_id = serializers.UUIDField(source="packet.id", read_only=True, allow_null=True)
+
+    class Meta:
+        model = PurchaseDelivery
+        fields = [
+            "id", "purchase_item", "delivery_date", "delivered_quantity", "note",
+            "stock_location_id", "stock_location_name", "packet_id",
+            "is_stocked", "stocked_at",
+        ]
+
+
+class MCPPurchaseItemSerializer(serializers.ModelSerializer):
+    component_id = serializers.UUIDField(source="component.id", read_only=True, allow_null=True)
+    component_name = serializers.CharField(source="component.name", read_only=True, default=None)
+    supplier_relation_id = serializers.UUIDField(source="supplier_relation.id", read_only=True, allow_null=True)
+    stock_location_id = serializers.UUIDField(source="stock_location.id", read_only=True, allow_null=True)
+    stock_location_name = serializers.CharField(source="stock_location.full_path", read_only=True, default=None)
+    draft_packet_id = serializers.UUIDField(source="draft_packet.id", read_only=True, allow_null=True)
+    draft_packet_state = serializers.CharField(source="draft_packet.state", read_only=True, default=None)
+    deliveries = MCPPurchaseDeliverySerializer(many=True, read_only=True)
+
+    class Meta:
+        model = PurchaseItem
+        fields = [
+            "id", "item_type", "component_id", "component_name", "supplier_relation_id",
+            "symbol", "name", "description", "requested_quantity", "quantity", "package_size",
+            "unit_price_original", "unit_price_converted",
+            "delivered_quantity", "stocked_quantity", "is_fully_delivered",
+            "stock_location_id", "stock_location_name",
+            "draft_packet_id", "draft_packet_state", "deliveries",
+        ]
+
+
+class MCPPurchaseListSerializer(serializers.ModelSerializer):
+    supplier_id = serializers.UUIDField(source="supplier.id", read_only=True)
+    supplier_name = serializers.CharField(source="supplier.name", read_only=True)
+    items_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Purchase
+        fields = [
+            "id", "status", "supplier_id", "supplier_name", "currency",
+            "total_price_original", "total_price_converted", "note",
+            "delivery_date", "created_at", "exported_at", "completed_at", "items_count",
+        ]
+
+    def get_items_count(self, obj):
+        return obj.items.count()
+
+
+class MCPPurchaseDetailSerializer(MCPPurchaseListSerializer):
+    items = MCPPurchaseItemSerializer(many=True, read_only=True)
+    requests = MCPPurchaseRequestSerializer(many=True, read_only=True)
+
+    class Meta(MCPPurchaseListSerializer.Meta):
+        fields = MCPPurchaseListSerializer.Meta.fields + [
+            "export_mode", "closed_at", "receiving_started_at", "stocking_started_at",
+            "stocked_date", "items", "requests",
+        ]

@@ -1,8 +1,6 @@
-import csv
-import io
-
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
-from django.db.models import Count, F, Q
+from django.db.models import Count, Q
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -13,12 +11,9 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from nextintranet_backend.models.printList import PrintItem, PrintList
 from nextintranet_backend.permissions import AreaAccessPermission
 from nextintranet_warehouse.models.component import (
     Component,
-    Packet,
-    StockOperation,
     Supplier,
     SupplierRelation,
 )
@@ -32,6 +27,16 @@ from nextintranet_warehouse.models.purchase import (
     PurchaseStatus,
 )
 from nextintranet_warehouse.models.warehouse import Warehouse
+from nextintranet_warehouse.services.purchase import (
+    ReceiveLine,
+    assign_requests_to_purchase,
+    purchase_export_csv,
+    purchase_ready_for_completion,  # noqa: F401 — re-exported for existing importers
+    receive_purchase,
+    resolve_print_queue,
+    stock_purchase,
+    transition_purchase,
+)
 
 
 class SupplierSummarySerializer(serializers.ModelSerializer):
@@ -84,6 +89,9 @@ class PurchaseItemSerializer(serializers.ModelSerializer):
     supplier_relation_symbol = serializers.CharField(source='supplier_relation.symbol', read_only=True)
     stock_location_id = serializers.UUIDField(source='stock_location.id', read_only=True)
     stock_location_name = serializers.CharField(source='stock_location.full_path', read_only=True)
+    draft_packet_id = serializers.UUIDField(source='draft_packet.id', read_only=True)
+    draft_packet_state = serializers.CharField(source='draft_packet.state', read_only=True)
+    draft_packet_serial_code = serializers.CharField(source='draft_packet.serial_code', read_only=True)
     deliveries = PurchaseDeliverySerializer(many=True, read_only=True)
 
     class Meta:
@@ -108,6 +116,9 @@ class PurchaseItemSerializer(serializers.ModelSerializer):
             'is_fully_delivered',
             'stock_location_id',
             'stock_location_name',
+            'draft_packet_id',
+            'draft_packet_state',
+            'draft_packet_serial_code',
             'deliveries',
         ]
 
@@ -346,9 +357,7 @@ class PurchaseWriteSerializer(PurchaseListSerializer):
         return item_data
 
     def _assign_purchase_requests(self, purchase, request_ids):
-        if not request_ids:
-            return
-        PurchaseRequest.objects.filter(id__in=request_ids).update(purchase=purchase)
+        assign_requests_to_purchase(purchase, request_ids)
 
     def _resolve_transition_target(self, instance, validated_data):
         requested_status = validated_data.pop('status', None)
@@ -417,7 +426,7 @@ class PurchaseWriteSerializer(PurchaseListSerializer):
         self._assign_purchase_requests(purchase, request_ids)
 
         if transition_target:
-            purchase.transition_to(transition_target)
+            transition_purchase(purchase, transition_target)
 
         return purchase
 
@@ -461,7 +470,7 @@ class PurchaseWriteSerializer(PurchaseListSerializer):
         self._assign_purchase_requests(instance, request_ids)
 
         if transition_target:
-            instance.transition_to(transition_target)
+            transition_purchase(instance, transition_target)
 
         return instance
 
@@ -570,46 +579,6 @@ class PurchaseStockSerializer(serializers.Serializer):
         return lines
 
 
-def purchase_ready_for_completion(purchase: Purchase) -> bool:
-    items = purchase.items.all()
-    if not items.exists():
-        return False
-
-    if items.filter(quantity__lte=0).exists():
-        return False
-
-    if items.filter(item_type=PurchaseItemType.COMPONENT, delivered_quantity__lt=F('quantity')).exists():
-        return False
-
-    if items.filter(item_type=PurchaseItemType.COMPONENT, stocked_quantity__lt=F('delivered_quantity')).exists():
-        return False
-
-    if items.filter(
-        item_type=PurchaseItemType.COMPONENT,
-        stocked_quantity__gt=0,
-        stock_location__isnull=True,
-    ).exists():
-        return False
-
-    if items.filter(item_type=PurchaseItemType.NON_STOCK, delivered_quantity__lt=F('quantity')).exists():
-        return False
-
-    return True
-
-
-def resolve_print_queue(user, queue_id):
-    if queue_id:
-        queue = PrintList.objects.filter(id=queue_id, owner=user).first()
-        if queue:
-            return queue
-        return PrintList.objects.filter(id=queue_id, is_public=True).first()
-
-    queue = PrintList.objects.filter(owner=user, is_default=True).first()
-    if queue:
-        return queue
-    return PrintList.objects.filter(is_public=True, is_default=True).first()
-
-
 class PurchaseListAPIView(generics.ListCreateAPIView):
     pagination_class = PurchasePagination
     parser_classes = [JSONParser, FormParser, MultiPartParser]
@@ -694,62 +663,26 @@ class PurchaseReceiveAPIView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-        created_packets = []
-        queued_label_count = 0
-        now = timezone.now()
-
-        for line in serializer.validated_data['lines']:
-            item = line['purchase_item_id']
-            qty = line['delivered_quantity']
-            stock_location = line.get('stock_location')
-
-            packet = None
-            labels_queued_at = None
-            if item.item_type == PurchaseItemType.COMPONENT:
-                packet = Packet.objects.create(
-                    component=item.component,
-                    location=stock_location,
-                    description=f'Purchase {purchase.id} item {item.id} delivery',
-                )
-                created_packets.append(packet)
-                item.stock_location = stock_location
-
-                if queue_labels and print_queue:
-                    PrintItem.objects.create(
-                        print_list=print_queue,
-                        kind=PrintItem.KIND_LABEL,
-                        status=PrintItem.STATUS_QUEUED,
-                        content_object=packet,
-                        payload={
-                            'source': 'purchase',
-                            'purchase_id': str(purchase.id),
-                            'purchase_item_id': item.id,
-                        },
-                    )
-                    queued_label_count += 1
-                    labels_queued_at = now
-
-            PurchaseDelivery.objects.create(
-                purchase_item=item,
-                delivery_date=line.get('delivery_date') or timezone.now().date(),
-                delivered_quantity=qty,
+        lines = [
+            ReceiveLine(
+                item=line['purchase_item_id'],
+                quantity=line['delivered_quantity'],
+                stock_location=line.get('stock_location'),
+                delivery_date=line.get('delivery_date'),
                 note=line.get('note', ''),
-                stock_location=stock_location,
-                packet=packet,
-                labels_queued_at=labels_queued_at,
-                received_by=request.user if request.user.is_authenticated else None,
             )
+            for line in serializer.validated_data['lines']
+        ]
 
-            item.delivered_quantity += qty
-            item.is_fully_delivered = item.delivered_quantity >= item.quantity
-            item.full_clean()
-            item_update_fields = ['delivered_quantity', 'is_fully_delivered']
-            if item.item_type == PurchaseItemType.COMPONENT:
-                item_update_fields.append('stock_location')
-            item.save(update_fields=item_update_fields)
-
-        if purchase.status == PurchaseStatus.EXPORTED:
-            purchase.transition_to(PurchaseStatus.RECEIVING)
+        try:
+            result = receive_purchase(
+                purchase,
+                lines,
+                actor=request.user if request.user.is_authenticated else None,
+                print_queue=print_queue,
+            )
+        except DjangoValidationError as exc:
+            return Response({'detail': exc.messages}, status=status.HTTP_400_BAD_REQUEST)
 
         purchase.refresh_from_db()
         data = PurchaseDetailSerializer(purchase, context={'request': request}).data
@@ -759,9 +692,9 @@ class PurchaseReceiveAPIView(APIView):
                 'component_id': str(packet.component_id),
                 'location_id': str(packet.location_id) if packet.location_id else None,
             }
-            for packet in created_packets
+            for packet in result.packets
         ]
-        data['queued_labels'] = queued_label_count
+        data['queued_labels'] = result.queued_labels
         data['print_list_id'] = str(print_queue.id) if print_queue else None
         return Response(data, status=status.HTTP_200_OK)
 
@@ -788,80 +721,25 @@ class PurchaseStockAPIView(APIView):
         serializer = PurchaseStockSerializer(data=request.data, context={'purchase': purchase})
         serializer.is_valid(raise_exception=True)
 
-        if purchase.status == PurchaseStatus.RECEIVING:
-            purchase.transition_to(PurchaseStatus.STOCKING)
+        deliveries = [
+            line['purchase_delivery']
+            for line in serializer.validated_data['lines']
+            if line.get('confirm_stocked', True)
+        ]
 
-        item_totals: dict[int, int] = {}
-        stocked_count = 0
-        now = timezone.now()
-
-        for line in serializer.validated_data['lines']:
-            if not line.get('confirm_stocked', True):
-                continue
-            delivery = line['purchase_delivery']
-            item = delivery.purchase_item
-            qty = delivery.delivered_quantity
-
-            unit_price_value = item.unit_price_converted
-            if unit_price_value is None:
-                unit_price_value = item.unit_price_original
-            unit_price = float(unit_price_value or 0)
-
-            sr = item.supplier_relation
-            StockOperation.objects.create(
-                packet=delivery.packet,
-                operation_type='buy',
-                quantity=float(qty),
-                relative_quantity=True,
-                unit_price=unit_price,
-                description=f'Purchase {purchase.id} stocking',
-                author=request.user if request.user.is_authenticated else None,
-                reference=purchase.id,
-                metadata={"supplier_relation_id": str(sr.id)} if sr else {},
+        try:
+            result = stock_purchase(
+                purchase,
+                deliveries,
+                actor=request.user if request.user.is_authenticated else None,
             )
-
-            delivery.is_stocked = True
-            delivery.stocked_at = now
-            delivery.stocked_by = request.user if request.user.is_authenticated else None
-            delivery.save(update_fields=['is_stocked', 'stocked_at', 'stocked_by'])
-            stocked_count += 1
-
-            item_totals[item.id] = item_totals.get(item.id, 0) + qty
-
-        if item_totals:
-            items_by_id = {item.id: item for item in purchase.items.all()}
-            for item_id, qty in item_totals.items():
-                item = items_by_id.get(item_id)
-                if not item:
-                    continue
-                item.stocked_quantity += qty
-                item.full_clean()
-                item.save(update_fields=['stocked_quantity'])
+        except DjangoValidationError as exc:
+            return Response({'detail': exc.messages}, status=status.HTTP_400_BAD_REQUEST)
 
         purchase.refresh_from_db()
-
-        if purchase_ready_for_completion(purchase):
-            purchase.transition_to(PurchaseStatus.COMPLETED)
-            purchase.refresh_from_db()
-
         data = PurchaseDetailSerializer(purchase, context={'request': request}).data
-        data['stocked_deliveries'] = stocked_count
+        data['stocked_deliveries'] = result.stocked_deliveries
         return Response(data, status=status.HTTP_200_OK)
-
-
-MFPN_PARAM_NAMES = {'mfpn', 'mpn', 'manufacturer part number', 'symbol/mfpn', 'symbol mfpn'}
-
-
-def _get_component_mfpn(component):
-    if not component:
-        return ''
-    for param in component.parameters.select_related('parameter_type').all():
-        if not param.parameter_type or not param.value:
-            continue
-        name = (param.parameter_type.name or '').strip().lower()
-        if name in MFPN_PARAM_NAMES:
-            return (param.value or '').strip()
-    return ''
 
 
 class PurchaseExportCSVAPIView(APIView):
@@ -877,18 +755,7 @@ class PurchaseExportCSVAPIView(APIView):
             ),
             pk=pk,
         )
-        buffer = io.StringIO()
-        writer = csv.writer(buffer)
-        writer.writerow(['mouser_part_number', 'MFPN', 'Quantity', 'Customer_reference', 'Internal_id'])
-        for item in purchase.items.all():
-            mouser_part_number = (item.symbol or '').strip()
-            mfpn = _get_component_mfpn(item.component) if item.component_id else ''
-            quantity = item.quantity
-            customer_reference = (item.description or '').strip()
-            internal_id = str(item.component_id) if item.component_id else str(item.id)
-            writer.writerow([mouser_part_number, mfpn, quantity, customer_reference, internal_id])
-        buffer.seek(0)
-        response = HttpResponse(buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        response = HttpResponse(purchase_export_csv(purchase), content_type='text/csv; charset=utf-8')
         short_id = str(purchase.id).replace('-', '')[:8]
         response['Content-Disposition'] = f'attachment; filename="purchase-{short_id}-supplier.csv"'
         return response

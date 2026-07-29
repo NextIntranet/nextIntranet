@@ -169,6 +169,7 @@ interface ItemDraft {
   description: string
   name: string
   symbol: string
+  stockLocationId: string
 }
 
 const statusLabel: Record<PurchaseStatus, string> = {
@@ -273,6 +274,7 @@ const createItemDraft = (item: PurchaseItem): ItemDraft => ({
   description: item.description || "",
   name: item.name || "",
   symbol: item.symbol || "",
+  stockLocationId: item.stock_location_id || "",
 })
 
 const compactCellInput =
@@ -629,6 +631,8 @@ export function PurchasesPage() {
         return
       }
       payloadItem.name = itemName
+    } else {
+      payloadItem.stock_location_id = draft.stockLocationId || null
     }
 
     try {
@@ -1477,8 +1481,22 @@ export function PurchasesPage() {
                                       style={{ width: `${stockedPercent}%` }}
                                     />
                                   </div>
-                                  {item.stock_location_name ? (
-                                    <p className="text-[11px] text-muted-foreground">{item.stock_location_name}</p>
+                                  {item.item_type === "component" ? (
+                                    <select
+                                      value={draft.stockLocationId}
+                                      onChange={(event) =>
+                                        setDraftValue(item.id, { stockLocationId: event.target.value })
+                                      }
+                                      className="h-7 w-full rounded-md border border-input bg-background px-1 text-[11px]"
+                                      disabled={!canEdit || mutationBusy}
+                                    >
+                                      <option value="">Select stock location</option>
+                                      {locationOptions.map((location) => (
+                                        <option key={location.id} value={location.id}>
+                                          {location.label}
+                                        </option>
+                                      ))}
+                                    </select>
                                   ) : null}
                                 </div>
                               </TableCell>

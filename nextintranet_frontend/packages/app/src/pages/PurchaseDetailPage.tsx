@@ -129,6 +129,9 @@ interface PurchaseItem {
   is_fully_delivered: boolean
   stock_location_id?: string | null
   stock_location_name?: string | null
+  draft_packet_id?: string | null
+  draft_packet_state?: string | null
+  draft_packet_serial_code?: string | null
   deliveries?: PurchaseDelivery[]
 }
 
@@ -204,6 +207,7 @@ interface ItemDraft {
   description: string
   name: string
   symbol: string
+  stockLocationId: string
 }
 
 const statusLabel: Record<PurchaseStatus, string> = {
@@ -320,6 +324,7 @@ const createItemDraft = (item: PurchaseItem): ItemDraft => ({
   description: item.description || "",
   name: item.name || "",
   symbol: item.symbol || "",
+  stockLocationId: item.stock_location_id || "",
 })
 
 const compactCellInput =
@@ -612,6 +617,8 @@ export function PurchaseDetailPage() {
         return
       }
       payloadItem.name = itemName
+    } else {
+      payloadItem.stock_location_id = draft.stockLocationId || null
     }
 
     try {
@@ -863,6 +870,17 @@ export function PurchaseDetailPage() {
 
   const selectedTransition = purchaseDetail ? transitionByStatus[purchaseDetail.status] : null
 
+  // Exporting creates the expected packets, so every component line needs a location by then.
+  const itemsMissingLocation = useMemo(
+    () =>
+      selectedTransition?.target === "exported"
+        ? (purchaseDetail?.items || []).filter(
+            (item) => item.item_type === "component" && !item.stock_location_id,
+          )
+        : [],
+    [purchaseDetail?.items, selectedTransition?.target],
+  )
+
   const receiveCandidates = useMemo(
     () =>
       (purchaseDetail?.items || []).filter(
@@ -990,18 +1008,26 @@ export function PurchaseDetailPage() {
             {canEdit && (
               <div className="mt-4 flex flex-wrap gap-2">
                 {selectedTransition && (
-                  <Button
-                    size="sm"
-                    onClick={() =>
-                      handleTransition(
-                        selectedTransition.target,
-                        `Status changed to ${statusLabel[selectedTransition.target]}.`,
-                      )
-                    }
-                    disabled={mutationBusy}
-                  >
-                    {selectedTransition.label}
-                  </Button>
+                  <div className="flex flex-col gap-1">
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        handleTransition(
+                          selectedTransition.target,
+                          `Status changed to ${statusLabel[selectedTransition.target]}.`,
+                        )
+                      }
+                      disabled={mutationBusy || itemsMissingLocation.length > 0}
+                    >
+                      {selectedTransition.label}
+                    </Button>
+                    {itemsMissingLocation.length > 0 && (
+                      <p className="text-xs text-amber-600">
+                        Set a stock location for {itemsMissingLocation.length} component item
+                        {itemsMissingLocation.length > 1 ? "s" : ""} before exporting.
+                      </p>
+                    )}
+                  </div>
                 )}
                 {(purchaseDetail.status === "receiving" || purchaseDetail.status === "stocking") && (
                   <Button
@@ -1195,6 +1221,20 @@ export function PurchaseDetailPage() {
                         </TooltipContent>
                       </Tooltip>
                     </TableHead>
+                    <TableHead className="h-9 w-[12%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="cursor-help underline decoration-dotted decoration-muted-foreground/60">Location</span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-xs">
+                          <p className="font-semibold">Stock location</p>
+                          <p className="text-xs text-muted-foreground">
+                            Where the goods will be stored. Required before the order can be exported —
+                            exporting creates an expected packet at this location.
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TableHead>
                     <TableHead className="h-9 w-[14%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -1328,6 +1368,33 @@ export function PurchaseDetailPage() {
                             />
                           </TableCell>
                           <TableCell className="px-3 py-2 text-xs">
+                            {item.item_type === "component" ? (
+                              <div className="space-y-1">
+                                <LocationParentSelect
+                                  locations={locationsTreeForReceive}
+                                  value={draft.stockLocationId || null}
+                                  onChange={(value) =>
+                                    setDraftValue(item.id, { stockLocationId: value ?? "" })
+                                  }
+                                  placeholder="Select location"
+                                  emptyLabel="Select location"
+                                  isDisabled={!canEdit || mutationBusy}
+                                />
+                                {item.draft_packet_id ? (
+                                  <Link
+                                    to={`/store/packet/${item.draft_packet_id}`}
+                                    className="block text-[11px] text-muted-foreground underline underline-offset-2"
+                                  >
+                                    {item.draft_packet_state === "expected" ? "Expected packet" : "Packet"}
+                                    {item.draft_packet_serial_code ? ` ${item.draft_packet_serial_code}` : ""}
+                                  </Link>
+                                ) : null}
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="px-3 py-2 text-xs">
                             <div className="space-y-1.5">
                               <div className="flex flex-col gap-0.5 text-[11px] text-muted-foreground">
                                 <span>Delivered {item.delivered_quantity} / {item.quantity}</span>
@@ -1399,7 +1466,7 @@ export function PurchaseDetailPage() {
                     })
                   ) : (
                     <TableRow className="border-border/40">
-                      <TableCell colSpan={10} className="py-6 text-center text-sm text-muted-foreground">
+                      <TableCell colSpan={11} className="py-6 text-center text-sm text-muted-foreground">
                         No items in this purchase order.
                       </TableCell>
                     </TableRow>

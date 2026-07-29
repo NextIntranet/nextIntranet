@@ -26,6 +26,7 @@ import { PrintActions } from "@/components/PrintActions"
 import { ActivityLogTable, type ActivityLogItem } from "@/components/ActivityLogTable"
 import { setScannerCapture } from "@/lib/scannerCapture"
 import { IDENTIFIER_SCHEME_OPTIONS } from "@/lib/identifierSchemes"
+import { packetStateLabel } from "@/lib/packetState"
 import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 
@@ -56,6 +57,7 @@ interface PacketDetail {
   itemValue?: number | null
   totalValue?: number | null
   price_source?: "fifo" | "internal" | "internal_missing" | "unknown" | null
+  state?: string | null
   is_active?: boolean
   created_at: string
   date_added?: string
@@ -542,9 +544,7 @@ export function PacketDetailPage() {
                     </span>
                   </div>
                 ) : (
-                  <span className="text-foreground">
-                    {packet.is_active === false ? "Inactive" : "Active"}
-                  </span>
+                  <span className="text-foreground">{packetStateLabel(packet)}</span>
                 )}
               </div>
               <div className="flex items-center justify-between rounded-lg border border-border/70 px-4 py-3">

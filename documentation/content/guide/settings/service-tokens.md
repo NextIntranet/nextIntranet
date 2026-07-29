@@ -22,6 +22,9 @@ auth and are meant for system integrations.
   - allowed print queues (per token)
   - optional scopes list (currently used: `print:render`, `mcp:read`, `mcp:write`)
 - Token can expire via `expires_at`.
+- A token with `mcp:write` can create its own print queue (`create_print_queue`). The queue is
+  owned by the token's creator, so the token must be linked to a user; when the token is
+  restricted to specific queues, the new one is added to that list.
 
 ## Headers
 

@@ -153,6 +153,13 @@ class Purchase(NIModel):
             if items.filter(quantity__lte=0).exists():
                 raise ValidationError({'status': 'All items must have quantity greater than zero.'})
 
+        if target_status == PurchaseStatus.EXPORTED:
+            # Draft packets are created on export, so every stock item needs a target location.
+            if stock_items.filter(stock_location__isnull=True).exists():
+                raise ValidationError(
+                    {'status': 'Stock location is required for all component items before export.'}
+                )
+
         if target_status == PurchaseStatus.COMPLETED:
             if stock_items.filter(delivered_quantity__lt=models.F('quantity')).exists():
                 raise ValidationError({'status': 'All stock items must be fully received before completion.'})
@@ -270,6 +277,15 @@ class PurchaseItem(models.Model):
         related_name='purchase_items',
         limit_choices_to={'can_store_items': True},
         verbose_name=_("Stock location"),
+    )
+    draft_packet = models.ForeignKey(
+        Packet,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='purchase_items',
+        verbose_name=_("Draft packet"),
+        help_text=_('Packet created when the order was exported, in the expected state until stocked.'),
     )
 
     class Meta:
