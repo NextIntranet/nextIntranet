@@ -7,7 +7,7 @@ from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
 import xml.etree.ElementTree as ET
 
-from ..ibom_bridge import inject_ni_bridge_into_upload
+from ..ibom_bridge import inject_ni_bridge, inject_ni_bridge_into_upload
 
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.base import ContentFile
@@ -346,6 +346,30 @@ def _parse_netlist_components(xml_bytes: bytes):
 
 def _sha256_digest(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
+
+
+def _fetch_https_bytes(url: str, *, timeout: int = 20, max_bytes: int = 25 * 1024 * 1024) -> tuple[bytes, str]:
+    """Download an HTTPS resource, returning (body, content_type).
+
+    Raises ValueError for a non-HTTPS URL or an oversized response.
+    """
+    if not (url or "").lower().startswith("https://"):
+        raise ValueError("URL must use HTTPS.")
+    req = Request(url, headers={"User-Agent": "NextIntranet-Manufacturing/1.0"})
+    with urlopen(req, timeout=timeout) as response:
+        content_type = (response.headers.get("Content-Type") or "").lower()
+        # Read one byte past the limit so an oversized body is detected, not truncated.
+        data = response.read(max_bytes + 1)
+    if len(data) > max_bytes:
+        raise ValueError(f"Response is larger than {max_bytes // (1024 * 1024)} MB.")
+    return data, content_type
+
+
+def _looks_like_html(data: bytes, content_type: str) -> bool:
+    if "html" in content_type:
+        return True
+    head = data[:1024].lstrip().lower()
+    return head.startswith(b"<!doctype html") or head.startswith(b"<html")
 
 
 def _extract_packet_id_from_barcode(barcode: str) -> str | None:
@@ -786,7 +810,27 @@ class TemplateViewSet(viewsets.ModelViewSet):
             return Response({"error": "Provide ibom_url or ibom_file."}, status=status.HTTP_400_BAD_REQUEST)
 
         if ibom_url:
+            # A remote iBOM is not necessarily servable in an iframe, so download it and host
+            # our own bridged copy — exactly like an upload. The URL stays as the source.
+            try:
+                html_bytes, content_type = _fetch_https_bytes(ibom_url)
+            except ValueError as exc:
+                return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            except Exception as exc:
+                return Response(
+                    {"error": f"Failed to download iBOM: {exc}"}, status=status.HTTP_400_BAD_REQUEST
+                )
+            if not _looks_like_html(html_bytes, content_type):
+                return Response(
+                    {"error": "iBOM URL did not return an HTML document."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            patched = inject_ni_bridge(html_bytes.decode("utf-8", errors="replace")).encode("utf-8")
+            filename = (urlparse(ibom_url).path.rsplit("/", 1)[-1] or "ibom.html").strip() or "ibom.html"
+            if not filename.lower().endswith((".html", ".htm")):
+                filename = f"{filename}.html"
             template.ibom_url = ibom_url
+            template.ibom_file.save(filename, ContentFile(patched), save=False)
         if ibom_file:
             template.ibom_file = inject_ni_bridge_into_upload(ibom_file)
 
@@ -943,9 +987,7 @@ class TemplateViewSet(viewsets.ModelViewSet):
             return Response({"error": "Source URL must use HTTPS."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            req = Request(source_url, headers={"User-Agent": "NextIntranet-Manufacturing/1.0"})
-            with urlopen(req, timeout=20) as response:
-                xml_bytes = response.read()
+            xml_bytes, _ = _fetch_https_bytes(source_url)
 
             incoming_hash = _sha256_digest(xml_bytes)
             if template.source_hash and template.source_hash == incoming_hash:
@@ -1009,9 +1051,7 @@ class TemplateViewSet(viewsets.ModelViewSet):
             mode = "merge"
 
         try:
-            req = Request(template.source_url, headers={"User-Agent": "NextIntranet-Manufacturing/1.0"})
-            with urlopen(req, timeout=20) as response:
-                xml_bytes = response.read()
+            xml_bytes, _ = _fetch_https_bytes(template.source_url)
 
             incoming_hash = _sha256_digest(xml_bytes)
             if template.source_hash and template.source_hash == incoming_hash:

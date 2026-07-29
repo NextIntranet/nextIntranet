@@ -55,6 +55,7 @@ class Production(NIModel):
     )
     
     link = models.URLField(
+        max_length=2048,
         blank=True,
         null=True,
         verbose_name=_('Link'),
@@ -165,6 +166,7 @@ class Template(NIModel):
         verbose_name=_('Planned date'),
     )
     source_url = models.URLField(
+        max_length=2048,
         blank=True,
         null=True,
         verbose_name=_('Source URL'),
@@ -188,6 +190,7 @@ class Template(NIModel):
         verbose_name=_('Source imported at'),
     )
     ibom_url = models.URLField(
+        max_length=2048,
         blank=True,
         null=True,
         verbose_name=_('iBOM URL'),

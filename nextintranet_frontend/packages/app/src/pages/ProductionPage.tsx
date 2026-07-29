@@ -1,18 +1,34 @@
-import { FormEvent, Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { FormEvent, Fragment, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { IBOM_EVENT_TYPES, apiFetch, getRealtimeClient, nextIO, tokenStorage, useIbomBridge } from "@nextintranet/core"
-import { ChevronDown, ChevronUp, CornerDownRight, FilePlus2, FileText, FolderPlus, Link2, Lock, MapPin, Package, ScanLine } from "lucide-react"
+import {
+  ChevronDown,
+  ChevronUp,
+  CircleSlash,
+  CornerDownRight,
+  Download,
+  Eye,
+  EyeOff,
+  FilePlus2,
+  FileText,
+  FolderPlus,
+  Link2,
+  Link2Off,
+  Loader2,
+  Lock,
+  MapPin,
+  Package,
+  Pencil,
+  RefreshCw,
+  ScanLine,
+  Trash2,
+  Upload,
+} from "lucide-react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { ComponentInfoPopover } from "@/components/ComponentInfoPopover"
 import { ComponentSearchSheet, type SearchComponentItem } from "@/components/ComponentSearchSheet"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -422,6 +438,153 @@ const flattenFolders = (nodes: FolderNode[], depth = 0): Array<{ id: string; lab
   return rows
 }
 
+type ImportSourceRowProps = {
+  urlValue: string
+  onUrlChange: (value: string) => void
+  urlPlaceholder: string
+  onImportUrl: () => void
+  importUrlTitle: string
+  onImportFile: (file: File) => void
+  fileAccept: string
+  fileTitle: string
+  disabled?: boolean
+  pending?: boolean
+  pendingLabel?: string
+  onReimport?: () => void
+  reimportDisabled?: boolean
+  reimportTitle?: string
+  children?: ReactNode
+}
+
+/** One consistent "import from URL or from file" row, shared by the netlist and iBOM sections. */
+function ImportSourceRow({
+  urlValue,
+  onUrlChange,
+  urlPlaceholder,
+  onImportUrl,
+  importUrlTitle,
+  onImportFile,
+  fileAccept,
+  fileTitle,
+  disabled = false,
+  pending = false,
+  pendingLabel,
+  onReimport,
+  reimportDisabled = false,
+  reimportTitle,
+  children,
+}: ImportSourceRowProps) {
+  const locked = disabled || pending
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="inline-flex min-w-0 flex-1 basis-72 items-stretch">
+          <Input
+            className="h-8 min-w-0 flex-1 rounded-r-none"
+            placeholder={urlPlaceholder}
+            value={urlValue}
+            onChange={(e) => onUrlChange(e.target.value)}
+            disabled={locked}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 rounded-l-none border-l-0 px-2.5"
+            title={importUrlTitle}
+            aria-label={importUrlTitle}
+            disabled={locked || !urlValue.trim()}
+            onClick={onImportUrl}
+          >
+            {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          </Button>
+        </div>
+        {onReimport ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 px-2.5"
+            title={reimportTitle}
+            aria-label={reimportTitle}
+            disabled={locked || reimportDisabled}
+            onClick={onReimport}
+          >
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+        ) : null}
+        <label
+          className={cn(
+            "inline-flex h-8 items-center gap-1.5 rounded-md border border-input px-2.5 text-sm",
+            locked ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-accent",
+          )}
+          title={fileTitle}
+        >
+          <input
+            type="file"
+            accept={fileAccept}
+            className="hidden"
+            disabled={locked}
+            onChange={(e) => {
+              const file = e.currentTarget.files?.[0]
+              e.currentTarget.value = ""
+              if (file) onImportFile(file)
+            }}
+          />
+          <Upload className="h-4 w-4" />
+          Import file
+        </label>
+        {children}
+      </div>
+      {pending ? (
+        <div className="space-y-1">
+          <div className="h-0.5 w-full overflow-hidden rounded-full bg-muted ni-indeterminate" />
+          <p className="text-xs text-muted-foreground">{pendingLabel || "Working…"}</p>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+/** One icon button inside a BOM row's action group. */
+function BomLineAction({
+  title,
+  onClick,
+  disabled,
+  active = false,
+  destructive = false,
+  children,
+}: {
+  title: string
+  onClick: () => void
+  disabled?: boolean
+  active?: boolean
+  destructive?: boolean
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "inline-flex h-7 w-7 items-center justify-center border-r border-input last:border-r-0",
+        "first:rounded-l-[5px] last:rounded-r-[5px] hover:bg-accent",
+        "disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent",
+        active && "bg-amber-100 text-amber-700",
+        destructive && "text-rose-700",
+      )}
+    >
+      {children}
+    </button>
+  )
+}
+
+/** How BOM rows are grouped: one row per reference, per identical line, or per linked component. */
+type GroupingMode = "line" | "grouped" | "component"
+
 type ProductionPageProps = {
   mode?: "overview" | "bom"
 }
@@ -433,10 +596,13 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
   const isBomView = mode === "bom"
 
   const [activeTab, setActiveTab] = useState<TabKey>("bom")
-  const [hideDnp, setHideDnp] = useState(true)
-  const [hideExcluded, setHideExcluded] = useState(true)
-  const [groupedView, setGroupedView] = useState(true)
-  const [groupByComponent, setGroupByComponent] = useState(false)
+  // DNP and BOM-excluded rows are always read together, so one toggle drives both.
+  const [showHiddenRows, setShowHiddenRows] = useState(false)
+  const hideDnp = !showHiddenRows
+  const hideExcluded = !showHiddenRows
+  const [groupingMode, setGroupingMode] = useState<GroupingMode>("grouped")
+  const groupedView = groupingMode !== "line"
+  const groupByComponent = groupingMode === "component"
   const [autoSyncIbomCompletion, setAutoSyncIbomCompletion] = useState(true)
   const [followIbomHover, setFollowIbomHover] = useState(true)
   const [importMode, setImportMode] = useState<"replace" | "merge">("replace")
@@ -535,7 +701,6 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
   const resolvedSourceUrl = useMemo(() => {
     return (sourceUrlInput.trim() || selectedBom?.source_url?.trim() || "")
   }, [selectedBom?.source_url, sourceUrlInput])
-  const canImportNetlistFromUrl = canImportNetlist && !!resolvedSourceUrl
   const ibomViewUrl = useMemo(() => {
     return toSameOriginS3Url(selectedBom?.ibom_file_url || selectedBom?.ibom_url || null)
   }, [selectedBom?.ibom_file_url, selectedBom?.ibom_url])
@@ -969,13 +1134,13 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
   })
 
   const setIbomMutation = useMutation({
+    // A URL is downloaded and hosted server-side, so never send both — the file wins when given.
     mutationFn: async ({ file }: { file: File | null }) => {
       const data = new FormData()
-      if (ibomUrlInput.trim()) {
-        data.append("ibom_url", ibomUrlInput.trim())
-      }
       if (file) {
         data.append("ibom_file", file)
+      } else if (ibomUrlInput.trim()) {
+        data.append("ibom_url", ibomUrlInput.trim())
       }
       return apiFetch(`/api/v1/production/templates/${bomId}/ibom/`, {
         method: "POST",
@@ -1544,13 +1709,8 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     return unsubscribe
   }, [activeTab, bomId, executeScan, isBomView, scannerMode])
 
-  const handleImportFile = (event: FormEvent<HTMLInputElement>) => {
-    const input = event.currentTarget
-    const file = input.files?.[0]
-    if (!file) return
-    importFileMutation.mutate({ file })
-    input.value = ""
-  }
+  const netlistImportPending =
+    importFileMutation.isPending || importUrlMutation.isPending || reImportMutation.isPending
 
   const handleImportNetlistFromUrl = () => {
     if (!resolvedSourceUrl) {
@@ -2235,42 +2395,27 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                               </button>
                               {ibomSectionOpen ? (
                                 <div className="space-y-2 border-t border-border/60 p-3">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <Input
-                                      className="h-8 w-64 max-w-full"
-                                      placeholder="iBOM URL (HTTPS)"
-                                      value={ibomUrlInput}
-                                      onChange={(e) => setIbomUrlInput(e.target.value)}
-                                      disabled={isBomClosed(selectedBom.status)}
-                                    />
-                                    <Button
-                                      size="sm"
-                                      onClick={() => setIbomMutation.mutate({ file: null })}
-                                      disabled={isBomClosed(selectedBom.status) || setIbomMutation.isPending}
-                                    >
-                                      Save URL
-                                    </Button>
-                                    <label className="inline-flex cursor-pointer items-center rounded-md border border-input px-2 py-1.5 text-xs">
-                                      <input
-                                        type="file"
-                                        accept=".html,.htm,.zip"
-                                        className="hidden"
-                                        disabled={isBomClosed(selectedBom.status)}
-                                        onChange={(e) => {
-                                          const file = e.currentTarget.files?.[0] || null
-                                          setIbomMutation.mutate({ file })
-                                          e.currentTarget.value = ""
-                                        }}
-                                      />
-                                      Upload
-                                    </label>
-                                    <Button size="sm" variant="outline" disabled={!ibomViewUrl} onClick={() => setIbomPanelOpen(true)}>
+                                  <ImportSourceRow
+                                    urlValue={ibomUrlInput}
+                                    onUrlChange={setIbomUrlInput}
+                                    urlPlaceholder="iBOM URL (HTTPS)"
+                                    onImportUrl={() => setIbomMutation.mutate({ file: null })}
+                                    importUrlTitle="Download from URL and host it here"
+                                    onImportFile={(file) => setIbomMutation.mutate({ file })}
+                                    fileAccept=".html,.htm"
+                                    fileTitle="Upload an iBOM HTML file"
+                                    disabled={isBomClosed(selectedBom.status)}
+                                    pending={setIbomMutation.isPending}
+                                    pendingLabel="Fetching iBOM…"
+                                  >
+                                    <span className="mx-1 h-6 w-px bg-border" />
+                                    <Button size="sm" variant="outline" className="h-8" disabled={!ibomViewUrl} onClick={() => setIbomPanelOpen(true)}>
                                       Open panel
                                     </Button>
-                                    <Button size="sm" variant="outline" disabled={!ibomIframeSrc} onClick={openIbomInNewTab}>
+                                    <Button size="sm" variant="outline" className="h-8" disabled={!ibomIframeSrc} onClick={openIbomInNewTab}>
                                       New tab
                                     </Button>
-                                  </div>
+                                  </ImportSourceRow>
                                   <p className="text-xs text-muted-foreground">
                                     Last updated:{" "}
                                     {selectedBom.ibom_updated_at ? new Date(selectedBom.ibom_updated_at).toLocaleString() : "not set"}
@@ -2288,108 +2433,57 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                 Netlist import is only available on template series or empty series. Duplicate from the template instead.
                               </p>
                             ) : null}
-                            <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 p-3">
-                              <Input
-                                className="h-8 w-72 max-w-full"
-                                placeholder="Source URL (HTTPS)"
-                                value={sourceUrlInput}
-                                onChange={(e) => setSourceUrlInput(e.target.value)}
+                            <div className="rounded-md border border-border/60 p-3">
+                              <ImportSourceRow
+                                urlValue={sourceUrlInput}
+                                onUrlChange={setSourceUrlInput}
+                                urlPlaceholder="Netlist URL (HTTPS)"
+                                onImportUrl={handleImportNetlistFromUrl}
+                                importUrlTitle="Import netlist from URL"
+                                onImportFile={(file) => importFileMutation.mutate({ file })}
+                                fileAccept=".xml,text/xml,application/xml"
+                                fileTitle="Import a netlist XML file"
                                 disabled={!canImportNetlist}
-                              />
-                              <select
-                                value={importMode}
-                                onChange={(e) => setImportMode(e.target.value as "replace" | "merge")}
-                                className="h-8 rounded-md border border-input bg-background px-2 text-sm"
-                                disabled={!canImportNetlist}
+                                pending={netlistImportPending}
+                                pendingLabel="Parsing netlist…"
+                                onReimport={() => reImportMutation.mutate()}
+                                reimportDisabled={!isTemplateSeries || !selectedBom.source_url}
+                                reimportTitle="Re-import from the saved URL"
                               >
-                                <option value="replace">Replace</option>
-                                <option value="merge">Merge</option>
-                              </select>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={!canImportNetlist || !sourceUrlInput.trim() || importUrlMutation.isPending}
-                                onClick={() => importUrlMutation.mutate(sourceUrlInput)}
-                              >
-                                Import from URL
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={!isTemplateSeries || !selectedBom.source_url || reImportMutation.isPending}
-                                onClick={() => reImportMutation.mutate()}
-                              >
-                                Re-import
-                              </Button>
+                                <select
+                                  value={importMode}
+                                  onChange={(e) => setImportMode(e.target.value as "replace" | "merge")}
+                                  className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+                                  disabled={!canImportNetlist || netlistImportPending}
+                                >
+                                  <option value="replace">Replace</option>
+                                  <option value="merge">Merge</option>
+                                </select>
+                              </ImportSourceRow>
                             </div>
 
                             <div className="flex flex-wrap items-center gap-2">
-                              <div className="inline-flex items-stretch">
-                                <label
-                                  className={cn(
-                                    "inline-flex items-center gap-2 rounded-l-md border border-input px-3 py-2 text-sm",
-                                    canImportNetlist ? "cursor-pointer" : "cursor-not-allowed opacity-60",
-                                  )}
-                                >
-                                  <input
-                                    type="file"
-                                    accept=".xml,text/xml,application/xml"
-                                    onChange={handleImportFile}
-                                    className="hidden"
-                                    disabled={!canImportNetlist}
-                                  />
-                                  Import netlist (XML)
-                                </label>
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="sm"
-                                      className="rounded-l-none border-l-0 px-2"
-                                      aria-label="Netlist actions"
-                                    >
-                                      <ChevronDown className="h-4 w-4" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="start">
-                                    <DropdownMenuItem
-                                      onClick={handleImportNetlistFromUrl}
-                                      disabled={!canImportNetlistFromUrl || importUrlMutation.isPending}
-                                    >
-                                      Import from URL
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              </div>
                               <Button
-                                variant="outline"
+                                variant={showHiddenRows ? "secondary" : "outline"}
                                 size="sm"
-                                onClick={() => setHideDnp((value) => !value)}
+                                className="gap-1.5"
+                                title="Show rows marked DNP or excluded from the BOM"
+                                onClick={() => setShowHiddenRows((value) => !value)}
                               >
-                                {hideDnp ? "Show DNP" : "Hide DNP"}
+                                {showHiddenRows ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                                {showHiddenRows ? "Hidden rows shown" : "Show hidden rows"}
                               </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setGroupedView((value) => !value)}
+                              <select
+                                value={groupingMode}
+                                onChange={(e) => setGroupingMode(e.target.value as GroupingMode)}
+                                className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+                                title="How BOM rows are grouped"
                               >
-                                {groupedView ? "Ungrouped" : "Grouped"}
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setHideExcluded((value) => !value)}
-                              >
-                                {hideExcluded ? "Show Excl." : "Hide Excl."}
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setGroupByComponent((value) => !value)}
-                              >
-                                {groupByComponent ? "By line" : "By component"}
-                              </Button>
+                                <option value="line">By line</option>
+                                <option value="grouped">Grouped</option>
+                                <option value="component">By component</option>
+                              </select>
+                              <span className="mx-1 h-6 w-px bg-border" />
                               {(() => {
                                 const linkedLines = selectedBomComponents.filter(
                                   (line) => line.component && !line.dnp,
@@ -2747,10 +2841,9 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                           </div>
                                         </TableCell>
                                         <TableCell className="px-3 py-2 align-top">
-                                          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
-                                            <button
-                                              type="button"
-                                              className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
+                                          <div className="inline-flex items-center rounded-md border border-input">
+                                            <BomLineAction
+                                              title="Edit value, footprint and description"
                                               disabled={isBomClosed(selectedBom.status)}
                                               onClick={() => {
                                                 const nextValue = window.prompt("Value", line.value || "")
@@ -2769,20 +2862,18 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                                 })
                                               }}
                                             >
-                                              Edit
-                                            </button>
-                                            <button
-                                              type="button"
-                                              className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
+                                              <Pencil className="h-3.5 w-3.5" />
+                                            </BomLineAction>
+                                            <BomLineAction
+                                              title={line.component ? "Relink to another component" : "Link a component"}
                                               disabled={isBomClosed(selectedBom.status)}
                                               onClick={() => openLinkSheet(line)}
                                             >
-                                              {line.component ? "Relink" : "Link"}
-                                            </button>
+                                              <Link2 className="h-3.5 w-3.5" />
+                                            </BomLineAction>
                                             {line.component ? (
-                                              <button
-                                                type="button"
-                                                className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
+                                              <BomLineAction
+                                                title="Unlink the component"
                                                 disabled={isBomClosed(selectedBom.status)}
                                                 onClick={() =>
                                                   updateLineMutation.mutate({
@@ -2791,12 +2882,12 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                                   })
                                                 }
                                               >
-                                                Unlnk
-                                              </button>
+                                                <Link2Off className="h-3.5 w-3.5" />
+                                              </BomLineAction>
                                             ) : null}
-                                            <button
-                                              type="button"
-                                              className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
+                                            <BomLineAction
+                                              title={line.dnp ? "Marked DNP — click to clear" : "Mark as DNP"}
+                                              active={line.dnp}
                                               disabled={isBomClosed(selectedBom.status)}
                                               onClick={() =>
                                                 updateLineMutation.mutate({
@@ -2805,11 +2896,15 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                                 })
                                               }
                                             >
-                                              {line.dnp ? "DNP on" : "DNP off"}
-                                            </button>
-                                            <button
-                                              type="button"
-                                              className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
+                                              <CircleSlash className="h-3.5 w-3.5" />
+                                            </BomLineAction>
+                                            <BomLineAction
+                                              title={
+                                                line.exclude_from_bom
+                                                  ? "Excluded from BOM — click to include"
+                                                  : "Exclude from BOM"
+                                              }
+                                              active={line.exclude_from_bom}
                                               disabled={isBomClosed(selectedBom.status)}
                                               onClick={() =>
                                                 updateLineMutation.mutate({
@@ -2818,19 +2913,19 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                                 })
                                               }
                                             >
-                                              {line.exclude_from_bom ? "Excl. on" : "Excl. off"}
-                                            </button>
-                                            <button
-                                              type="button"
-                                              className="text-rose-700 hover:underline disabled:text-muted-foreground disabled:no-underline"
+                                              <EyeOff className="h-3.5 w-3.5" />
+                                            </BomLineAction>
+                                            <BomLineAction
+                                              title="Delete this BOM line"
+                                              destructive
                                               disabled={isBomClosed(selectedBom.status)}
                                               onClick={() => {
                                                 if (!window.confirm("Delete this BOM line?")) return
                                                 deleteLineMutation.mutate(lineId)
                                               }}
                                             >
-                                              Del
-                                            </button>
+                                              <Trash2 className="h-3.5 w-3.5" />
+                                            </BomLineAction>
                                           </div>
                                         </TableCell>
                                       </TableRow>

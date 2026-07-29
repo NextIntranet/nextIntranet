@@ -188,6 +188,22 @@ input, textarea, select {
   font-size: inherit;
 }
 
+/* Indeterminate progress bar for work of unknown duration (netlist parsing, downloads). */
+@keyframes ni-indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+
+.ni-indeterminate::after {
+  content: "";
+  display: block;
+  height: 100%;
+  width: 25%;
+  border-radius: inherit;
+  background: var(--color-primary);
+  animation: ni-indeterminate 1.1s ease-in-out infinite;
+}
+
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
