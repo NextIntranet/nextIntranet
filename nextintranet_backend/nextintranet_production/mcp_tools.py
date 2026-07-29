@@ -5,6 +5,7 @@ from mcp_server import MCPToolset
 from nextintranet_warehouse.models.component import Component
 from nextintranet_warehouse.mcp_tools import _mcp_service_token, _require_read, _require_write
 from nextintranet_production.models import Production, Template, TemplateComponent
+from nextintranet_production.models.production import CLOSED_TEMPLATE_STATUSES
 from nextintranet_production.mcp_serializers import (
     MCPProductionListSerializer,
     MCPProductionSerializer,
@@ -39,8 +40,8 @@ def _mcp_actor_user(request):
 
 
 def _ensure_bom_editable(template: Template):
-    if template.status == "locked":
-        raise ValueError("BOM is locked and cannot be edited.")
+    if template.status in CLOSED_TEMPLATE_STATUSES:
+        raise ValueError("BOM is locked or finished and cannot be edited.")
 
 
 class ProductionReadToolset(MCPToolset):
@@ -223,8 +224,8 @@ class ProductionWriteToolset(MCPToolset):
         _require_write(self.request)
 
         template = Template.objects.get(id=bom_id)
-        if template.status == "locked":
-            raise ValueError("BOM is already locked.")
+        if template.status in CLOSED_TEMPLATE_STATUSES:
+            raise ValueError("BOM is already locked or finished.")
 
         template.status = "locked"
         template.locked_at = timezone.now()
@@ -234,7 +235,7 @@ class ProductionWriteToolset(MCPToolset):
 
     def finalize_bom(self, bom_id: str, actual_used: list[dict] | None = None) -> dict:
         """Finalize a BOM: irreversibly consumes warehouse stock (FIFO) for every non-DNP line
-        and locks the BOM. Defaults each line's consumed quantity to its needed total
+        and marks the BOM as finished. Defaults each line's consumed quantity to its needed total
         (qty_per_board * qty_planned, or qty_override_total if set); pass actual_used to override
         specific lines. Consumption may drive a packet count negative when book stock is
         insufficient; fails only when a line has no linked component (or a component with no
@@ -249,8 +250,8 @@ class ProductionWriteToolset(MCPToolset):
         _require_write(self.request)
 
         template = Template.objects.get(id=bom_id)
-        if template.status == "locked":
-            raise ValueError("BOM is already locked.")
+        if template.status in CLOSED_TEMPLATE_STATUSES:
+            raise ValueError("BOM is already finalized.")
 
         actual_used_map = {}
         for index, entry in enumerate(actual_used or []):
@@ -290,7 +291,7 @@ class ProductionWriteToolset(MCPToolset):
             if errors:
                 raise ValueError("Finalize failed: " + "; ".join(errors))
 
-            template.status = "locked"
+            template.status = "finished"
             template.locked_at = timezone.now()
             template.locked_by = actor
             template.save(update_fields=["status", "locked_at", "locked_by"])

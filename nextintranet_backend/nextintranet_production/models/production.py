@@ -24,6 +24,10 @@ def bom_ibom_upload_path(instance, filename: str) -> str:
     return _manufacturing_upload_path("ibom", filename)
 
 
+# BOM statuses that close the template for any edit/scan/finalize operation.
+CLOSED_TEMPLATE_STATUSES = frozenset(('locked', 'finished'))
+
+
 class Production(NIModel):
     """
     Výrobní projekt (produkt/typ výroby).
@@ -140,6 +144,7 @@ class Template(NIModel):
         ('draft', _('Draft')),
         ('in_progress', _('In progress')),
         ('locked', _('Locked')),
+        ('finished', _('Finished')),
     ]
 
     status = models.CharField(

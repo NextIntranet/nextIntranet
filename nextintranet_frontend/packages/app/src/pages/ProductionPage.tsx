@@ -137,7 +137,7 @@ type BomItem = {
   description?: string | null
   series_kind?: "template" | "working"
   source_template?: string | null
-  status: "draft" | "in_progress" | "locked"
+  status: "draft" | "in_progress" | "locked" | "finished"
   qty_planned: number
   planned_date?: string | null
   source_url?: string | null
@@ -263,8 +263,12 @@ const unwrap = <T,>(data: T[] | Paginated<T> | undefined): T[] => {
 const statusBadgeClass = (status: string) => {
   if (status === "locked") return "bg-rose-100 text-rose-800"
   if (status === "in_progress") return "bg-amber-100 text-amber-800"
-  return "bg-emerald-100 text-emerald-800"
+  if (status === "finished") return "bg-emerald-100 text-emerald-800"
+  return "bg-zinc-100 text-zinc-800"
 }
+
+// BOM statuses that close the BOM for editing/scanning/finalize.
+const isBomClosed = (status?: string) => status === "locked" || status === "finished"
 
 const seriesKindBadgeClass = (seriesKind?: BomItem["series_kind"]) => {
   if (seriesKind === "template") return "bg-sky-100 text-sky-800"
@@ -1759,7 +1763,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
             <Button variant="outline" size="sm" onClick={() => duplicateBomMutation.mutate(bom.id)}>
               {bom.series_kind === "template" ? "Create working series" : "Duplicate"}
             </Button>
-            {bom.series_kind !== "template" && bom.status !== "locked" ? (
+            {bom.series_kind !== "template" && !isBomClosed(bom.status) ? (
               <Button variant="outline" size="sm" onClick={() => lockBomMutation.mutate(bom.id)}>
                 Lock
               </Button>
@@ -2139,7 +2143,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                   description: selectedBom.description || "",
                                 })
                               }
-                              disabled={updateBomMutation.isPending || selectedBom.status === "locked"}
+                              disabled={updateBomMutation.isPending || isBomClosed(selectedBom.status)}
                             >
                               Save BOM
                             </Button>
@@ -2230,12 +2234,12 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                       placeholder="iBOM URL (HTTPS)"
                                       value={ibomUrlInput}
                                       onChange={(e) => setIbomUrlInput(e.target.value)}
-                                      disabled={selectedBom.status === "locked"}
+                                      disabled={isBomClosed(selectedBom.status)}
                                     />
                                     <Button
                                       size="sm"
                                       onClick={() => setIbomMutation.mutate({ file: null })}
-                                      disabled={selectedBom.status === "locked" || setIbomMutation.isPending}
+                                      disabled={isBomClosed(selectedBom.status) || setIbomMutation.isPending}
                                     >
                                       Save URL
                                     </Button>
@@ -2244,7 +2248,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                         type="file"
                                         accept=".html,.htm,.zip"
                                         className="hidden"
-                                        disabled={selectedBom.status === "locked"}
+                                        disabled={isBomClosed(selectedBom.status)}
                                         onChange={(e) => {
                                           const file = e.currentTarget.files?.[0] || null
                                           setIbomMutation.mutate({ file })
@@ -2406,7 +2410,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                     }
                                     disabled={
                                       unreserveBomMutation.isPending ||
-                                      selectedBom.status === "locked"
+                                      isBomClosed(selectedBom.status)
                                     }
                                   >
                                     Unreserve BOM ({reservationsForBom.length} item
@@ -2421,7 +2425,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                     }
                                     disabled={
                                       reserveBomMutation.isPending ||
-                                      selectedBom.status === "locked" ||
+                                      isBomClosed(selectedBom.status) ||
                                       reserveItems.length === 0
                                     }
                                   >
@@ -2435,10 +2439,10 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                             </div>
 
                             <div className="grid gap-2 rounded-md border border-border/60 p-3 sm:grid-cols-[1fr_1fr_120px_auto]">
-                              <Input placeholder="Manual value" value={newLineValue} onChange={(e) => setNewLineValue(e.target.value)} disabled={selectedBom.status === "locked"} />
-                              <Input placeholder="Footprint" value={newLineFootprint} onChange={(e) => setNewLineFootprint(e.target.value)} disabled={selectedBom.status === "locked"} />
-                              <Input placeholder="Qty/board" value={newLineQty} onChange={(e) => setNewLineQty(e.target.value)} disabled={selectedBom.status === "locked"} />
-                              <Button onClick={handleAddManualLine} disabled={selectedBom.status === "locked" || addLineMutation.isPending}>
+                              <Input placeholder="Manual value" value={newLineValue} onChange={(e) => setNewLineValue(e.target.value)} disabled={isBomClosed(selectedBom.status)} />
+                              <Input placeholder="Footprint" value={newLineFootprint} onChange={(e) => setNewLineFootprint(e.target.value)} disabled={isBomClosed(selectedBom.status)} />
+                              <Input placeholder="Qty/board" value={newLineQty} onChange={(e) => setNewLineQty(e.target.value)} disabled={isBomClosed(selectedBom.status)} />
+                              <Button onClick={handleAddManualLine} disabled={isBomClosed(selectedBom.status) || addLineMutation.isPending}>
                                 Add manual line
                               </Button>
                             </div>
@@ -2740,7 +2744,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                             <button
                                               type="button"
                                               className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
-                                              disabled={selectedBom.status === "locked"}
+                                              disabled={isBomClosed(selectedBom.status)}
                                               onClick={() => {
                                                 const nextValue = window.prompt("Value", line.value || "")
                                                 if (nextValue == null) return
@@ -2763,7 +2767,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                             <button
                                               type="button"
                                               className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
-                                              disabled={selectedBom.status === "locked"}
+                                              disabled={isBomClosed(selectedBom.status)}
                                               onClick={() => openLinkSheet(line)}
                                             >
                                               {line.component ? "Relink" : "Link"}
@@ -2772,7 +2776,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                               <button
                                                 type="button"
                                                 className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
-                                                disabled={selectedBom.status === "locked"}
+                                                disabled={isBomClosed(selectedBom.status)}
                                                 onClick={() =>
                                                   updateLineMutation.mutate({
                                                     lineId,
@@ -2786,7 +2790,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                             <button
                                               type="button"
                                               className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
-                                              disabled={selectedBom.status === "locked"}
+                                              disabled={isBomClosed(selectedBom.status)}
                                               onClick={() =>
                                                 updateLineMutation.mutate({
                                                   lineId,
@@ -2799,7 +2803,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                             <button
                                               type="button"
                                               className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
-                                              disabled={selectedBom.status === "locked"}
+                                              disabled={isBomClosed(selectedBom.status)}
                                               onClick={() =>
                                                 updateLineMutation.mutate({
                                                   lineId,
@@ -2812,7 +2816,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                             <button
                                               type="button"
                                               className="text-rose-700 hover:underline disabled:text-muted-foreground disabled:no-underline"
-                                              disabled={selectedBom.status === "locked"}
+                                              disabled={isBomClosed(selectedBom.status)}
                                               onClick={() => {
                                                 if (!window.confirm("Delete this BOM line?")) return
                                                 deleteLineMutation.mutate(lineId)
@@ -3079,7 +3083,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                               <button
                                                 type="button"
                                                 className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
-                                                disabled={selectedBom.status === "locked"}
+                                                disabled={isBomClosed(selectedBom.status)}
                                                 onClick={() => openPacketSheet(row, "SOURCED")}
                                               >
                                                 Source bag
@@ -3087,7 +3091,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                               <button
                                                 type="button"
                                                 className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
-                                                disabled={selectedBom.status === "locked"}
+                                                disabled={isBomClosed(selectedBom.status)}
                                                 onClick={() => openPacketSheet(row, "PLACED")}
                                               >
                                                 Place from bag
@@ -3095,7 +3099,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                               <button
                                                 type="button"
                                                 className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
-                                                disabled={selectedBom.status === "locked"}
+                                                disabled={isBomClosed(selectedBom.status)}
                                                 onClick={() => openLinkSheet(row)}
                                               >
                                                 Change
@@ -3146,13 +3150,13 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                                                   [scan.id]: event.target.value,
                                                                 }))
                                                               }
-                                                              disabled={selectedBom.status === "locked"}
+                                                              disabled={isBomClosed(selectedBom.status)}
                                                             />
                                                             <Button
                                                               type="button"
                                                               size="sm"
                                                               className="h-6 px-2 text-[11px]"
-                                                              disabled={selectedBom.status === "locked" || manualPacketMutation.isPending}
+                                                              disabled={isBomClosed(selectedBom.status) || manualPacketMutation.isPending}
                                                               onClick={() => handleQuickPlaceFromScan(row, scan)}
                                                             >
                                                               Place
@@ -3164,7 +3168,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                                           variant="outline"
                                                           size="sm"
                                                           className="h-6 px-2 text-[11px]"
-                                                          disabled={selectedBom.status === "locked" || removeScanMutation.isPending}
+                                                          disabled={isBomClosed(selectedBom.status) || removeScanMutation.isPending}
                                                           onClick={() => removeScanMutation.mutate(scan.id)}
                                                         >
                                                           Remove
@@ -3177,7 +3181,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                                           variant="outline"
                                                           size="sm"
                                                           className="h-6 px-2 text-[11px]"
-                                                          disabled={selectedBom.status === "locked" || removeScanMutation.isPending}
+                                                          disabled={isBomClosed(selectedBom.status) || removeScanMutation.isPending}
                                                           onClick={() => removeScanMutation.mutate(scan.id)}
                                                         >
                                                           Remove
@@ -3267,11 +3271,11 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                               <Button
                                 variant="outline"
                                 onClick={() => finalizeMutation.mutate()}
-                                disabled={selectedBom.status === "locked" || finalizeMutation.isPending}
+                                disabled={isBomClosed(selectedBom.status) || finalizeMutation.isPending}
                               >
                                 Finalize & Lock
                               </Button>
-                              {selectedBom.status !== "locked" ? (
+                              {!isBomClosed(selectedBom.status) ? (
                                 <Button variant="outline" onClick={() => lockBomMutation.mutate(selectedBom.id)}>
                                   Lock without finalize
                                 </Button>

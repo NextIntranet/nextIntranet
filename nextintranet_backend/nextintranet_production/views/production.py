@@ -33,6 +33,7 @@ from nextintranet_production.models import (
     RealizationComponent,
     TemplateComponentScan,
 )
+from nextintranet_production.models.production import CLOSED_TEMPLATE_STATUSES
 from nextintranet_production.serializers import (
     ProductionFolderSerializer,
     ProductionFolderListSerializer,
@@ -763,6 +764,8 @@ class TemplateViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="lock")
     def lock(self, request, pk=None):
         template = self.get_object()
+        if template.status == "finished":
+            return Response({"error": "BOM is already finished."}, status=status.HTTP_409_CONFLICT)
         template.status = "locked"
         template.locked_at = timezone.now()
         template.locked_by = request.user
@@ -1179,7 +1182,7 @@ class TemplateViewSet(viewsets.ModelViewSet):
                 }
             )
 
-        if template.status == "locked":
+        if template.status in CLOSED_TEMPLATE_STATUSES:
             return Response({"error": "BOM is locked."}, status=status.HTTP_409_CONFLICT)
 
         scan = TemplateComponentScan.objects.create(
@@ -1241,7 +1244,7 @@ class TemplateViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def remove_scan(self, request, pk=None):
         template = self.get_object()
-        if template.status == "locked":
+        if template.status in CLOSED_TEMPLATE_STATUSES:
             return Response({"error": "BOM is locked."}, status=status.HTTP_409_CONFLICT)
 
         scan_id = _normalize_text(request.data.get("scan_id"))
@@ -1273,8 +1276,8 @@ class TemplateViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def finalize(self, request, pk=None):
         template = self.get_object()
-        if template.status == "locked":
-            return Response({"error": "BOM is already locked."}, status=status.HTTP_409_CONFLICT)
+        if template.status in CLOSED_TEMPLATE_STATUSES:
+            return Response({"error": "BOM is already finalized."}, status=status.HTTP_409_CONFLICT)
 
         actual_used_map = request.data.get("actual_used") or {}
         if not isinstance(actual_used_map, dict):
@@ -1309,7 +1312,7 @@ class TemplateViewSet(viewsets.ModelViewSet):
             transaction.set_rollback(True)
             return Response({"error": "Finalize failed.", "details": errors}, status=status.HTTP_400_BAD_REQUEST)
 
-        template.status = "locked"
+        template.status = "finished"
         template.locked_at = timezone.now()
         template.locked_by = request.user
         template.save(update_fields=["status", "locked_at", "locked_by"])
@@ -1429,26 +1432,26 @@ class TemplateComponentViewSet(viewsets.ModelViewSet):
         return queryset.order_by("position")
 
     def _ensure_editable(self, template: Template):
-        if template.status == "locked":
+        if template.status in CLOSED_TEMPLATE_STATUSES:
             raise ValueError("BOM is locked and cannot be edited.")
 
     def create(self, request, *args, **kwargs):
         template_id = request.data.get("template")
         if template_id:
             template = get_object_or_404(Template, id=template_id)
-            if template.status == "locked":
+            if template.status in CLOSED_TEMPLATE_STATUSES:
                 return Response({"error": "BOM is locked and cannot be edited."}, status=status.HTTP_409_CONFLICT)
         return super().create(request, *args, **kwargs)
 
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
-        if instance.template.status == "locked":
+        if instance.template.status in CLOSED_TEMPLATE_STATUSES:
             return Response({"error": "BOM is locked and cannot be edited."}, status=status.HTTP_409_CONFLICT)
         return super().update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
-        if instance.template.status == "locked":
+        if instance.template.status in CLOSED_TEMPLATE_STATUSES:
             return Response({"error": "BOM is locked and cannot be edited."}, status=status.HTTP_409_CONFLICT)
         return super().destroy(request, *args, **kwargs)
 
@@ -1461,7 +1464,7 @@ class TemplateComponentViewSet(viewsets.ModelViewSet):
         a line in the template merges into it (auto-merge).
         """
         line = self.get_object()
-        if line.template.status == "locked":
+        if line.template.status in CLOSED_TEMPLATE_STATUSES:
             return Response({"error": "BOM is locked and cannot be edited."}, status=status.HTTP_409_CONFLICT)
 
         component = None
@@ -1481,7 +1484,7 @@ class TemplateComponentViewSet(viewsets.ModelViewSet):
     def split(self, request, pk=None):
         """Split selected references off this line into a new line (same component)."""
         line = self.get_object()
-        if line.template.status == "locked":
+        if line.template.status in CLOSED_TEMPLATE_STATUSES:
             return Response({"error": "BOM is locked and cannot be edited."}, status=status.HTTP_409_CONFLICT)
         refs = request.data.get("refs") or []
         if not isinstance(refs, list) or not refs:
@@ -1502,7 +1505,7 @@ class TemplateComponentViewSet(viewsets.ModelViewSet):
     def merge(self, request, pk=None):
         """Merge other lines (by id) into this line."""
         target = self.get_object()
-        if target.template.status == "locked":
+        if target.template.status in CLOSED_TEMPLATE_STATUSES:
             return Response({"error": "BOM is locked and cannot be edited."}, status=status.HTTP_409_CONFLICT)
         source_ids = request.data.get("ids") or ([request.data.get("into_id")] if request.data.get("into_id") else [])
         sources = TemplateComponent.objects.filter(

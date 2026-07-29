@@ -249,6 +249,12 @@ interface UsedInManufacturing {
   planned_date?: string | null
 }
 
+type ManufacturingGroup = {
+  product_id: string
+  product_name: string
+  boms: UsedInManufacturing[]
+}
+
 interface User {
   is_superuser: boolean
   access_permissions: Array<{
@@ -508,6 +514,25 @@ export function ComponentDetailPage() {
       apiFetch<UsedInManufacturing[]>(`/api/v1/production/productions/used-in/?component=${id}`),
     enabled: !!id,
   })
+
+  // Group BOMs under their parent product; keep the backend ordering
+  // (most recently planned first).
+  const manufacturingGroups = useMemo(() => {
+    const groups = new Map<string, ManufacturingGroup>()
+    for (const row of usedInManufacturing) {
+      const existing = groups.get(row.product_id)
+      if (existing) {
+        existing.boms.push(row)
+      } else {
+        groups.set(row.product_id, {
+          product_id: row.product_id,
+          product_name: row.product_name,
+          boms: [row],
+        })
+      }
+    }
+    return [...groups.values()]
+  }, [usedInManufacturing])
 
   type PurchaseRequestRow = {
     id: string
@@ -2636,54 +2661,50 @@ export function ComponentDetailPage() {
             <div className="space-y-1">
               <h2 className="text-lg font-semibold text-foreground">Used in manufacturing</h2>
               <p className="text-sm text-muted-foreground">
-                BOMs where this component is linked.
+                Production projects whose BOMs include this component.
               </p>
             </div>
-            {usedInManufacturing.length > 0 ? (
-              <div className="overflow-hidden rounded-lg border border-border/70">
-                <Table>
-                  <TableHeader className="bg-muted/40">
-                    <TableRow className="border-border/50">
-                      <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        BOM
-                      </TableHead>
-                      <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Product
-                      </TableHead>
-                      <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Status
-                      </TableHead>
-                      <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Date
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {usedInManufacturing.map((row) => (
-                      <TableRow key={row.bom_id} className="border-border/40">
-                        <TableCell className="h-9 px-3 text-sm">
+            {manufacturingGroups.length > 0 ? (
+              <div className="space-y-2">
+                {manufacturingGroups.map((group) => (
+                  <div key={group.product_id} className="overflow-hidden rounded-lg border border-border/70">
+                    <div className="flex items-center justify-between gap-3 border-b border-border/50 bg-muted/40 px-3 py-2">
+                      <Link
+                        to={`/production/${group.product_id}`}
+                        className="text-sm font-medium text-foreground hover:text-primary hover:underline"
+                      >
+                        {group.product_name}
+                      </Link>
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {group.boms.length} {group.boms.length === 1 ? "BOM" : "BOMs"}
+                      </span>
+                    </div>
+                    <ul className="divide-y divide-border/40">
+                      {group.boms.map((row) => (
+                        <li key={row.bom_id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5">
                           <Link
                             to={`/production/${row.product_id}/bom/${row.bom_id}`}
-                            className="text-primary hover:underline"
+                            className="text-sm text-primary hover:underline"
                           >
                             {row.bom_name}
                           </Link>
-                        </TableCell>
-                        <TableCell className="h-9 px-3 text-sm text-foreground">
-                          {row.product_name}
-                        </TableCell>
-                        <TableCell className="h-9 px-3 text-sm">
-                          <span className="inline-flex rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                          <span
+                            className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                              row.status === "finished"
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-muted text-muted-foreground"
+                            }`}
+                          >
                             {row.status}
                           </span>
-                        </TableCell>
-                        <TableCell className="h-9 px-3 text-sm text-muted-foreground">
-                          {row.planned_date ? new Date(row.planned_date).toLocaleDateString() : "-"}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                          <span className="ml-auto text-xs text-muted-foreground">
+                            {row.planned_date ? new Date(row.planned_date).toLocaleDateString() : "-"}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
               </div>
             ) : (
               <p className="rounded-lg border border-border/70 bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
