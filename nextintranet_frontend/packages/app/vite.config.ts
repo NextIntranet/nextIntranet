@@ -25,7 +25,15 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api\//, /^\/admin\//, /^\/ws\//, /^\/static\//],
+        navigateFallbackDenylist: [
+          /^\/api\//,
+          /^\/admin\//,
+          /^\/ws\//,
+          /^\/static\//,
+          /^\/s3\//,
+          /^\/minio\//,
+          /^\/mcp\b/,
+        ],
         runtimeCaching: [
           {
             urlPattern: /^\/api\/v1\//,
