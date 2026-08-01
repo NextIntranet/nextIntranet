@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-28T22:05:58.235Z",
+  "generatedAt": "2026-08-01T16:51:02.876Z",
   "pages": [
     {
       "path": "",
@@ -340,6 +340,11 @@
         },
         {
           "level": 2,
+          "text": "Purchases",
+          "id": "purchases"
+        },
+        {
+          "level": 2,
           "text": "Print queue",
           "id": "print-queue"
         },
@@ -479,6 +484,84 @@
           "level": 2,
           "text": "`component.internal_price`",
           "id": "componentinternal_price"
+        }
+      ]
+    },
+    {
+      "path": "guide/warehouse/purchases",
+      "file": "guide/warehouse/purchases.md",
+      "title": "Purchases",
+      "description": "Order components from suppliers, receive them and book them into stock.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "Purchases",
+          "id": "purchases"
+        },
+        {
+          "level": 2,
+          "text": "Lifecycle",
+          "id": "lifecycle"
+        },
+        {
+          "level": 2,
+          "text": "Stock locations and expected packets",
+          "id": "stock-locations-and-expected-packets"
+        },
+        {
+          "level": 2,
+          "text": "Receiving and stocking",
+          "id": "receiving-and-stocking"
+        },
+        {
+          "level": 2,
+          "text": "Purchase requests",
+          "id": "purchase-requests"
+        },
+        {
+          "level": 2,
+          "text": "Automation",
+          "id": "automation"
+        }
+      ]
+    },
+    {
+      "path": "guide/warehouse/put-away",
+      "file": "guide/warehouse/put-away.md",
+      "title": "Put-away check",
+      "description": "Scan a bag and a shelf to check whether the bag belongs there.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "Put-away check",
+          "id": "put-away-check"
+        },
+        {
+          "level": 2,
+          "text": "Modes",
+          "id": "modes"
+        },
+        {
+          "level": 2,
+          "text": "Verdicts",
+          "id": "verdicts"
+        },
+        {
+          "level": 2,
+          "text": "Scanning",
+          "id": "scanning"
+        },
+        {
+          "level": 2,
+          "text": "Keyboard shortcuts",
+          "id": "keyboard-shortcuts"
+        },
+        {
+          "level": 2,
+          "text": "Permissions",
+          "id": "permissions"
         }
       ]
     },

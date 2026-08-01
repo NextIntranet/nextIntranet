@@ -7,7 +7,7 @@ from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
 import xml.etree.ElementTree as ET
 
-from ..ibom_bridge import inject_ni_bridge_into_upload
+from ..ibom_bridge import inject_ni_bridge, inject_ni_bridge_into_upload
 
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.base import ContentFile
@@ -51,13 +51,16 @@ from nextintranet_backend.iso15434 import parse_iso15434
 from nextintranet_backend.models.printList import PrintFile, PrintItem, PrintList
 from nextintranet_backend.models.userSettings import UserSetting
 from nextintranet_warehouse.models.component import Component, Packet
+from nextintranet_warehouse.services.activity import actor_from_request, client_info_from_request, log_activity
 from nextintranet_production.services.bom import (
     safe_float as _safe_float,
     safe_decimal as _safe_decimal,
     line_needed_total as _line_needed_total,
+    line_deducted_total as _line_deducted_total,
     line_locations as _line_locations,
     recalculate_scan_totals as _recalculate_scan_totals,
-    consume_component as _consume_component,
+    consume_for_placed_scan as _consume_for_placed_scan,
+    revert_placed_scan_stock as _revert_placed_scan_stock,
     merge_lines as _merge_lines,
     assign_component_to_refs as _assign_component_to_refs,
     unlink_component as _unlink_component,
@@ -346,6 +349,30 @@ def _parse_netlist_components(xml_bytes: bytes):
 
 def _sha256_digest(content: bytes) -> str:
     return hashlib.sha256(content).hexdigest()
+
+
+def _fetch_https_bytes(url: str, *, timeout: int = 20, max_bytes: int = 25 * 1024 * 1024) -> tuple[bytes, str]:
+    """Download an HTTPS resource, returning (body, content_type).
+
+    Raises ValueError for a non-HTTPS URL or an oversized response.
+    """
+    if not (url or "").lower().startswith("https://"):
+        raise ValueError("URL must use HTTPS.")
+    req = Request(url, headers={"User-Agent": "NextIntranet-Manufacturing/1.0"})
+    with urlopen(req, timeout=timeout) as response:
+        content_type = (response.headers.get("Content-Type") or "").lower()
+        # Read one byte past the limit so an oversized body is detected, not truncated.
+        data = response.read(max_bytes + 1)
+    if len(data) > max_bytes:
+        raise ValueError(f"Response is larger than {max_bytes // (1024 * 1024)} MB.")
+    return data, content_type
+
+
+def _looks_like_html(data: bytes, content_type: str) -> bool:
+    if "html" in content_type:
+        return True
+    head = data[:1024].lstrip().lower()
+    return head.startswith(b"<!doctype html") or head.startswith(b"<html")
 
 
 def _extract_packet_id_from_barcode(barcode: str) -> str | None:
@@ -723,7 +750,7 @@ class TemplateViewSet(viewsets.ModelViewSet):
         .prefetch_related(
             "components",
             "components__component__parameters__parameter_type",
-            "components__scans",
+            "components__scans__stock_operation",
             "components__ref_items",
         )
         .all()
@@ -786,7 +813,27 @@ class TemplateViewSet(viewsets.ModelViewSet):
             return Response({"error": "Provide ibom_url or ibom_file."}, status=status.HTTP_400_BAD_REQUEST)
 
         if ibom_url:
+            # A remote iBOM is not necessarily servable in an iframe, so download it and host
+            # our own bridged copy — exactly like an upload. The URL stays as the source.
+            try:
+                html_bytes, content_type = _fetch_https_bytes(ibom_url)
+            except ValueError as exc:
+                return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            except Exception as exc:
+                return Response(
+                    {"error": f"Failed to download iBOM: {exc}"}, status=status.HTTP_400_BAD_REQUEST
+                )
+            if not _looks_like_html(html_bytes, content_type):
+                return Response(
+                    {"error": "iBOM URL did not return an HTML document."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            patched = inject_ni_bridge(html_bytes.decode("utf-8", errors="replace")).encode("utf-8")
+            filename = (urlparse(ibom_url).path.rsplit("/", 1)[-1] or "ibom.html").strip() or "ibom.html"
+            if not filename.lower().endswith((".html", ".htm")):
+                filename = f"{filename}.html"
             template.ibom_url = ibom_url
+            template.ibom_file.save(filename, ContentFile(patched), save=False)
         if ibom_file:
             template.ibom_file = inject_ni_bridge_into_upload(ibom_file)
 
@@ -943,9 +990,7 @@ class TemplateViewSet(viewsets.ModelViewSet):
             return Response({"error": "Source URL must use HTTPS."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            req = Request(source_url, headers={"User-Agent": "NextIntranet-Manufacturing/1.0"})
-            with urlopen(req, timeout=20) as response:
-                xml_bytes = response.read()
+            xml_bytes, _ = _fetch_https_bytes(source_url)
 
             incoming_hash = _sha256_digest(xml_bytes)
             if template.source_hash and template.source_hash == incoming_hash:
@@ -1009,9 +1054,7 @@ class TemplateViewSet(viewsets.ModelViewSet):
             mode = "merge"
 
         try:
-            req = Request(template.source_url, headers={"User-Agent": "NextIntranet-Manufacturing/1.0"})
-            with urlopen(req, timeout=20) as response:
-                xml_bytes = response.read()
+            xml_bytes, _ = _fetch_https_bytes(template.source_url)
 
             incoming_hash = _sha256_digest(xml_bytes)
             if template.source_hash and template.source_hash == incoming_hash:
@@ -1186,6 +1229,7 @@ class TemplateViewSet(viewsets.ModelViewSet):
         if template.status in CLOSED_TEMPLATE_STATUSES:
             return Response({"error": "BOM is locked."}, status=status.HTTP_409_CONFLICT)
 
+        qty = _safe_decimal(request.data.get("qty") or 1)
         scan = TemplateComponentScan.objects.create(
             template=template,
             template_component=line,
@@ -1193,7 +1237,58 @@ class TemplateViewSet(viewsets.ModelViewSet):
             barcode=barcode,
             resolved_component=component,
             resolved_packet_id=packet.id if packet else None,
-            qty=_safe_decimal(request.data.get("qty") or 1),
+            qty=qty,
+        )
+
+        # Placing a part takes it out of the warehouse right away; the deduction stays
+        # revertible (zeroed, not deleted) for as long as the BOM is open.
+        stock_info = None
+        if scan.mode == "placed":
+            if not line.component:
+                transaction.set_rollback(True)
+                return Response(
+                    {"error": "BOM line is not linked to a component, cannot deduct stock."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            try:
+                operation = _consume_for_placed_scan(
+                    scan=scan, template=template, line=line, packet=packet, user=actor_from_request(request)
+                )
+            except ValueError as exc:
+                transaction.set_rollback(True)
+                return Response({"error": str(exc)}, status=status.HTTP_409_CONFLICT)
+
+            operation.packet.refresh_from_db()
+            count_after = _safe_float(operation.packet.count)
+            stock_info = {
+                "packet_id": str(operation.packet_id),
+                "packet_serial": operation.packet.serial_code,
+                "deducted": abs(_safe_float(operation.quantity)),
+                "packet_count_after": count_after,
+                "negative": count_after < 0,
+            }
+
+        station = {
+            key: value
+            for key in ("stationId", "agentId", "deviceId")
+            if (value := request.data.get(key))
+        }
+        log_activity(
+            activity_type="scan",
+            source="production",
+            packet=packet,
+            component=component,
+            user=actor_from_request(request),
+            description=f"Scanned into BOM '{template.name}' ({scan.mode})",
+            metadata={
+                "scan": barcode,
+                "template_id": str(template.id),
+                "mode": scan.mode,
+                "qty": float(qty),
+                "line_id": str(line.id),
+                "client": client_info_from_request(request),
+                **station,
+            },
         )
 
         sourced_total, placed_total = _recalculate_scan_totals(line)
@@ -1202,32 +1297,37 @@ class TemplateViewSet(viewsets.ModelViewSet):
             template.status = "in_progress"
             template.save(update_fields=["status"])
 
-        return Response(
-            {
-                "result": "saved",
-                "scan_id": str(scan.id),
-                "line_id": str(line.id),
-                "sourced_total": float(sourced_total),
-                "placed_total": float(placed_total),
-                "mode": mode,
-            }
-        )
+        payload = {
+            "result": "saved",
+            "scan_id": str(scan.id),
+            "line_id": str(line.id),
+            "sourced_total": float(sourced_total),
+            "placed_total": float(placed_total),
+            "mode": mode,
+        }
+        if stock_info is not None:
+            payload["stock"] = stock_info
+        return Response(payload)
 
     @action(detail=True, methods=["post"], url_path="undo-last-scan")
     @transaction.atomic
     def undo_last_scan(self, request, pk=None):
         template = self.get_object()
+        if template.status in CLOSED_TEMPLATE_STATUSES:
+            return Response({"error": "BOM is locked."}, status=status.HTTP_409_CONFLICT)
+
         line_id = request.data.get("line_id")
 
         scans = TemplateComponentScan.objects.filter(template=template)
         if line_id:
             scans = scans.filter(template_component_id=line_id)
 
-        last_scan = scans.order_by("-created_at").first()
+        last_scan = scans.select_related("stock_operation").order_by("-created_at").first()
         if not last_scan:
             return Response({"error": "No scan to undo."}, status=status.HTTP_404_NOT_FOUND)
 
         line = last_scan.template_component
+        reverted = _revert_placed_scan_stock(last_scan, actor_from_request(request))
         last_scan.delete()
 
         sourced_total, placed_total = _recalculate_scan_totals(line)
@@ -1238,6 +1338,7 @@ class TemplateViewSet(viewsets.ModelViewSet):
                 "line_id": str(line.id),
                 "sourced_total": float(sourced_total),
                 "placed_total": float(placed_total),
+                "returned_qty": abs(_safe_float(last_scan.qty)) if reverted else 0,
             }
         )
 
@@ -1254,13 +1355,14 @@ class TemplateViewSet(viewsets.ModelViewSet):
 
         scan = (
             TemplateComponentScan.objects.filter(template=template, id=scan_id)
-            .select_related("template_component")
+            .select_related("template_component", "stock_operation")
             .first()
         )
         if not scan:
             return Response({"error": "Scan not found."}, status=status.HTTP_404_NOT_FOUND)
 
         line = scan.template_component
+        reverted = _revert_placed_scan_stock(scan, actor_from_request(request))
         scan.delete()
         sourced_total, placed_total = _recalculate_scan_totals(line)
 
@@ -1270,55 +1372,55 @@ class TemplateViewSet(viewsets.ModelViewSet):
                 "line_id": str(line.id),
                 "sourced_total": float(sourced_total),
                 "placed_total": float(placed_total),
+                "returned_qty": abs(_safe_float(scan.qty)) if reverted else 0,
             }
         )
 
     @action(detail=True, methods=["post"], url_path="finalize")
     @transaction.atomic
     def finalize(self, request, pk=None):
+        """Close the BOM. Stock is already gone — it is deducted when a part is placed."""
         template = self.get_object()
         if template.status in CLOSED_TEMPLATE_STATUSES:
             return Response({"error": "BOM is already finalized."}, status=status.HTTP_409_CONFLICT)
 
-        actual_used_map = request.data.get("actual_used") or {}
-        if not isinstance(actual_used_map, dict):
-            actual_used_map = {}
-
-        errors = []
-        for line in template.components.select_related("component").all().order_by("position", "id"):
+        summary = []
+        not_fully_placed = []
+        lines = (
+            template.components.select_related("component")
+            .prefetch_related("scans__stock_operation")
+            .order_by("position", "id")
+        )
+        for line in lines:
             if line.dnp:
                 continue
-
-            needed_total = _line_needed_total(line, template.qty_planned)
-            actual_used = _safe_float(actual_used_map.get(str(line.id), float(needed_total)))
-            if actual_used <= 0:
-                continue
-
-            if not line.component:
-                errors.append(f"Line '{line.value or line.ref_group or line.id}' is not linked to a component.")
-                continue
-
-            try:
-                _consume_component(
-                    component=line.component,
-                    qty=actual_used,
-                    reference=template.id,
-                    user=request.user,
-                    description=f"Manufacturing finalize: {template.name}",
-                )
-            except ValueError as exc:
-                errors.append(str(exc))
-
-        if errors:
-            transaction.set_rollback(True)
-            return Response({"error": "Finalize failed.", "details": errors}, status=status.HTTP_400_BAD_REQUEST)
+            needed_total = float(_line_needed_total(line, template.qty_planned))
+            placed_total = _safe_float(line.placed_total)
+            summary.append(
+                {
+                    "line_id": str(line.id),
+                    "ref_group": line.ref_group,
+                    "needed_total": needed_total,
+                    "placed_total": placed_total,
+                    "deducted_total": _line_deducted_total(line),
+                }
+            )
+            if placed_total < needed_total:
+                not_fully_placed.append(str(line.id))
 
         template.status = "finished"
         template.locked_at = timezone.now()
         template.locked_by = request.user
         template.save(update_fields=["status", "locked_at", "locked_by"])
 
-        return Response({"success": True, "status": template.status})
+        return Response(
+            {
+                "success": True,
+                "status": template.status,
+                "lines": summary,
+                "lines_not_fully_placed": not_fully_placed,
+            }
+        )
 
     @action(detail=True, methods=["post"], url_path="print-a4")
     def print_a4(self, request, pk=None):

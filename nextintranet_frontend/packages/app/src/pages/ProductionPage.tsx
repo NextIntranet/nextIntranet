@@ -1,18 +1,35 @@
-import { FormEvent, Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { FormEvent, Fragment, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { IBOM_EVENT_TYPES, apiFetch, getRealtimeClient, nextIO, tokenStorage, useIbomBridge } from "@nextintranet/core"
-import { AlertTriangle, ChevronDown, ChevronUp, CornerDownRight, FilePlus2, FileText, FolderPlus, Link2, Lock, MapPin, Package, ScanLine } from "lucide-react"
+import {
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  CircleSlash,
+  CornerDownRight,
+  Download,
+  Eye,
+  EyeOff,
+  FilePlus2,
+  FileText,
+  FolderPlus,
+  Link2,
+  Link2Off,
+  Loader2,
+  Lock,
+  MapPin,
+  Package,
+  Pencil,
+  RefreshCw,
+  ScanLine,
+  Trash2,
+  Upload,
+} from "lucide-react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
 import { ComponentInfoPopover } from "@/components/ComponentInfoPopover"
 import { ComponentSearchSheet, type SearchComponentItem } from "@/components/ComponentSearchSheet"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -25,6 +42,7 @@ import { Switch } from "@/components/ui/switch"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
+import type { ScanSourceContext } from "@/lib/resolveScannedIdentifier"
 
 type Paginated<T> = {
   results: T[]
@@ -103,7 +121,18 @@ type BomRowScan = {
   resolved_component?: string | null
   resolved_packet_id?: string | null
   qty?: string | number | null
+  stock_operation?: string | null
+  /** Quantity currently booked out of the warehouse for this scan; 0 once returned. */
+  stock_deducted?: number | null
   created_at: string
+}
+
+type ScanStockInfo = {
+  packet_id: string
+  packet_serial?: string | null
+  deducted: number
+  packet_count_after: number
+  negative: boolean
 }
 
 type ScanMode = "FIND" | "SOURCED" | "PLACED"
@@ -124,6 +153,7 @@ type ScanResponse = {
   sourced_total?: number
   placed_total?: number
   mode?: ScanMode
+  stock?: ScanStockInfo
   resolved_component?: {
     id: string
     name: string
@@ -192,6 +222,9 @@ type AvailabilityResponse = {
 
 type TabKey = "bom" | "production" | "finalize"
 
+/** Each BOM section is its own URL segment so it can be linked and reached with back/forward. */
+const TAB_KEYS: TabKey[] = ["bom", "production", "finalize"]
+
 type LinkSheetTarget = {
   lineId: string
   value: string
@@ -224,6 +257,8 @@ type ScannerRow = BomRow & {
   needed: number
   sourced: number
   placed: number
+  /** Quantity already booked out of the warehouse by placed scans (returned ones count as 0). */
+  deducted: number
   scans: BomRowScan[]
 }
 
@@ -331,6 +366,25 @@ const toNumber = (value: string | number | null | undefined) => {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+/** Stock currently booked out by these scans; a returned placement reports 0. */
+const deductedOf = (scans: BomRowScan[] | null | undefined) =>
+  (scans || []).reduce((sum, scan) => sum + toNumber(scan.stock_deducted), 0)
+
+/** Report the immediate warehouse deduction a PLACED scan made, and warn when a bag went negative. */
+const reportScanStock = (stock: ScanStockInfo | undefined, fallback = "Scan saved.") => {
+  if (!stock) {
+    toast.success(fallback)
+    return
+  }
+  const bag = stock.packet_serial || "bag"
+  const message = `Placed ${formatQty(stock.deducted)} pcs — deducted from ${bag}, ${formatQty(stock.packet_count_after)} left`
+  if (stock.negative) {
+    toast.error(`${message} (bag is now negative)`)
+  } else {
+    toast.success(message)
+  }
+}
+
 const toSameOriginS3Url = (value: string | null | undefined) => {
   if (!value) return null
   if (typeof window === "undefined") return value
@@ -421,21 +475,178 @@ const flattenFolders = (nodes: FolderNode[], depth = 0): Array<{ id: string; lab
   return rows
 }
 
+type ImportSourceRowProps = {
+  urlValue: string
+  onUrlChange: (value: string) => void
+  urlPlaceholder: string
+  onImportUrl: () => void
+  importUrlTitle: string
+  onImportFile: (file: File) => void
+  fileAccept: string
+  fileTitle: string
+  disabled?: boolean
+  pending?: boolean
+  pendingLabel?: string
+  onReimport?: () => void
+  reimportDisabled?: boolean
+  reimportTitle?: string
+  children?: ReactNode
+}
+
+/** One consistent "import from URL or from file" row, shared by the netlist and iBOM sections. */
+function ImportSourceRow({
+  urlValue,
+  onUrlChange,
+  urlPlaceholder,
+  onImportUrl,
+  importUrlTitle,
+  onImportFile,
+  fileAccept,
+  fileTitle,
+  disabled = false,
+  pending = false,
+  pendingLabel,
+  onReimport,
+  reimportDisabled = false,
+  reimportTitle,
+  children,
+}: ImportSourceRowProps) {
+  const locked = disabled || pending
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="inline-flex min-w-0 flex-1 basis-72 items-stretch">
+          <Input
+            className="h-8 min-w-0 flex-1 rounded-r-none"
+            placeholder={urlPlaceholder}
+            value={urlValue}
+            onChange={(e) => onUrlChange(e.target.value)}
+            disabled={locked}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 rounded-l-none border-l-0 px-2.5"
+            title={importUrlTitle}
+            aria-label={importUrlTitle}
+            disabled={locked || !urlValue.trim()}
+            onClick={onImportUrl}
+          >
+            {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+          </Button>
+        </div>
+        {onReimport ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 px-2.5"
+            title={reimportTitle}
+            aria-label={reimportTitle}
+            disabled={locked || reimportDisabled}
+            onClick={onReimport}
+          >
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+        ) : null}
+        <label
+          className={cn(
+            "inline-flex h-8 items-center gap-1.5 rounded-md border border-input px-2.5 text-sm",
+            locked ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-accent",
+          )}
+          title={fileTitle}
+        >
+          <input
+            type="file"
+            accept={fileAccept}
+            className="hidden"
+            disabled={locked}
+            onChange={(e) => {
+              const file = e.currentTarget.files?.[0]
+              e.currentTarget.value = ""
+              if (file) onImportFile(file)
+            }}
+          />
+          <Upload className="h-4 w-4" />
+          Import file
+        </label>
+        {children}
+      </div>
+      {pending ? (
+        <div className="space-y-1">
+          <div className="h-0.5 w-full overflow-hidden rounded-full bg-muted ni-indeterminate" />
+          <p className="text-xs text-muted-foreground">{pendingLabel || "Working…"}</p>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+/** One icon button inside a BOM row's action group. */
+function BomLineAction({
+  title,
+  onClick,
+  disabled,
+  active = false,
+  destructive = false,
+  children,
+}: {
+  title: string
+  onClick: () => void
+  disabled?: boolean
+  active?: boolean
+  destructive?: boolean
+  children: ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "inline-flex h-7 w-7 items-center justify-center border-r border-input last:border-r-0",
+        "first:rounded-l-[5px] last:rounded-r-[5px] hover:bg-accent",
+        "disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent",
+        active && "bg-amber-100 text-amber-700",
+        destructive && "text-rose-700",
+      )}
+    >
+      {children}
+    </button>
+  )
+}
+
+/** How BOM rows are grouped: one row per reference, per identical line, or per linked component. */
+type GroupingMode = "line" | "grouped" | "component"
+
 type ProductionPageProps = {
   mode?: "overview" | "bom"
 }
 
 export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
-  const { productId, bomId } = useParams<{ productId: string; bomId: string }>()
+  const { productId, bomId, tab } = useParams<{ productId: string; bomId: string; tab: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const isBomView = mode === "bom"
 
-  const [activeTab, setActiveTab] = useState<TabKey>("bom")
-  const [hideDnp, setHideDnp] = useState(true)
-  const [hideExcluded, setHideExcluded] = useState(true)
-  const [groupedView, setGroupedView] = useState(true)
-  const [groupByComponent, setGroupByComponent] = useState(false)
+  const activeTab: TabKey = TAB_KEYS.includes(tab as TabKey) ? (tab as TabKey) : "bom"
+  const goToTab = useCallback(
+    (next: TabKey, options?: { replace?: boolean }) => {
+      if (!productId || !bomId) return
+      navigate(`/production/${productId}/bom/${bomId}/${next}`, { replace: options?.replace })
+    },
+    [bomId, navigate, productId],
+  )
+  // DNP and BOM-excluded rows are always read together, so one toggle drives both.
+  const [showHiddenRows, setShowHiddenRows] = useState(false)
+  const hideDnp = !showHiddenRows
+  const hideExcluded = !showHiddenRows
+  const [groupingMode, setGroupingMode] = useState<GroupingMode>("grouped")
+  const groupedView = groupingMode !== "line"
+  const groupByComponent = groupingMode === "component"
   const [autoSyncIbomCompletion, setAutoSyncIbomCompletion] = useState(true)
   const [followIbomHover, setFollowIbomHover] = useState(true)
   const [importMode, setImportMode] = useState<"replace" | "merge">("replace")
@@ -456,7 +667,6 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
   const [newLineValue, setNewLineValue] = useState("")
   const [newLineFootprint, setNewLineFootprint] = useState("")
   const [newLineQty, setNewLineQty] = useState("1")
-  const [actualUsed, setActualUsed] = useState<Record<string, string>>({})
   const [linkSheetOpen, setLinkSheetOpen] = useState(false)
   const [linkSheetTarget, setLinkSheetTarget] = useState<LinkSheetTarget | null>(null)
   const [refAssignTarget, setRefAssignTarget] = useState<RefAssignTarget | null>(null)
@@ -473,6 +683,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
   const [pendingNotInBomConfirmation, setPendingNotInBomConfirmation] = useState<PendingNotInBomConfirmation | null>(null)
   const scanInputRef = useRef<HTMLInputElement>(null)
   const lastScannerEventRef = useRef<{ text: string; ts: number } | null>(null)
+  const lastScannerSourceRef = useRef<ScanSourceContext | null>(null)
   const scannerRowRefs = useRef<Record<string, HTMLTableRowElement | null>>({})
   const lastHoveredIbomLineRef = useRef<string | null>(null)
   const lastIbomCompletionSyncRef = useRef<string>("")
@@ -533,7 +744,6 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
   const resolvedSourceUrl = useMemo(() => {
     return (sourceUrlInput.trim() || selectedBom?.source_url?.trim() || "")
   }, [selectedBom?.source_url, sourceUrlInput])
-  const canImportNetlistFromUrl = canImportNetlist && !!resolvedSourceUrl
   const ibomViewUrl = useMemo(() => {
     return toSameOriginS3Url(selectedBom?.ibom_file_url || selectedBom?.ibom_url || null)
   }, [selectedBom?.ibom_file_url, selectedBom?.ibom_url])
@@ -619,23 +829,11 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     if (!selectedBom) {
       setSourceUrlInput("")
       setIbomUrlInput("")
-      setActualUsed({})
       setQuickPlaceQtyByScan({})
       return
     }
     setSourceUrlInput(selectedBom.source_url || "")
     setIbomUrlInput(selectedBom.ibom_url || "")
-
-    const initialActual: Record<string, string> = {}
-    selectedBomComponents.forEach((line) => {
-      if (line.dnp) return
-      const placed = toNumber(line.placed_total)
-      const sourced = toNumber(line.sourced_total)
-      // Reflect real production progress: deduct what was actually pulled
-      // from stock / used on boards.
-      initialActual[line.id] = String(Math.max(sourced, placed))
-    })
-    setActualUsed(initialActual)
     setQuickPlaceQtyByScan({})
   }, [selectedBom?.id, selectedBomComponents])
 
@@ -655,11 +853,19 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     }
   }, [isBomView, bomId])
 
+  // Give every section a canonical URL: a bare /bom/<id> and an unknown segment land on "bom".
+  useEffect(() => {
+    if (!isBomView) return
+    if (!TAB_KEYS.includes(tab as TabKey)) {
+      goToTab("bom", { replace: true })
+    }
+  }, [goToTab, isBomView, tab])
+
   useEffect(() => {
     if (isTemplateSeries && (activeTab === "production" || activeTab === "finalize")) {
-      setActiveTab("bom")
+      goToTab("bom", { replace: true })
     }
-  }, [activeTab, isTemplateSeries])
+  }, [activeTab, goToTab, isTemplateSeries])
 
   const updateProductMutation = useMutation({
     mutationFn: (payload: Partial<ProductDetail>) =>
@@ -967,13 +1173,13 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
   })
 
   const setIbomMutation = useMutation({
+    // A URL is downloaded and hosted server-side, so never send both — the file wins when given.
     mutationFn: async ({ file }: { file: File | null }) => {
       const data = new FormData()
-      if (ibomUrlInput.trim()) {
-        data.append("ibom_url", ibomUrlInput.trim())
-      }
       if (file) {
         data.append("ibom_file", file)
+      } else if (ibomUrlInput.trim()) {
+        data.append("ibom_url", ibomUrlInput.trim())
       }
       return apiFetch(`/api/v1/production/templates/${bomId}/ibom/`, {
         method: "POST",
@@ -991,7 +1197,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     mutationFn: (payload: ScanRequestPayload) =>
       apiFetch<ScanResponse>(`/api/v1/production/templates/${bomId}/scan/`, {
         method: "POST",
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, ...lastScannerSourceRef.current }),
       }),
   })
 
@@ -999,64 +1205,77 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     mutationFn: (payload: ScanRequestPayload) =>
       apiFetch<ScanResponse>(`/api/v1/production/templates/${bomId}/scan/`, {
         method: "POST",
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, ...lastScannerSourceRef.current }),
       }),
   })
 
   const manualPacketMutation = useMutation({
     mutationFn: (payload: { mode: "SOURCED" | "PLACED"; barcode: string; line_id: string; qty: number }) =>
-      apiFetch<{ result?: string; line_id?: string }>(`/api/v1/production/templates/${bomId}/scan/`, {
+      apiFetch<ScanResponse>(`/api/v1/production/templates/${bomId}/scan/`, {
         method: "POST",
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, ...lastScannerSourceRef.current }),
       }),
-    onSuccess: (response: { result?: string; line_id?: string }) => {
+    onSuccess: (response: ScanResponse) => {
       if (response.line_id) {
         setHighlightedLineId(response.line_id)
       }
-      toast.success("Progress saved.")
+      reportScanStock(response.stock, "Progress saved.")
       queryClient.invalidateQueries({ queryKey: ["production-bom", bomId] })
       queryClient.invalidateQueries({ queryKey: ["production-availability", bomId] })
     },
-    onError: () => toast.error("Failed to save progress."),
+    onError: (error) => {
+      const data = (error as { data?: unknown }).data as { error?: string } | undefined
+      toast.error(data?.error || "Failed to save progress.")
+    },
   })
 
   const removeScanMutation = useMutation({
     mutationFn: (scanId: string) =>
-      apiFetch<{ success?: boolean }>(`/api/v1/production/templates/${bomId}/remove-scan/`, {
+      apiFetch<{ success?: boolean; returned_qty?: number }>(`/api/v1/production/templates/${bomId}/remove-scan/`, {
         method: "POST",
         body: JSON.stringify({ scan_id: scanId }),
       }),
-    onSuccess: () => {
-      toast.success("Scan removed.")
+    onSuccess: (response) => {
+      const returned = toNumber(response.returned_qty)
+      toast.success(returned > 0 ? `Scan removed, ${formatQty(returned)} pcs returned to stock.` : "Scan removed.")
       queryClient.invalidateQueries({ queryKey: ["production-bom", bomId] })
       queryClient.invalidateQueries({ queryKey: ["production-availability", bomId] })
     },
-    onError: () => toast.error("Failed to remove scan."),
+    onError: (error) => {
+      const data = (error as { data?: unknown }).data as { error?: string } | undefined
+      toast.error(data?.error || "Failed to remove scan.")
+    },
   })
 
   const undoMutation = useMutation({
     mutationFn: () =>
-      apiFetch(`/api/v1/production/templates/${bomId}/undo-last-scan/`, {
+      apiFetch<{ success?: boolean; returned_qty?: number }>(`/api/v1/production/templates/${bomId}/undo-last-scan/`, {
         method: "POST",
       }),
-    onSuccess: () => {
+    onSuccess: (response) => {
+      const returned = toNumber(response.returned_qty)
       queryClient.invalidateQueries({ queryKey: ["production-bom", bomId] })
-      toast.success("Last scan undone.")
+      queryClient.invalidateQueries({ queryKey: ["production-availability", bomId] })
+      toast.success(
+        returned > 0 ? `Last scan undone, ${formatQty(returned)} pcs returned to stock.` : "Last scan undone.",
+      )
     },
-    onError: () => toast.error("Unable to undo scan."),
+    onError: (error) => {
+      const data = (error as { data?: unknown }).data as { error?: string } | undefined
+      toast.error(data?.error || "Unable to undo scan.")
+    },
   })
 
   const finalizeMutation = useMutation({
     mutationFn: () =>
       apiFetch(`/api/v1/production/templates/${bomId}/finalize/`, {
         method: "POST",
-        body: JSON.stringify({ actual_used: actualUsed }),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["production-bom", bomId] })
       queryClient.invalidateQueries({ queryKey: ["production-product", productId] })
       queryClient.invalidateQueries({ queryKey: ["production-availability", bomId] })
-      toast.success("Finalize completed and BOM locked.")
+      toast.success("BOM finalized and locked.")
     },
     onError: (error) => {
       const data = (error as { data?: unknown }).data as { error?: string; details?: string[] } | undefined
@@ -1225,25 +1444,107 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
   }, [availabilityData?.rows])
 
 
+  /**
+   * Production rows are grouped per linked component: the backend resolves a scanned bag to a
+   * single line (`order_by("dnp", "position", "id").first()`), so sibling lines of the same
+   * component would otherwise never fill up. Unlinked lines stay one row each.
+   */
   const scannerRows = useMemo<ScannerRow[]>(() => {
+    if (!selectedBom) return []
+
+    const neededOf = (line: BomRow) =>
+      line.qty_override_total != null
+        ? toNumber(line.qty_override_total)
+        : toNumber(line.qty_per_board) * toNumber(selectedBom.qty_planned)
+    const sortScans = (scans: BomRowScan[]) =>
+      [...scans].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+    const groups = new Map<string, BomRow[]>()
+    selectedBomComponents.forEach((line, index) => {
+      // Unlinked lines get a unique key so they are never merged with each other.
+      const key = line.component ? `component:${line.component}` : `line:${line.id}:${index}`
+      const group = groups.get(key) || []
+      group.push(line)
+      groups.set(key, group)
+    })
+
+    const rows: ScannerRow[] = []
+    for (const group of groups.values()) {
+      if (group.length === 1) {
+        const line = group[0]
+        rows.push({
+          ...line,
+          needed: neededOf(line),
+          sourced: toNumber(line.sourced_total),
+          placed: toNumber(line.placed_total),
+          deducted: deductedOf(line.scans),
+          scans: sortScans(line.scans || []),
+        })
+        continue
+      }
+
+      // Same tie-break as the backend, so manual line_id writes hit the line scans land on.
+      const representative = group.find((line) => !line.dnp) || group[0]
+      const values = new Set(group.map((line) => line.value).filter(Boolean))
+      const footprints = new Set(group.map((line) => line.footprint).filter(Boolean))
+
+      rows.push({
+        ...representative,
+        refs: [...new Set(group.flatMap((line) => line.refs || []))].sort(),
+        ref_group: group.map((line) => line.ref_group).filter(Boolean).join(", ") || null,
+        qty_per_board: group.reduce((sum, line) => sum + toNumber(line.qty_per_board), 0),
+        value: values.size === 1 ? representative.value : `(${values.size} values)`,
+        footprint: footprints.size === 1 ? representative.footprint : `(${footprints.size} footprints)`,
+        // A component only counts as not assembled when none of its lines are assembled.
+        dnp: group.every((line) => line.dnp),
+        exclude_from_bom: group.every((line) => line.exclude_from_bom),
+        needs_review: group.some((line) => line.needs_review),
+        needed: group.reduce((sum, line) => sum + neededOf(line), 0),
+        sourced: group.reduce((sum, line) => sum + toNumber(line.sourced_total), 0),
+        placed: group.reduce((sum, line) => sum + toNumber(line.placed_total), 0),
+        deducted: group.reduce((sum, line) => sum + deductedOf(line.scans), 0),
+        scans: sortScans(group.flatMap((line) => line.scans || [])),
+        _grouped: true,
+        _valueMismatch: values.size > 1,
+        _footprintMismatch: footprints.size > 1,
+        _groupedLineIds: group.map((line) => line.id),
+      })
+    }
+
+    return rows.sort((a, b) =>
+      `${a.footprint || ""}|${a.value || ""}`.localeCompare(`${b.footprint || ""}|${b.value || ""}`),
+    )
+  }, [selectedBom, selectedBomComponents])
+
+  /** Rows actually being assembled, and the DNP / BOM-excluded ones shown greyed at the end. */
+  const assemblyRows = useMemo(
+    () => scannerRows.filter((row) => !row.dnp && !row.exclude_from_bom),
+    [scannerRows],
+  )
+  const notAssembledRows = useMemo(
+    () => scannerRows.filter((row) => row.dnp || row.exclude_from_bom),
+    [scannerRows],
+  )
+
+  /**
+   * Finalize stays per line so the review table matches the BOM one to one — stock is already
+   * booked out per placed scan, so nothing is posted per line any more.
+   */
+  const finalizeRows = useMemo<ScannerRow[]>(() => {
     if (!selectedBom) return []
     return selectedBomComponents
       .filter((line) => !line.dnp)
-      .map((line) => {
-        const needed =
+      .map((line) => ({
+        ...line,
+        needed:
           line.qty_override_total != null
             ? toNumber(line.qty_override_total)
-            : toNumber(line.qty_per_board) * toNumber(selectedBom.qty_planned)
-        return {
-          ...line,
-          needed,
-          sourced: toNumber(line.sourced_total),
-          placed: toNumber(line.placed_total),
-          scans: [...(line.scans || [])].sort(
-            (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-          ),
-        }
-      })
+            : toNumber(line.qty_per_board) * toNumber(selectedBom.qty_planned),
+        sourced: toNumber(line.sourced_total),
+        placed: toNumber(line.placed_total),
+        deducted: deductedOf(line.scans),
+        scans: line.scans || [],
+      }))
       .sort((a, b) => `${a.footprint || ""}|${a.value || ""}`.localeCompare(`${b.footprint || ""}|${b.value || ""}`))
   }, [selectedBom, selectedBomComponents])
 
@@ -1256,6 +1557,11 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
   // doesn't clear sourced_total/placed_total or scans, so an unlinked row can still
   // count toward assemblyProgress below while showing "Unlinked" in the Component
   // cell. Revisit alongside that backend limitation.
+  const findScannerRow = useCallback(
+    (lineId: string) =>
+      scannerRows.find((row) => row.id === lineId || row._groupedLineIds?.includes(lineId)),
+    [scannerRows],
+  )
   const assemblyProgress = useMemo(() => {
     let neededTotal = 0
     let sourcedTotal = 0
@@ -1264,7 +1570,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     let sourcedOverflowTotal = 0
     let placedOverflowTotal = 0
 
-    scannerRows.forEach((row) => {
+    assemblyRows.forEach((row) => {
       const segments = buildProgressSegments(toNumber(row.needed), toNumber(row.sourced), toNumber(row.placed))
       neededTotal += segments.needed
       sourcedTotal += segments.sourcedSegment
@@ -1297,13 +1603,14 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
       placedPct: (placedTotal / neededTotal) * 100,
       emptyPct: (emptyTotal / neededTotal) * 100,
     }
-  }, [scannerRows])
+  }, [assemblyRows])
 
   const ibomCompletionRefs = useMemo(() => {
     const sourced: Record<string, boolean> = {}
     const placed: Record<string, boolean> = {}
 
-    scannerRows.forEach((row) => {
+    // Only rows that are actually assembled drive the iBOM checkmarks.
+    assemblyRows.forEach((row) => {
       const refs = Array.isArray(row.refs) ? row.refs : []
       if (refs.length === 0) return
 
@@ -1319,7 +1626,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     })
 
     return { sourced, placed }
-  }, [scannerRows])
+  }, [assemblyRows])
 
   useEffect(() => {
     scannerRowRefs.current = {}
@@ -1388,27 +1695,29 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
 
   const focusScannedLine = useCallback(
     (lineId: string) => {
-      setHighlightedLineId(lineId)
-      const matchedRow = scannerRows.find((row) => row.id === lineId)
+      // The backend may report any member of a grouped row; highlight the row that holds it.
+      const matchedRow = findScannerRow(lineId)
+      const rowId = matchedRow?.id || lineId
+      setHighlightedLineId(rowId)
       const firstRef = matchedRow?.refs?.[0]
       if (firstRef && ibomConnected) {
         highlightInIbom(firstRef)
         sendBarcodeScan(firstRef, false)
       }
 
-      const element = scannerRowRefs.current[lineId]
+      const element = scannerRowRefs.current[rowId]
       if (element) {
         element.scrollIntoView({ behavior: "smooth", block: "center" })
         element.focus({ preventScroll: true })
       }
     },
-    [highlightInIbom, ibomConnected, scannerRows, sendBarcodeScan],
+    [findScannerRow, highlightInIbom, ibomConnected, sendBarcodeScan],
   )
 
 
   const openScanAction = useCallback(
     (lineId: string, barcode: string) => {
-      const matchedRow = scannerRows.find((row) => row.id === lineId)
+      const matchedRow = findScannerRow(lineId)
       focusScannedLine(lineId)
       setScanActionTarget({
         barcode,
@@ -1423,7 +1732,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
       })
       setScanInput("")
     },
-    [focusScannedLine, scannerRows],
+    [findScannerRow, focusScannedLine],
   )
 
   const handleConfirmNotInBom = useCallback(async () => {
@@ -1512,7 +1821,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
         if (response.line_id) {
           focusScannedLine(response.line_id)
         }
-        toast.success("Scan saved.")
+        reportScanStock(response.stock)
         refreshScannerData()
         refocusScanInput()
       } catch {
@@ -1539,6 +1848,11 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
         return
       }
       lastScannerEventRef.current = { text, ts: now }
+      lastScannerSourceRef.current = {
+        stationId: event.stationId ?? null,
+        agentId: event.agentId ?? null,
+        deviceId: event.deviceId ?? null,
+      }
 
       void executeScan(scannerMode, text, { silentBlockedNotice: true })
     })
@@ -1546,13 +1860,8 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     return unsubscribe
   }, [activeTab, bomId, executeScan, isBomView, scannerMode])
 
-  const handleImportFile = (event: FormEvent<HTMLInputElement>) => {
-    const input = event.currentTarget
-    const file = input.files?.[0]
-    if (!file) return
-    importFileMutation.mutate({ file })
-    input.value = ""
-  }
+  const netlistImportPending =
+    importFileMutation.isPending || importUrlMutation.isPending || reImportMutation.isPending
 
   const handleImportNetlistFromUrl = () => {
     if (!resolvedSourceUrl) {
@@ -1633,7 +1942,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
       toast.error("Could not resolve scanned component.")
       return
     }
-    const options = scannerRows
+    const options = assemblyRows
       .filter((row) => (row.refs?.length || 0) > 0)
       .map((row) => ({
         id: row.id,
@@ -2193,7 +2502,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                               type="button"
                               role="tab"
                               aria-selected={active}
-                              onClick={() => setActiveTab(tab.key)}
+                              onClick={() => goToTab(tab.key)}
                               className={cn(
                                 "inline-flex h-9 items-center gap-1.5 border-b-2 px-1 text-sm transition-colors",
                                 active
@@ -2237,42 +2546,27 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                               </button>
                               {ibomSectionOpen ? (
                                 <div className="space-y-2 border-t border-border/60 p-3">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <Input
-                                      className="h-8 w-64 max-w-full"
-                                      placeholder="iBOM URL (HTTPS)"
-                                      value={ibomUrlInput}
-                                      onChange={(e) => setIbomUrlInput(e.target.value)}
-                                      disabled={isBomClosed(selectedBom.status)}
-                                    />
-                                    <Button
-                                      size="sm"
-                                      onClick={() => setIbomMutation.mutate({ file: null })}
-                                      disabled={isBomClosed(selectedBom.status) || setIbomMutation.isPending}
-                                    >
-                                      Save URL
-                                    </Button>
-                                    <label className="inline-flex cursor-pointer items-center rounded-md border border-input px-2 py-1.5 text-xs">
-                                      <input
-                                        type="file"
-                                        accept=".html,.htm,.zip"
-                                        className="hidden"
-                                        disabled={isBomClosed(selectedBom.status)}
-                                        onChange={(e) => {
-                                          const file = e.currentTarget.files?.[0] || null
-                                          setIbomMutation.mutate({ file })
-                                          e.currentTarget.value = ""
-                                        }}
-                                      />
-                                      Upload
-                                    </label>
-                                    <Button size="sm" variant="outline" disabled={!ibomViewUrl} onClick={() => setIbomPanelOpen(true)}>
+                                  <ImportSourceRow
+                                    urlValue={ibomUrlInput}
+                                    onUrlChange={setIbomUrlInput}
+                                    urlPlaceholder="iBOM URL (HTTPS)"
+                                    onImportUrl={() => setIbomMutation.mutate({ file: null })}
+                                    importUrlTitle="Download from URL and host it here"
+                                    onImportFile={(file) => setIbomMutation.mutate({ file })}
+                                    fileAccept=".html,.htm"
+                                    fileTitle="Upload an iBOM HTML file"
+                                    disabled={isBomClosed(selectedBom.status)}
+                                    pending={setIbomMutation.isPending}
+                                    pendingLabel="Fetching iBOM…"
+                                  >
+                                    <span className="mx-1 h-6 w-px bg-border" />
+                                    <Button size="sm" variant="outline" className="h-8" disabled={!ibomViewUrl} onClick={() => setIbomPanelOpen(true)}>
                                       Open panel
                                     </Button>
-                                    <Button size="sm" variant="outline" disabled={!ibomIframeSrc} onClick={openIbomInNewTab}>
+                                    <Button size="sm" variant="outline" className="h-8" disabled={!ibomIframeSrc} onClick={openIbomInNewTab}>
                                       New tab
                                     </Button>
-                                  </div>
+                                  </ImportSourceRow>
                                   <p className="text-xs text-muted-foreground">
                                     Last updated:{" "}
                                     {selectedBom.ibom_updated_at ? new Date(selectedBom.ibom_updated_at).toLocaleString() : "not set"}
@@ -2290,108 +2584,57 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                 Netlist import is only available on template series or empty series. Duplicate from the template instead.
                               </p>
                             ) : null}
-                            <div className="flex flex-wrap items-center gap-2 rounded-md border border-border/60 p-3">
-                              <Input
-                                className="h-8 w-72 max-w-full"
-                                placeholder="Source URL (HTTPS)"
-                                value={sourceUrlInput}
-                                onChange={(e) => setSourceUrlInput(e.target.value)}
+                            <div className="rounded-md border border-border/60 p-3">
+                              <ImportSourceRow
+                                urlValue={sourceUrlInput}
+                                onUrlChange={setSourceUrlInput}
+                                urlPlaceholder="Netlist URL (HTTPS)"
+                                onImportUrl={handleImportNetlistFromUrl}
+                                importUrlTitle="Import netlist from URL"
+                                onImportFile={(file) => importFileMutation.mutate({ file })}
+                                fileAccept=".xml,text/xml,application/xml"
+                                fileTitle="Import a netlist XML file"
                                 disabled={!canImportNetlist}
-                              />
-                              <select
-                                value={importMode}
-                                onChange={(e) => setImportMode(e.target.value as "replace" | "merge")}
-                                className="h-8 rounded-md border border-input bg-background px-2 text-sm"
-                                disabled={!canImportNetlist}
+                                pending={netlistImportPending}
+                                pendingLabel="Parsing netlist…"
+                                onReimport={() => reImportMutation.mutate()}
+                                reimportDisabled={!isTemplateSeries || !selectedBom.source_url}
+                                reimportTitle="Re-import from the saved URL"
                               >
-                                <option value="replace">Replace</option>
-                                <option value="merge">Merge</option>
-                              </select>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={!canImportNetlist || !sourceUrlInput.trim() || importUrlMutation.isPending}
-                                onClick={() => importUrlMutation.mutate(sourceUrlInput)}
-                              >
-                                Import from URL
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                disabled={!isTemplateSeries || !selectedBom.source_url || reImportMutation.isPending}
-                                onClick={() => reImportMutation.mutate()}
-                              >
-                                Re-import
-                              </Button>
+                                <select
+                                  value={importMode}
+                                  onChange={(e) => setImportMode(e.target.value as "replace" | "merge")}
+                                  className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+                                  disabled={!canImportNetlist || netlistImportPending}
+                                >
+                                  <option value="replace">Replace</option>
+                                  <option value="merge">Merge</option>
+                                </select>
+                              </ImportSourceRow>
                             </div>
 
                             <div className="flex flex-wrap items-center gap-2">
-                              <div className="inline-flex items-stretch">
-                                <label
-                                  className={cn(
-                                    "inline-flex items-center gap-2 rounded-l-md border border-input px-3 py-2 text-sm",
-                                    canImportNetlist ? "cursor-pointer" : "cursor-not-allowed opacity-60",
-                                  )}
-                                >
-                                  <input
-                                    type="file"
-                                    accept=".xml,text/xml,application/xml"
-                                    onChange={handleImportFile}
-                                    className="hidden"
-                                    disabled={!canImportNetlist}
-                                  />
-                                  Import netlist (XML)
-                                </label>
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      size="sm"
-                                      className="rounded-l-none border-l-0 px-2"
-                                      aria-label="Netlist actions"
-                                    >
-                                      <ChevronDown className="h-4 w-4" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="start">
-                                    <DropdownMenuItem
-                                      onClick={handleImportNetlistFromUrl}
-                                      disabled={!canImportNetlistFromUrl || importUrlMutation.isPending}
-                                    >
-                                      Import from URL
-                                    </DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
-                              </div>
                               <Button
-                                variant="outline"
+                                variant={showHiddenRows ? "secondary" : "outline"}
                                 size="sm"
-                                onClick={() => setHideDnp((value) => !value)}
+                                className="gap-1.5"
+                                title="Show rows marked DNP or excluded from the BOM"
+                                onClick={() => setShowHiddenRows((value) => !value)}
                               >
-                                {hideDnp ? "Show DNP" : "Hide DNP"}
+                                {showHiddenRows ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                                {showHiddenRows ? "Hidden rows shown" : "Show hidden rows"}
                               </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setGroupedView((value) => !value)}
+                              <select
+                                value={groupingMode}
+                                onChange={(e) => setGroupingMode(e.target.value as GroupingMode)}
+                                className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+                                title="How BOM rows are grouped"
                               >
-                                {groupedView ? "Ungrouped" : "Grouped"}
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setHideExcluded((value) => !value)}
-                              >
-                                {hideExcluded ? "Show Excl." : "Hide Excl."}
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setGroupByComponent((value) => !value)}
-                              >
-                                {groupByComponent ? "By line" : "By component"}
-                              </Button>
+                                <option value="line">By line</option>
+                                <option value="grouped">Grouped</option>
+                                <option value="component">By component</option>
+                              </select>
+                              <span className="mx-1 h-6 w-px bg-border" />
                               {(() => {
                                 const linkedLines = selectedBomComponents.filter(
                                   (line) => line.component && !line.dnp,
@@ -2749,10 +2992,9 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                           </div>
                                         </TableCell>
                                         <TableCell className="px-3 py-2 align-top">
-                                          <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
-                                            <button
-                                              type="button"
-                                              className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
+                                          <div className="inline-flex items-center rounded-md border border-input">
+                                            <BomLineAction
+                                              title="Edit value, footprint and description"
                                               disabled={isBomClosed(selectedBom.status)}
                                               onClick={() => {
                                                 const nextValue = window.prompt("Value", line.value || "")
@@ -2771,20 +3013,18 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                                 })
                                               }}
                                             >
-                                              Edit
-                                            </button>
-                                            <button
-                                              type="button"
-                                              className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
+                                              <Pencil className="h-3.5 w-3.5" />
+                                            </BomLineAction>
+                                            <BomLineAction
+                                              title={line.component ? "Relink to another component" : "Link a component"}
                                               disabled={isBomClosed(selectedBom.status)}
                                               onClick={() => openLinkSheet(line)}
                                             >
-                                              {line.component ? "Relink" : "Link"}
-                                            </button>
+                                              <Link2 className="h-3.5 w-3.5" />
+                                            </BomLineAction>
                                             {line.component ? (
-                                              <button
-                                                type="button"
-                                                className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
+                                              <BomLineAction
+                                                title="Unlink the component"
                                                 disabled={isBomClosed(selectedBom.status)}
                                                 onClick={() =>
                                                   updateLineMutation.mutate({
@@ -2793,12 +3033,12 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                                   })
                                                 }
                                               >
-                                                Unlink
-                                              </button>
+                                                <Link2Off className="h-3.5 w-3.5" />
+                                              </BomLineAction>
                                             ) : null}
-                                            <button
-                                              type="button"
-                                              className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
+                                            <BomLineAction
+                                              title={line.dnp ? "Marked DNP — click to clear" : "Mark as DNP"}
+                                              active={line.dnp}
                                               disabled={isBomClosed(selectedBom.status)}
                                               onClick={() =>
                                                 updateLineMutation.mutate({
@@ -2807,11 +3047,15 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                                 })
                                               }
                                             >
-                                              {line.dnp ? "DNP on" : "DNP off"}
-                                            </button>
-                                            <button
-                                              type="button"
-                                              className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
+                                              <CircleSlash className="h-3.5 w-3.5" />
+                                            </BomLineAction>
+                                            <BomLineAction
+                                              title={
+                                                line.exclude_from_bom
+                                                  ? "Excluded from BOM — click to include"
+                                                  : "Exclude from BOM"
+                                              }
+                                              active={line.exclude_from_bom}
                                               disabled={isBomClosed(selectedBom.status)}
                                               onClick={() =>
                                                 updateLineMutation.mutate({
@@ -2820,19 +3064,19 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                                 })
                                               }
                                             >
-                                              {line.exclude_from_bom ? "Excl. on" : "Excl. off"}
-                                            </button>
-                                            <button
-                                              type="button"
-                                              className="text-rose-700 hover:underline disabled:text-muted-foreground disabled:no-underline"
+                                              <EyeOff className="h-3.5 w-3.5" />
+                                            </BomLineAction>
+                                            <BomLineAction
+                                              title="Delete this BOM line"
+                                              destructive
                                               disabled={isBomClosed(selectedBom.status)}
                                               onClick={() => {
                                                 if (!window.confirm("Delete this BOM line?")) return
                                                 deleteLineMutation.mutate(lineId)
                                               }}
                                             >
-                                              Del
-                                            </button>
+                                              <Trash2 className="h-3.5 w-3.5" />
+                                            </BomLineAction>
                                           </div>
                                         </TableCell>
                                       </TableRow>
@@ -2905,7 +3149,13 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                   {mode}
                                 </Button>
                               ))}
-                              <Button variant="outline" size="sm" onClick={() => undoMutation.mutate()}>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => undoMutation.mutate()}
+                                disabled={isBomClosed(selectedBom.status) || undoMutation.isPending}
+                                title="Undo the last scan; a placed one returns its parts to stock"
+                              >
                                 Undo last scan
                               </Button>
                             </div>
@@ -2977,17 +3227,26 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                 </TableHeader>
                                 <TableBody>
                                   {scannerRows.length > 0 ? (
-                                    scannerRows.map((row) => {
+                                    [...assemblyRows, ...notAssembledRows].map((row, rowIndex) => {
                                       const ibomHighlighted = highlightedRefs && (row.refs || []).some((r: string) => highlightedRefs.includes(r))
                                       const rowRefs = (row.refs || []).map((r) => [r, toNumber(row.qty_per_board) || 1] as [string, number])
+                                      // DNP / BOM-excluded rows are kept visible but greyed out at the end.
+                                      const notAssembled = row.dnp || row.exclude_from_bom
                                       return (
                                       <Fragment key={row.id}>
+                                        {notAssembled && rowIndex === assemblyRows.length ? (
+                                          <TableRow className="bg-muted/40 hover:bg-muted/40">
+                                            <TableCell colSpan={5} className="py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                                              Not assembled — DNP or excluded from BOM
+                                            </TableCell>
+                                          </TableRow>
+                                        ) : null}
                                         <TableRow
                                           ref={(element) => {
                                             scannerRowRefs.current[row.id] = element
                                           }}
                                           tabIndex={-1}
-                                          className={cn("text-xs", highlightedLineId === row.id ? "bg-amber-100/50" : undefined, ibomHighlighted ? "ring-2 ring-inset ring-blue-400/60" : undefined)}
+                                          className={cn("text-xs", highlightedLineId === row.id ? "bg-amber-100/50" : undefined, ibomHighlighted ? "ring-2 ring-inset ring-blue-400/60" : undefined, notAssembled ? "text-muted-foreground opacity-60" : undefined)}
                                           onMouseEnter={() => {
                                             if (rowRefs.length > 0) {
                                               sendIbomHover(rowRefs, row.id)
@@ -3029,7 +3288,15 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                               row.ref_group || "-"
                                             )}
                                           </TableCell>
-                                          <TableCell>{row.value || "-"}</TableCell>
+                                          <TableCell>
+                                            {row.value || "-"}
+                                            {row.dnp ? (
+                                              <span className="ml-1.5 rounded border border-border px-1 py-0.5 text-[10px] uppercase">DNP</span>
+                                            ) : null}
+                                            {row.exclude_from_bom ? (
+                                              <span className="ml-1.5 rounded border border-border px-1 py-0.5 text-[10px] uppercase">Excl.</span>
+                                            ) : null}
+                                          </TableCell>
                                           <TableCell>
                                             {row.component ? (
                                               <ComponentInfoPopover
@@ -3126,6 +3393,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                             </div>
                                           </TableCell>
                                         </TableRow>
+                                        {notAssembled ? null : (
                                         <TableRow className={cn("bg-muted/20", highlightedLineId === row.id ? "bg-amber-100/30" : undefined)}>
                                           <TableCell colSpan={5} className="py-1.5">
                                             {row.scans && row.scans.length > 0 ? (
@@ -3149,8 +3417,16 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                                     <span className="leading-tight">
                                                       {toNumber(row.placed) >= toNumber(row.needed) && scan.mode === "sourced" ? null : `Qty: ${toNumber(scan.qty)}`}
                                                     </span>
-                                                    <span className="text-muted-foreground leading-tight">
+                                                    <span className="flex items-center gap-1.5 text-muted-foreground leading-tight">
                                                       {new Date(scan.created_at).toLocaleString()}
+                                                      {toNumber(scan.stock_deducted) > 0 ? (
+                                                        <span
+                                                          className="rounded-md bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700"
+                                                          title="Deducted from warehouse stock; removing this scan returns it."
+                                                        >
+                                                          −{formatQty(toNumber(scan.stock_deducted))} stock
+                                                        </span>
+                                                      ) : null}
                                                     </span>
                                                     {scan.mode === "sourced" ? (
                                                       <div className="flex items-center gap-1 sm:justify-end">
@@ -3202,8 +3478,13 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                                           className="h-6 px-2 text-[11px]"
                                                           disabled={isBomClosed(selectedBom.status) || removeScanMutation.isPending}
                                                           onClick={() => removeScanMutation.mutate(scan.id)}
+                                                          title={
+                                                            toNumber(scan.stock_deducted) > 0
+                                                              ? "Remove this placement and return the parts to stock"
+                                                              : "Remove this placement"
+                                                          }
                                                         >
-                                                          Remove
+                                                          {toNumber(scan.stock_deducted) > 0 ? "Remove & return" : "Remove"}
                                                         </Button>
                                                       </div>
                                                     )}
@@ -3215,6 +3496,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                             )}
                                           </TableCell>
                                         </TableRow>
+                                        )}
                                       </Fragment>
                                     )})
                                   ) : (
@@ -3233,9 +3515,10 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                         {activeTab === "finalize" ? (
                           <div className="space-y-4">
                             <p className="text-sm text-muted-foreground">
-                              Review sourced/placed components and other materials below. The
-                              listed quantities are deducted from warehouse stock on finalize;
-                              stock may go negative.
+                              Stock is deducted from the scanned bag the moment a component is
+                              placed, and returned if that scan is removed. Finalize only closes
+                              the BOM — it books nothing extra, so lines that were never placed
+                              stay in stock. Locking also blocks returning placed stock.
                             </p>
                             <div className="overflow-hidden rounded-lg border border-border/70">
                               <Table>
@@ -3246,42 +3529,47 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                     <TableHead>Needed total</TableHead>
                                     <TableHead>Sourced</TableHead>
                                     <TableHead>Placed</TableHead>
-                                    <TableHead>Actual used</TableHead>
+                                    <TableHead>Deducted from stock</TableHead>
                                   </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                  {scannerRows.map((row) => (
-                                    <TableRow key={row.id}>
-                                      <TableCell>{row.ref_group || "-"}</TableCell>
-                                      <TableCell>
-                                        <span className="flex flex-wrap items-center gap-2">
-                                          {row.component_name || "Unlinked"}
-                                          {row.source_type === "manual" ? (
-                                            <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
-                                              material
-                                            </span>
-                                          ) : null}
-                                        </span>
-                                      </TableCell>
-                                      <TableCell>{row.needed}</TableCell>
-                                      <TableCell>{row.sourced}</TableCell>
-                                      <TableCell>{row.placed}</TableCell>
-                                      <TableCell>
-                                        <Input
-                                          value={actualUsed[row.id] ?? String(Math.max(row.sourced, row.placed))}
-                                          onChange={(e) =>
-                                            setActualUsed((prev) => ({
-                                              ...prev,
-                                              [row.id]: e.target.value,
-                                            }))
-                                          }
-                                        />
-                                      </TableCell>
-                                    </TableRow>
-                                  ))}
+                                  {finalizeRows.map((row) => {
+                                    const incomplete = row.placed < row.needed
+                                    return (
+                                      <TableRow key={row.id} className={incomplete ? "bg-amber-50/60" : undefined}>
+                                        <TableCell>{row.ref_group || "-"}</TableCell>
+                                        <TableCell>
+                                          <span className="flex flex-wrap items-center gap-2">
+                                            {row.component_name || "Unlinked"}
+                                            {row.source_type === "manual" ? (
+                                              <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
+                                                material
+                                              </span>
+                                            ) : null}
+                                          </span>
+                                        </TableCell>
+                                        <TableCell>{row.needed}</TableCell>
+                                        <TableCell>{row.sourced}</TableCell>
+                                        <TableCell className={incomplete ? "font-medium text-amber-700" : undefined}>
+                                          {row.placed}
+                                        </TableCell>
+                                        <TableCell
+                                          className={row.deducted > 0 ? "font-medium text-emerald-700" : "text-muted-foreground"}
+                                        >
+                                          {formatQty(row.deducted)}
+                                        </TableCell>
+                                      </TableRow>
+                                    )
+                                  })}
                                 </TableBody>
                               </Table>
                             </div>
+                            {finalizeRows.some((row) => row.placed < row.needed) ? (
+                              <p className="text-sm text-amber-700">
+                                Highlighted lines are not fully placed — the missing quantity was
+                                never deducted from the warehouse.
+                              </p>
+                            ) : null}
 
                             <div className="flex flex-wrap items-center gap-2">
                               <Button onClick={() => printMutation.mutate()} disabled={printMutation.isPending}>

@@ -15,7 +15,11 @@ export function HardwareScannerListener() {
         return
       }
 
-      await resolveScannedIdentifier(text, location.pathname, navigate)
+      await resolveScannedIdentifier(text, location.pathname, navigate, {
+        stationId: event.stationId ?? null,
+        agentId: event.agentId ?? null,
+        deviceId: event.deviceId ?? null,
+      })
     })
 
     return unsubscribe

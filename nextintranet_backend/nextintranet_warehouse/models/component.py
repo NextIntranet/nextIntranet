@@ -385,6 +385,22 @@ class Tag(NIModel):
 
 
 
+class PacketState(models.TextChoices):
+    """Physical lifecycle of a packet.
+
+    Prefer extending this over adding new boolean flags to Packet.
+    """
+
+    EXPECTED = 'expected', _('Expected')
+    STOCKED = 'stocked', _('Stocked')
+    IN_TRANSIT = 'in_transit', _('In transit')
+    RETIRED = 'retired', _('Retired')
+
+
+#: States in which the packet counts as usable stock (drives the derived is_active flag).
+PACKET_ACTIVE_STATES = {PacketState.STOCKED, PacketState.IN_TRANSIT}
+
+
 class Packet(NIModel):
     component = models.ForeignKey(Component, on_delete=models.CASCADE, related_name='packets', verbose_name=_('Component'))
     location = models.ForeignKey(
@@ -405,7 +421,19 @@ class Packet(NIModel):
         help_text=_('Sequential number of the packet within the component (displayed as S001, S002, ...).'),
     )
     is_trackable = models.BooleanField(default=False, help_text=_('Indicates if the component is trackable by individual pieces.'), verbose_name=_('Is trackable'))
-    is_active = models.BooleanField(default=True, verbose_name=_('Is active'))
+    state = models.CharField(
+        max_length=16,
+        choices=PacketState.choices,
+        default=PacketState.STOCKED,
+        db_index=True,
+        verbose_name=_('State'),
+        help_text=_('Physical lifecycle of the packet. Drives is_active.'),
+    )
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name=_('Is active'),
+        help_text=_('Derived from state; kept for backwards compatibility.'),
+    )
     date_added = models.DateTimeField(auto_now_add=True, verbose_name=_('Date added'))
 
     last_operation = models.OneToOneField('StockOperation', on_delete=models.SET_NULL, blank=True, null=True, related_name='last_operation', verbose_name=_('Last operation'))
@@ -440,9 +468,32 @@ class Packet(NIModel):
         location_name = self.location.name if self.location else "-"
         return f"{self.component.name} - {location_name}"
 
+    def apply_is_active(self, is_active: bool):
+        """Map a legacy is_active write onto state.
+
+        Deactivating retires the packet; activating only lifts a retired packet back
+        to stocked, so it never overrides expected/in_transit.
+        """
+        if is_active:
+            if self.state == PacketState.RETIRED:
+                self.state = PacketState.STOCKED
+        else:
+            self.state = PacketState.RETIRED
+        self.is_active = self.state in PACKET_ACTIVE_STATES
+
     def save(self, *args, **kwargs):
         if self.location and not self.location.can_store_items:
             raise ValueError(_('The selected warehouse cannot store items.'))
+
+        # is_active is derived from state; keep it in sync on every write.
+        self.is_active = self.state in PACKET_ACTIVE_STATES
+        update_fields = kwargs.get('update_fields')
+        if update_fields is not None:
+            update_fields = set(update_fields)
+            if 'state' in update_fields or 'is_active' in update_fields:
+                update_fields |= {'state', 'is_active'}
+                kwargs['update_fields'] = list(update_fields)
+
         if self._state.adding and self.serial_number is None:
             # Assign the serial number and insert in the same transaction,
             # holding a lock on the component row until commit so concurrent

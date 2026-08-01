@@ -12,6 +12,7 @@ from nextintranet_backend.serializers.printList import (
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from nextintranet_backend.authentication import ServiceTokenAuthentication
 from nextintranet_backend.permissions import IsAuthenticatedOrServiceToken
+from nextintranet_backend.services.print_list import sync_default_print_list
 
 from nextintranet_backend.routers import NoFormatSuffixRouter as DefaultRouter
 from rest_framework.views import APIView
@@ -156,16 +157,7 @@ class PrintListViewSet(ModelViewSet):
         self._sync_default(instance, requested_default)
 
     def _sync_default(self, instance, requested_default):
-        if requested_default is True:
-            PrintList.objects.filter(owner=instance.owner).exclude(id=instance.id).update(is_default=False)
-            if not instance.is_default:
-                instance.is_default = True
-                instance.save(update_fields=["is_default"])
-            return
-
-        if not PrintList.objects.filter(owner=instance.owner, is_default=True).exists():
-            instance.is_default = True
-            instance.save(update_fields=["is_default"])
+        sync_default_print_list(instance, requested_default)
 
     def create(self, request, *args, **kwargs):
         """

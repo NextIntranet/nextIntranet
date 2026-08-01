@@ -27,6 +27,22 @@ def actor_from_request(request):
     return None
 
 
+def client_info_from_request(request) -> dict[str, Any]:
+    """Capture lightweight client context (IP, user agent) for activity metadata."""
+    if request is None:
+        return {}
+    meta = getattr(request, "META", {}) or {}
+    info: dict[str, Any] = {}
+    forwarded = meta.get("HTTP_X_FORWARDED_FOR")
+    ip = (forwarded.split(",")[0].strip() if forwarded else None) or meta.get("REMOTE_ADDR")
+    if ip:
+        info["ip"] = ip
+    user_agent = meta.get("HTTP_USER_AGENT")
+    if user_agent:
+        info["user_agent"] = user_agent
+    return info
+
+
 def compact_changes(before: dict[str, Any], after: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     changed_before: dict[str, Any] = {}
     changed_after: dict[str, Any] = {}
@@ -46,6 +62,7 @@ def packet_snapshot(packet) -> dict[str, Any]:
         "location": str(packet.location_id) if packet.location_id else None,
         "description": packet.description,
         "is_trackable": packet.is_trackable,
+        "state": packet.state,
         "is_active": packet.is_active,
     }
 

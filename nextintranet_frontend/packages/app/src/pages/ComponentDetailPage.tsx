@@ -28,6 +28,8 @@ import {
   Layers,
   Link2,
   AlertTriangle,
+  MoreHorizontal,
+  ShoppingCart,
   Copy,
   CopyPlus,
   Check,
@@ -55,6 +57,12 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
@@ -84,7 +92,10 @@ import {
 import { cn } from "@/lib/utils"
 import { PriceLabel } from "@/components/PriceLabel"
 import { PacketOperationSheet } from "@/components/PacketOperationSheet"
-import { getOperationLabel } from "@/lib/stockOperations"
+import { ActivityLogTable } from "@/components/ActivityLogTable"
+import { MarkdownView } from "@/components/MarkdownView"
+import { RequestComponentSheet } from "@/components/RequestComponentSheet"
+import { packetStateLabel } from "@/lib/packetState"
 
 interface Category {
   id: string
@@ -107,6 +118,7 @@ interface ComponentPacket {
   description: string
   created_at: string
   last_used_at?: string | null
+  state?: string | null
   is_active?: boolean
   location?: {
     id: string
@@ -216,6 +228,8 @@ interface ComponentActivity {
   id: string
   packet_id?: string | null
   packet_label?: string | null
+  packet_serial_code?: string | null
+  packet_location_leaf?: string | null
   activity_type: string
   source: string
   occurred_at: string
@@ -325,32 +339,6 @@ const selectStyles: StylesConfig<OptionType, false> = {
   }),
 }
 
-function formatComponentActivityType(activity: ComponentActivity) {
-  if (activity.activity_type === "stock_operation" && activity.stock_operation_type) {
-    return getOperationLabel(activity.stock_operation_type)
-  }
-  const labels: Record<string, string> = {
-    scan: "Scan",
-    stock_operation: "Stock operation",
-    packet_created: "Packet created",
-    packet_updated: "Packet edited",
-    packet_moved: "Packet moved",
-    packet_status_changed: "Packet status",
-    component_created: "Created",
-    component_updated: "Edited",
-    identifier_added: "Identifier added",
-    identifier_removed: "Identifier removed",
-  }
-  return labels[activity.activity_type] ?? activity.activity_type.replaceAll("_", " ")
-}
-
-function formatComponentActivityChange(value?: Record<string, unknown> | null) {
-  if (!value || Object.keys(value).length === 0) return ""
-  return Object.entries(value)
-    .map(([key, entry]) => `${key}: ${entry == null ? "-" : String(entry)}`)
-    .join(", ")
-}
-
 export function ComponentDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -362,6 +350,7 @@ export function ComponentDetailPage() {
   const [activityPage, setActivityPage] = useState(1)
   const [activityPageSize, setActivityPageSize] = useState(25)
   const [packetSheetOpen, setPacketSheetOpen] = useState(false)
+  const [requestSheetOpen, setRequestSheetOpen] = useState(false)
   const [operationSheetOpen, setOperationSheetOpen] = useState(false)
   const [operationPacketId, setOperationPacketId] = useState<string | null>(null)
   const [supplierSheetOpen, setSupplierSheetOpen] = useState(false)
@@ -532,6 +521,22 @@ export function ComponentDetailPage() {
       }
     }
     return [...groups.values()]
+  }, [usedInManufacturing])
+
+  const [manufacturingPage, setManufacturingPage] = useState(1)
+  const manufacturingPageSize = 5
+  const manufacturingTotalPages = Math.max(1, Math.ceil(manufacturingGroups.length / manufacturingPageSize))
+  const visibleManufacturingGroups = useMemo(
+    () =>
+      manufacturingGroups.slice(
+        (manufacturingPage - 1) * manufacturingPageSize,
+        manufacturingPage * manufacturingPageSize,
+      ),
+    [manufacturingGroups, manufacturingPage],
+  )
+  // Reset to the first page whenever the source data changes.
+  useEffect(() => {
+    setManufacturingPage(1)
   }, [usedInManufacturing])
 
   type PurchaseRequestRow = {
@@ -1362,7 +1367,13 @@ export function ComponentDetailPage() {
         header: "Packet",
         cell: ({ row }) => (
           <div className={`flex min-w-0 items-center gap-2 ${inactivePacketClass(row.original)}`}>
-            <SerialBadge code={serialCodeFromPacket(row.original)} />
+            <Link
+              to={`/store/packet/${row.original.id}`}
+              className="shrink-0"
+              aria-label={`Open packet ${serialCodeFromPacket(row.original)}`}
+            >
+              <SerialBadge code={serialCodeFromPacket(row.original)} />
+            </Link>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Link
@@ -1398,7 +1409,7 @@ export function ComponentDetailPage() {
               <TooltipTrigger asChild>
                 <Link
                   to={`/store/location/${row.original.location.id}`}
-                  className={`block truncate hover:underline ${
+                  className={`block max-w-[12ch] truncate hover:underline sm:max-w-[24ch] md:max-w-none ${
                     row.original.is_active === false
                       ? "text-muted-foreground line-through"
                       : "text-primary"
@@ -1491,7 +1502,7 @@ export function ComponentDetailPage() {
         header: "Status",
         cell: ({ row }) => (
           <span className={inactivePacketClass(row.original) || "text-foreground"}>
-            {row.original.is_active === false ? "Inactive" : "Active"}
+            {packetStateLabel(row.original)}
           </span>
         ),
       },
@@ -2208,20 +2219,36 @@ export function ComponentDetailPage() {
                 </>
               ) : (
                 <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => duplicateComponentMutation.mutate()}
-                    disabled={duplicateComponentMutation.isPending}
-                    className="gap-2"
-                  >
-                    <CopyPlus className="h-4 w-4" />
-                    {duplicateComponentMutation.isPending ? "Duplicating..." : "Duplicate"}
-                  </Button>
                   <Button size="sm" onClick={handleEdit} className="gap-2">
                     <Pencil className="h-4 w-4" />
                     Edit
                   </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm">
+                        <MoreHorizontal className="h-4 w-4" />
+                        <span className="sr-only">More actions</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="min-w-[200px]">
+                      <DropdownMenuItem
+                        onSelect={() => duplicateComponentMutation.mutate()}
+                        disabled={duplicateComponentMutation.isPending}
+                        className="gap-2"
+                      >
+                        <CopyPlus className="h-4 w-4" />
+                        {duplicateComponentMutation.isPending ? "Duplicating..." : "Duplicate"}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => openNewPacketSheet()} className="gap-2">
+                        <Plus className="h-4 w-4" />
+                        Add packet
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => setRequestSheetOpen(true)} className="gap-2">
+                        <ShoppingCart className="h-4 w-4" />
+                        Request component
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </>
               )}
             </>
@@ -2491,10 +2518,10 @@ export function ComponentDetailPage() {
                       onChange={(e) => setEditedData({ ...editedData, description: e.target.value })}
                       className="min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
+                  ) : component.description ? (
+                    <MarkdownView content={component.description} className="break-words" />
                   ) : (
-                    <p className="whitespace-pre-wrap break-words text-sm text-foreground">
-                      {component.description || "No description provided."}
-                    </p>
+                    <p className="text-sm text-muted-foreground">No description provided.</p>
                   )}
                 </div>
               </div>
@@ -2666,7 +2693,7 @@ export function ComponentDetailPage() {
             </div>
             {manufacturingGroups.length > 0 ? (
               <div className="space-y-2">
-                {manufacturingGroups.map((group) => (
+                {visibleManufacturingGroups.map((group) => (
                   <div key={group.product_id} className="overflow-hidden rounded-lg border border-border/70">
                     <div className="flex items-center justify-between gap-3 border-b border-border/50 bg-muted/40 px-3 py-2">
                       <Link
@@ -2705,6 +2732,36 @@ export function ComponentDetailPage() {
                     </ul>
                   </div>
                 ))}
+                {manufacturingTotalPages > 1 && (
+                  <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-sm text-muted-foreground">
+                      Page {manufacturingPage} of {manufacturingTotalPages} · {manufacturingGroups.length}{" "}
+                      {manufacturingGroups.length === 1 ? "product" : "products"}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={manufacturingPage <= 1}
+                        onClick={() => setManufacturingPage((page) => Math.max(1, page - 1))}
+                      >
+                        Previous
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={manufacturingPage >= manufacturingTotalPages}
+                        onClick={() =>
+                          setManufacturingPage((page) => Math.min(manufacturingTotalPages, page + 1))
+                        }
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <p className="rounded-lg border border-border/70 bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
@@ -3012,77 +3069,7 @@ export function ComponentDetailPage() {
             {activitiesLoading ? (
               <Skeleton className="h-32 w-full" />
             ) : activitiesList.length ? (
-              <div className="overflow-hidden rounded-lg border border-border/70">
-                <Table className="w-full table-fixed">
-                  <TableHeader className="bg-muted/40">
-                    <TableRow className="border-border/50">
-                      <TableHead className="h-8 w-[14%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Type
-                      </TableHead>
-                      <TableHead className="h-8 w-[18%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Packet
-                      </TableHead>
-                      <TableHead className="h-8 w-[10%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Qty
-                      </TableHead>
-                      <TableHead className="h-8 w-[18%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Date / User
-                      </TableHead>
-                      <TableHead className="h-8 w-[22%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Summary
-                      </TableHead>
-                      <TableHead className="h-8 w-[18%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
-                        Details
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {activitiesList.map((activity) => {
-                      const before = formatComponentActivityChange(activity.before)
-                      const after = formatComponentActivityChange(activity.after)
-                      const details = [before ? `Before: ${before}` : "", after ? `After: ${after}` : ""]
-                        .filter(Boolean)
-                        .join(" | ")
-                      return (
-                        <TableRow key={activity.id} className="border-border/40">
-                          <TableCell className="h-8 px-3 text-sm text-foreground">
-                            <span className="block truncate">{formatComponentActivityType(activity)}</span>
-                          </TableCell>
-                          <TableCell className="h-8 px-3 text-sm text-muted-foreground">
-                            {activity.packet_id ? (
-                              <Link
-                                to={`/store/component/${id}?packet=${activity.packet_id}`}
-                                className="block truncate text-primary hover:underline underline-offset-2"
-                              >
-                                {activity.packet_label || activity.packet_id.slice(0, 8)}
-                              </Link>
-                            ) : (
-                              "-"
-                            )}
-                          </TableCell>
-                          <TableCell className="h-8 px-3 text-sm font-medium text-foreground">
-                            {activity.quantity != null ? `${activity.relative_quantity === false ? "= " : ""}${activity.quantity}` : "-"}
-                          </TableCell>
-                          <TableCell className="px-3 py-1.5 text-sm text-muted-foreground align-top">
-                            <div className="flex flex-col gap-0.5">
-                              <span>{new Date(activity.occurred_at).toLocaleString()}</span>
-                              <span className="text-xs text-muted-foreground/80">{activity.user_name || "-"}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell className="px-3 py-1.5 text-sm text-muted-foreground align-top">
-                            <span className="block truncate">{activity.description || "-"}</span>
-                          </TableCell>
-                          <TableCell className="px-3 py-1.5 text-sm text-muted-foreground align-top">
-                            <span className="block truncate">
-                              {details || (activity.unit_price ? `Unit price: ${activity.unit_price.toFixed(2)}` : "-")}
-                            </span>
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
+              <ActivityLogTable activities={activitiesList} showPacketColumn />
             ) : (
               <p className="text-sm text-muted-foreground">No activity available.</p>
             )}
@@ -3688,6 +3675,13 @@ export function ComponentDetailPage() {
           </SheetFooter>
         </SheetContent>
       </Sheet>
+
+      <RequestComponentSheet
+        open={requestSheetOpen}
+        onOpenChange={setRequestSheetOpen}
+        componentId={component?.id}
+        componentName={component?.name}
+      />
       </div>
     </TooltipProvider>
   )

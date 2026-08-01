@@ -36,6 +36,7 @@ import { DocsPage } from './pages/DocsPage';
 import { AboutPage } from './pages/AboutPage';
 import { SupplierRelationPage } from './pages/SupplierRelationPage';
 import { ProductionPage } from './pages/ProductionPage';
+import { PutAwayPage } from './pages/PutAwayPage';
 import { ProductionBomPage } from './pages/ProductionBomPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Layout } from './components/Layout';
@@ -186,6 +187,14 @@ export function App() {
             }
           />
           <Route
+            path="store/put-away"
+            element={
+              <RequirePermission area="warehouse" minLevel="read">
+                <PutAwayPage />
+              </RequirePermission>
+            }
+          />
+          <Route
             path="store/reservations"
             element={
               <RequirePermission area="warehouse-operations" minLevel="read">
@@ -285,6 +294,10 @@ export function App() {
           />
           <Route
             path="production/:productId/bom/:bomId"
+            element={<ProductionBomPage />}
+          />
+          <Route
+            path="production/:productId/bom/:bomId/:tab"
             element={<ProductionBomPage />}
           />
           <Route

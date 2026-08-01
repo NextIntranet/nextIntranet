@@ -1,16 +1,26 @@
+from datetime import date
+from decimal import Decimal, InvalidOperation
+
 from mcp_server import MCPToolset
 from rest_framework.exceptions import PermissionDenied
 
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from django.db.models import Q, Sum
 
 from nextintranet_backend.models.serviceToken import ServiceToken
 from nextintranet_backend.models.printList import PrintList, PrintItem
+from nextintranet_backend.services.print_list import create_print_list
 from nextintranet_warehouse.models.component import (
-    Component, ComponentParameter, ParameterType, Packet, StockOperation, Tag,
+    Component, ComponentParameter, ParameterType, Packet, PacketState, StockOperation, Tag,
     Supplier, SupplierRelation, Reservation, Document,
 )
 from nextintranet_warehouse.models.category import Category
+from nextintranet_warehouse.models.purchase import (
+    Purchase, PurchaseDelivery, PurchaseItem, PurchaseItemType, PurchaseRequest, PurchaseStatus,
+)
 from nextintranet_warehouse.models.warehouse import Warehouse
+from nextintranet_warehouse.services import purchase as purchase_service
 from nextintranet_warehouse.mcp_serializers import (
     MCPComponentListSerializer,
     MCPComponentDetailSerializer,
@@ -27,6 +37,11 @@ from nextintranet_warehouse.mcp_serializers import (
     MCPDocumentSerializer,
     MCPPrintQueueSerializer,
     MCPPrintQueueItemSerializer,
+    MCPPurchaseListSerializer,
+    MCPPurchaseDetailSerializer,
+    MCPPurchaseItemSerializer,
+    MCPPurchaseDeliverySerializer,
+    MCPPurchaseRequestSerializer,
 )
 from nextintranet_warehouse.services.parameter_values import coerce_decimal_for_storage
 
@@ -158,6 +173,130 @@ def _require_storage_location(location_ref: str) -> Warehouse:
     if not location.can_store_items:
         raise ValueError("Location cannot store items (can_store_items is false).")
     return location
+
+
+def _normalize_packet_state(raw: str) -> str:
+    value = (raw or "").strip().lower().replace(" ", "_").replace("-", "_")
+    if value not in PacketState.values:
+        allowed = ", ".join(PacketState.values)
+        raise ValueError(f"Invalid packet state '{raw}'. Use one of: {allowed}.")
+    return value
+
+
+def _mcp_actor_user(request):
+    """Resolve the Django user behind the service token, if any (for author/received_by FKs)."""
+    token = _mcp_service_token(request)
+    if token and token.created_by and token.created_by.is_active:
+        return token.created_by
+    return None
+
+
+def _resolve_purchase(purchase_id: str) -> Purchase:
+    return Purchase.objects.select_related("supplier").prefetch_related("items").get(id=purchase_id)
+
+
+def _parse_date(raw: str, field_name: str) -> date | None:
+    value = (raw or "").strip()
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        raise ValueError(f"Invalid {field_name} '{raw}'. Use ISO format YYYY-MM-DD.")
+
+
+def _domain_error(exc: DjangoValidationError) -> ValueError:
+    """Turn a Django ValidationError into the flat ValueError MCP tools report."""
+    return ValueError("; ".join(exc.messages))
+
+
+def _purchase_price(raw_value, field_name: str) -> Decimal:
+    try:
+        return Decimal(str(raw_value)).quantize(Decimal("0.01"))
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValueError(f"Invalid {field_name} '{raw_value}'.")
+
+
+def _apply_purchase_item(purchase: Purchase, raw: dict) -> PurchaseItem:
+    """Create or update one purchase line from an MCP payload dict.
+
+    Mirrors the normalisation the REST write serializer applies, so both entry
+    points produce the same rows.
+    """
+    item_id = raw.get("item_id")
+    item = None
+    if item_id is not None:
+        item = PurchaseItem.objects.filter(purchase=purchase, id=item_id).first()
+        if item is None:
+            raise ValueError(f"purchase item {item_id} not found in this purchase.")
+
+    item_type = (raw.get("item_type") or (item.item_type if item else PurchaseItemType.COMPONENT)).strip()
+    if item_type not in PurchaseItemType.values:
+        allowed = ", ".join(PurchaseItemType.values)
+        raise ValueError(f"Invalid item_type '{item_type}'. Use one of: {allowed}.")
+
+    if item is None:
+        item = PurchaseItem(purchase=purchase, quantity=0)
+    item.item_type = item_type
+
+    if item_type == PurchaseItemType.COMPONENT:
+        if raw.get("supplier_relation_id"):
+            relation = SupplierRelation.objects.select_related("component", "supplier").get(
+                id=raw["supplier_relation_id"]
+            )
+            if relation.supplier_id != purchase.supplier_id:
+                raise ValueError("Supplier relation does not match purchase supplier.")
+            item.supplier_relation = relation
+            if not raw.get("component_id"):
+                item.component = relation.component
+        if raw.get("component_id"):
+            item.component = Component.objects.get(id=raw["component_id"])
+        if item.component is None:
+            raise ValueError("Component item requires component_id or supplier_relation_id.")
+        if item.supplier_relation and item.supplier_relation.component_id != item.component_id:
+            raise ValueError("Supplier relation does not match selected component.")
+
+        symbol = (raw.get("symbol") or item.symbol or "").strip()
+        if not symbol:
+            symbol = (item.supplier_relation.symbol if item.supplier_relation else "") or item.component.name
+        item.symbol = symbol
+        item.name = ""
+
+        if raw.get("stock_location_id"):
+            item.stock_location = _require_storage_location(raw["stock_location_id"])
+    else:
+        name = (raw.get("name") or item.name or "").strip()
+        if not name:
+            raise ValueError("Non-stock item requires name.")
+        item.name = name
+        item.component = None
+        item.supplier_relation = None
+        item.stock_location = None
+        item.symbol = (raw.get("symbol") or item.symbol or name).strip()
+
+    if "description" in raw:
+        item.description = raw.get("description") or ""
+    if raw.get("quantity") is not None:
+        item.quantity = int(raw["quantity"])
+    if item.quantity is None or item.quantity <= 0:
+        raise ValueError("quantity must be greater than zero.")
+    if raw.get("requested_quantity") is not None:
+        item.requested_quantity = int(raw["requested_quantity"])
+    if raw.get("package_size") is not None:
+        package_size = int(raw["package_size"])
+        if package_size <= 0:
+            raise ValueError("package_size must be greater than zero.")
+        item.package_size = package_size
+    if raw.get("unit_price_original") is not None:
+        item.unit_price_original = _purchase_price(raw["unit_price_original"], "unit_price_original")
+        item.unit_price_converted = item.unit_price_original
+    if raw.get("unit_price_converted") is not None:
+        item.unit_price_converted = _purchase_price(raw["unit_price_converted"], "unit_price_converted")
+
+    item.is_fully_delivered = item.delivered_quantity >= item.quantity
+    item.full_clean()
+    item.save()
+    return item
 
 
 def _resolve_tags(tag_names: list[str]) -> list[Tag]:
@@ -637,6 +776,120 @@ class WarehouseReadToolset(MCPToolset):
         )
         return MCPPrintQueueItemSerializer(items, many=True).data
 
+    # --- Purchases ---------------------------------------------------------- #
+
+    def list_purchase_requests(
+        self,
+        assigned: bool | None = None,
+        component_id: str = "",
+        purchase_id: str = "",
+        limit: int = 100,
+    ) -> list[dict]:
+        """List purchase requests (wishes to buy something, later grouped into a purchase).
+
+        Args:
+            assigned: True for requests already attached to a purchase, False for open ones.
+            component_id: Filter by component UUID.
+            purchase_id: Filter by purchase UUID.
+            limit: Maximum number of results (default 100, max 500).
+        """
+        _require_read(self.request)
+
+        qs = PurchaseRequest.objects.select_related("component", "requested_by").all()
+        if assigned is True:
+            qs = qs.filter(purchase__isnull=False)
+        elif assigned is False:
+            qs = qs.filter(purchase__isnull=True)
+        if component_id:
+            qs = qs.filter(component_id=component_id)
+        if purchase_id:
+            qs = qs.filter(purchase_id=purchase_id)
+
+        row_limit = _clamp_list_limit(limit, default=100, maximum=500)
+        return MCPPurchaseRequestSerializer(qs[:row_limit], many=True).data
+
+    def get_purchase_request(self, request_id: str) -> dict:
+        """Get a single purchase request.
+
+        Args:
+            request_id: UUID of the purchase request.
+        """
+        _require_read(self.request)
+        obj = PurchaseRequest.objects.select_related("component", "requested_by").get(id=request_id)
+        return MCPPurchaseRequestSerializer(obj).data
+
+    def list_purchases(
+        self,
+        status: str = "",
+        supplier_id: str = "",
+        query: str = "",
+        limit: int = 50,
+    ) -> list[dict]:
+        """List purchases (supplier orders).
+
+        Args:
+            status: Filter by status — draft, items_defined, priced, closed, exported,
+                receiving, stocking or completed.
+            supplier_id: Filter by supplier UUID.
+            query: Text search across note and supplier name.
+            limit: Maximum number of results (default 50, max 200).
+        """
+        _require_read(self.request)
+
+        qs = Purchase.objects.select_related("supplier").all()
+        if status:
+            normalized = status.strip().lower()
+            if normalized not in PurchaseStatus.values:
+                allowed = ", ".join(PurchaseStatus.values)
+                raise ValueError(f"Invalid status '{status}'. Use one of: {allowed}.")
+            qs = qs.filter(status=normalized)
+        if supplier_id:
+            qs = qs.filter(supplier_id=supplier_id)
+        if query:
+            qs = qs.filter(Q(note__icontains=query) | Q(supplier__name__icontains=query))
+
+        row_limit = _clamp_list_limit(limit, default=50, maximum=200)
+        return MCPPurchaseListSerializer(qs[:row_limit], many=True).data
+
+    def get_purchase(self, purchase_id: str) -> dict:
+        """Get a purchase with its items, deliveries and attached purchase requests.
+
+        Args:
+            purchase_id: UUID of the purchase.
+        """
+        _require_read(self.request)
+
+        purchase = (
+            Purchase.objects.select_related("supplier")
+            .prefetch_related(
+                "items__component",
+                "items__stock_location",
+                "items__draft_packet",
+                "items__deliveries__stock_location",
+                "requests__component",
+            )
+            .get(id=purchase_id)
+        )
+        return MCPPurchaseDetailSerializer(purchase).data
+
+    def get_purchase_export_csv(self, purchase_id: str) -> dict:
+        """Render the supplier import CSV (Mouser style) for a purchase.
+
+        Args:
+            purchase_id: UUID of the purchase.
+        """
+        _require_read(self.request)
+
+        purchase = Purchase.objects.prefetch_related(
+            "items__component__parameters__parameter_type",
+        ).get(id=purchase_id)
+        return {
+            "purchase_id": str(purchase.id),
+            "header": purchase_service.PURCHASE_EXPORT_HEADER,
+            "rows": purchase_service.purchase_export_rows(purchase),
+            "csv": purchase_service.purchase_export_csv(purchase),
+        }
+
 
 class WarehouseWriteToolset(MCPToolset):
     """Write tools for warehouse data modification."""
@@ -1072,6 +1325,7 @@ class WarehouseWriteToolset(MCPToolset):
         clear_location: bool = False,
         description: str = "",
         is_trackable: bool | None = None,
+        state: str = "",
         is_active: bool | None = None,
     ) -> dict:
         """Update packet metadata (not stock quantity — use add_packet_stock_operation).
@@ -1082,7 +1336,8 @@ class WarehouseWriteToolset(MCPToolset):
             clear_location: Set true to remove the location.
             description: New description (leave empty to keep current).
             is_trackable: Set trackable flag (leave None to keep current).
-            is_active: Set active flag (leave None to keep current).
+            state: New lifecycle state — expected, stocked, in_transit or retired.
+            is_active: Legacy flag mapped onto state; ignored when state is given.
         """
         _require_write(self.request)
 
@@ -1102,9 +1357,13 @@ class WarehouseWriteToolset(MCPToolset):
         if is_trackable is not None:
             packet.is_trackable = is_trackable
             update_fields.append("is_trackable")
-        if is_active is not None:
-            packet.is_active = is_active
-            update_fields.append("is_active")
+        if state:
+            packet.state = _normalize_packet_state(state)
+            update_fields.append("state")
+        elif is_active is not None:
+            # Legacy flag: mapped onto state, which is the source of truth.
+            packet.apply_is_active(is_active)
+            update_fields.append("state")
 
         if update_fields:
             packet.save(update_fields=update_fields)
@@ -1674,3 +1933,411 @@ class WarehouseWriteToolset(MCPToolset):
         payload = MCPPrintQueueItemSerializer(item).data
         item.delete()
         return {"deleted": True, "item": payload}
+
+    def create_print_queue(
+        self,
+        name: str = "",
+        is_public: bool = True,
+        is_default: bool = False,
+    ) -> dict:
+        """Create a print queue owned by the user behind the service token.
+
+        Args:
+            name: Queue name. Auto-generated when empty.
+            is_public: Whether other users can see and print from the queue (default true).
+            is_default: Make this the owner's default queue (demotes the previous default).
+        """
+        _require_write(self.request)
+
+        owner = _mcp_print_queue_user(self.request)
+        if not owner:
+            raise ValueError(
+                "Creating a print queue requires a service token linked to a user."
+            )
+
+        queue = create_print_list(
+            owner,
+            name=name.strip(),
+            is_public=is_public,
+            is_default=True if is_default else None,
+        )
+
+        # Keep a queue-restricted token able to use what it just created.
+        token = _mcp_service_token(self.request)
+        if token and token.allowed_print_lists.exists():
+            token.allowed_print_lists.add(queue)
+
+        return MCPPrintQueueSerializer(queue).data
+
+    # --- Purchase requests -------------------------------------------------- #
+
+    def create_purchase_request(
+        self,
+        quantity: int = 1,
+        component_id: str = "",
+        item_name: str = "",
+        description: str = "",
+    ) -> dict:
+        """File a purchase request (a wish to buy something), optionally for a known component.
+
+        Args:
+            quantity: Requested quantity (default 1).
+            component_id: UUID of a warehouse component, when the wish is for a stocked item.
+            item_name: Free-text item name, required when no component is given.
+            description: Optional note.
+        """
+        _require_write(self.request)
+
+        if quantity <= 0:
+            raise ValueError("quantity must be greater than zero.")
+
+        component = Component.objects.get(id=component_id) if component_id else None
+        name = item_name.strip()
+        if not component and not name:
+            raise ValueError("Provide component_id or item_name.")
+
+        obj = PurchaseRequest.objects.create(
+            quantity=quantity,
+            component=component,
+            item_name=name or None,
+            description=description,
+            requested_by=_mcp_actor_user(self.request),
+        )
+        return MCPPurchaseRequestSerializer(obj).data
+
+    def update_purchase_request(
+        self,
+        request_id: str,
+        quantity: int = 0,
+        item_name: str = "",
+        description: str = "",
+        component_id: str = "",
+    ) -> dict:
+        """Update a purchase request. Empty/zero arguments keep the current value.
+
+        Args:
+            request_id: UUID of the purchase request.
+            quantity: New quantity (leave 0 to keep current).
+            item_name: New item name (leave empty to keep current).
+            description: New description (leave empty to keep current).
+            component_id: New component UUID (leave empty to keep current).
+        """
+        _require_write(self.request)
+
+        obj = PurchaseRequest.objects.get(id=request_id)
+        update_fields = []
+
+        if quantity:
+            if quantity <= 0:
+                raise ValueError("quantity must be greater than zero.")
+            obj.quantity = quantity
+            update_fields.append("quantity")
+        if item_name:
+            obj.item_name = item_name.strip()
+            update_fields.append("item_name")
+        if description:
+            obj.description = description
+            update_fields.append("description")
+        if component_id:
+            obj.component = Component.objects.get(id=component_id)
+            update_fields.append("component")
+
+        if update_fields:
+            obj.save(update_fields=update_fields)
+
+        return MCPPurchaseRequestSerializer(obj).data
+
+    def delete_purchase_request(self, request_id: str) -> dict:
+        """Delete a purchase request.
+
+        Args:
+            request_id: UUID of the purchase request.
+        """
+        _require_write(self.request)
+
+        obj = PurchaseRequest.objects.get(id=request_id)
+        payload = MCPPurchaseRequestSerializer(obj).data
+        obj.delete()
+        return {"deleted": True, "purchase_request": payload}
+
+    def assign_purchase_requests(self, purchase_id: str, request_ids: list[str]) -> dict:
+        """Attach purchase requests to a purchase so they are covered by that order.
+
+        Args:
+            purchase_id: UUID of the purchase.
+            request_ids: UUIDs of the purchase requests to attach.
+        """
+        _require_write(self.request)
+
+        purchase = _resolve_purchase(purchase_id)
+        assigned = purchase_service.assign_requests_to_purchase(purchase, request_ids)
+        return {"success": True, "purchase_id": str(purchase.id), "assigned": assigned}
+
+    # --- Purchases ---------------------------------------------------------- #
+
+    def create_purchase(
+        self,
+        supplier_id: str,
+        currency: str = "",
+        note: str = "",
+        delivery_date: str = "",
+    ) -> dict:
+        """Create an empty purchase (draft order) for a supplier. Add lines with set_purchase_items.
+
+        Args:
+            supplier_id: UUID of the supplier.
+            currency: Optional currency code, e.g. CZK or EUR.
+            note: Optional note.
+            delivery_date: Optional expected delivery date, ISO format YYYY-MM-DD.
+        """
+        _require_write(self.request)
+
+        supplier = Supplier.objects.get(id=supplier_id)
+        purchase = Purchase.objects.create(
+            supplier=supplier,
+            currency=currency.strip() or None,
+            note=note,
+            delivery_date=_parse_date(delivery_date, "delivery_date"),
+            created_by=_mcp_actor_user(self.request),
+        )
+        return MCPPurchaseDetailSerializer(purchase).data
+
+    def set_purchase_items(
+        self,
+        purchase_id: str,
+        items: list[dict],
+        remove_item_ids: list[int] | None = None,
+    ) -> dict:
+        """Add or update purchase lines, and optionally remove lines.
+
+        Each entry in items is a dict with:
+          item_id (int, omit to create), item_type (component or non_stock),
+          component_id, supplier_relation_id, name (non-stock only), symbol,
+          description, quantity, package_size, unit_price_original,
+          stock_location_id (target warehouse location, assignable already while ordering).
+
+        Args:
+            purchase_id: UUID of the purchase.
+            items: List of line definitions (see above).
+            remove_item_ids: Integer ids of lines to delete.
+        """
+        _require_write(self.request)
+
+        purchase = _resolve_purchase(purchase_id)
+        errors: list[str] = []
+        touched: list[PurchaseItem] = []
+
+        with transaction.atomic():
+            for index, raw in enumerate(items or []):
+                if not isinstance(raw, dict):
+                    errors.append(f"items[{index}] must be an object.")
+                    continue
+                try:
+                    touched.append(_apply_purchase_item(purchase, raw))
+                except (ValueError, Component.DoesNotExist, SupplierRelation.DoesNotExist) as exc:
+                    errors.append(f"items[{index}]: {exc}")
+                except DjangoValidationError as exc:
+                    errors.append(f"items[{index}]: {'; '.join(exc.messages)}")
+
+            if errors:
+                raise ValueError("Purchase items update failed: " + "; ".join(errors))
+
+            if remove_item_ids:
+                PurchaseItem.objects.filter(purchase=purchase, id__in=remove_item_ids).delete()
+
+        return {
+            "success": True,
+            "purchase_id": str(purchase.id),
+            "items": MCPPurchaseItemSerializer(touched, many=True).data,
+            "removed": len(remove_item_ids or []),
+        }
+
+    def set_purchase_item_location(self, purchase_id: str, item_id: int, location_id: str) -> dict:
+        """Set the target stock location of one purchase line while the order is being built.
+
+        Args:
+            purchase_id: UUID of the purchase.
+            item_id: Integer id of the purchase line.
+            location_id: UUID of a storage location (must have can_store_items=true).
+        """
+        _require_write(self.request)
+
+        item = PurchaseItem.objects.select_related("purchase", "draft_packet").get(
+            id=item_id, purchase_id=purchase_id
+        )
+        if item.item_type != PurchaseItemType.COMPONENT:
+            raise ValueError("Non-stock item cannot have a stock location.")
+
+        location = _require_storage_location(location_id)
+        item.stock_location = location
+        item.save(update_fields=["stock_location"])
+
+        # A draft packet created earlier follows the item to its new location.
+        packet = item.draft_packet
+        if packet and packet.state == PacketState.EXPECTED:
+            packet.location = location
+            packet.save(update_fields=["location"])
+
+        return MCPPurchaseItemSerializer(item).data
+
+    def transition_purchase(self, purchase_id: str, target_status: str) -> dict:
+        """Move a purchase to the next lifecycle status.
+
+        Order: draft -> items_defined -> priced -> closed -> exported -> receiving
+        -> stocking -> completed. Exporting creates the draft (expected) packets for
+        every component line, so each line needs a stock location by then.
+
+        Args:
+            purchase_id: UUID of the purchase.
+            target_status: Status to move to.
+        """
+        _require_write(self.request)
+
+        target = (target_status or "").strip().lower()
+        if target not in PurchaseStatus.values:
+            allowed = ", ".join(PurchaseStatus.values)
+            raise ValueError(f"Invalid target_status '{target_status}'. Use one of: {allowed}.")
+
+        purchase = _resolve_purchase(purchase_id)
+        try:
+            purchase_service.transition_purchase(purchase, target)
+        except DjangoValidationError as exc:
+            raise _domain_error(exc)
+
+        purchase.refresh_from_db()
+        return MCPPurchaseDetailSerializer(purchase).data
+
+    def receive_purchase_items(
+        self,
+        purchase_id: str,
+        lines: list[dict],
+        queue_labels: bool = False,
+        print_list_id: str = "",
+    ) -> dict:
+        """Record goods arriving for a purchase. Partial deliveries are supported.
+
+        Each entry in lines is a dict with: item_id (int, required), quantity (int, required),
+        stock_location_id (optional, defaults to the line's location), delivery_date
+        (optional ISO date) and note (optional).
+
+        Args:
+            purchase_id: UUID of the purchase.
+            lines: List of received lines (see above).
+            queue_labels: Queue a packet label for every received component line.
+            print_list_id: Print queue UUID for the labels. Uses the default queue when omitted.
+        """
+        _require_write(self.request)
+
+        purchase = _resolve_purchase(purchase_id)
+        actor = _mcp_actor_user(self.request)
+
+        print_queue = None
+        if queue_labels:
+            print_queue = _resolve_mcp_print_queue(self.request, print_list_id)
+            if not print_queue:
+                raise ValueError(
+                    "No print queue available. Pass print_list_id or create one with create_print_queue."
+                )
+
+        receive_lines = []
+        for index, raw in enumerate(lines or []):
+            if not isinstance(raw, dict):
+                raise ValueError(f"lines[{index}] must be an object.")
+            item_id = raw.get("item_id")
+            if item_id is None:
+                raise ValueError(f"lines[{index}]: item_id is required.")
+            try:
+                item = PurchaseItem.objects.select_related(
+                    "component", "stock_location", "draft_packet", "purchase"
+                ).get(id=item_id, purchase_id=purchase.id)
+            except PurchaseItem.DoesNotExist:
+                raise ValueError(f"lines[{index}]: purchase item {item_id} not found in this purchase.")
+
+            location_id = raw.get("stock_location_id") or ""
+            receive_lines.append(
+                purchase_service.ReceiveLine(
+                    item=item,
+                    quantity=int(raw.get("quantity") or 0),
+                    stock_location=_require_storage_location(location_id) if location_id else None,
+                    delivery_date=_parse_date(raw.get("delivery_date") or "", "delivery_date"),
+                    note=raw.get("note") or "",
+                )
+            )
+
+        try:
+            result = purchase_service.receive_purchase(
+                purchase, receive_lines, actor=actor, print_queue=print_queue
+            )
+        except DjangoValidationError as exc:
+            raise _domain_error(exc)
+
+        purchase.refresh_from_db()
+        return {
+            "success": True,
+            "purchase": MCPPurchaseDetailSerializer(purchase).data,
+            "deliveries": MCPPurchaseDeliverySerializer(result.deliveries, many=True).data,
+            "queued_labels": result.queued_labels,
+            "print_list_id": str(print_queue.id) if print_queue else None,
+        }
+
+    def stock_purchase_deliveries(
+        self,
+        purchase_id: str,
+        delivery_ids: list[int] | None = None,
+    ) -> dict:
+        """Book received deliveries into stock, flipping their expected packets to stocked.
+
+        Completes the purchase automatically once everything is delivered and stocked.
+
+        Args:
+            purchase_id: UUID of the purchase.
+            delivery_ids: Ids of the deliveries to stock. All unstocked ones when omitted.
+        """
+        _require_write(self.request)
+
+        purchase = _resolve_purchase(purchase_id)
+        qs = purchase_service.unstocked_deliveries(purchase)
+        if delivery_ids:
+            qs = qs.filter(id__in=delivery_ids)
+            found = {d.id for d in qs}
+            missing = [d for d in delivery_ids if d not in found]
+            if missing:
+                raise ValueError(
+                    f"Deliveries not found or already stocked: {', '.join(str(m) for m in missing)}."
+                )
+
+        deliveries = list(qs)
+        if not deliveries:
+            raise ValueError("No unstocked deliveries to stock for this purchase.")
+
+        try:
+            result = purchase_service.stock_purchase(
+                purchase, deliveries, actor=_mcp_actor_user(self.request)
+            )
+        except DjangoValidationError as exc:
+            raise _domain_error(exc)
+
+        purchase.refresh_from_db()
+        return {
+            "success": True,
+            "stocked_deliveries": result.stocked_deliveries,
+            "completed": result.completed,
+            "purchase": MCPPurchaseDetailSerializer(purchase).data,
+        }
+
+    def complete_purchase(self, purchase_id: str) -> dict:
+        """Complete a purchase directly from receiving (used when nothing needs stocking).
+
+        Args:
+            purchase_id: UUID of the purchase.
+        """
+        _require_write(self.request)
+
+        purchase = _resolve_purchase(purchase_id)
+        try:
+            purchase_service.transition_purchase(purchase, PurchaseStatus.COMPLETED)
+        except DjangoValidationError as exc:
+            raise _domain_error(exc)
+
+        purchase.refresh_from_db()
+        return MCPPurchaseDetailSerializer(purchase).data

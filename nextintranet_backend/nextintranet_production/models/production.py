@@ -55,6 +55,7 @@ class Production(NIModel):
     )
     
     link = models.URLField(
+        max_length=2048,
         blank=True,
         null=True,
         verbose_name=_('Link'),
@@ -165,6 +166,7 @@ class Template(NIModel):
         verbose_name=_('Planned date'),
     )
     source_url = models.URLField(
+        max_length=2048,
         blank=True,
         null=True,
         verbose_name=_('Source URL'),
@@ -188,6 +190,7 @@ class Template(NIModel):
         verbose_name=_('Source imported at'),
     )
     ibom_url = models.URLField(
+        max_length=2048,
         blank=True,
         null=True,
         verbose_name=_('iBOM URL'),
@@ -634,6 +637,15 @@ class TemplateComponentScan(NIModel):
         decimal_places=6,
         default=1,
         verbose_name=_('Quantity'),
+    )
+    stock_operation = models.ForeignKey(
+        'nextintranet_warehouse.StockOperation',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='production_placed_scans',
+        verbose_name=_('Stock operation'),
+        help_text=_('Warehouse deduction booked when this component was placed.'),
     )
 
     class Meta:

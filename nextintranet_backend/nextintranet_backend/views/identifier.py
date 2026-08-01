@@ -10,7 +10,7 @@ from nextintranet_warehouse.models.component import Component, Packet
 from nextintranet_warehouse.models.warehouse import Warehouse
 from nextintranet_warehouse.models.purchase import Purchase
 from nextintranet_production.models.production import Production
-from nextintranet_warehouse.services.activity import actor_from_request, log_activity
+from nextintranet_warehouse.services.activity import actor_from_request, client_info_from_request, log_activity
 
 
 def validate_code(query_string):
@@ -29,6 +29,9 @@ SHORT_LINK_MODELS = {
     "c": Component,
 }
 
+# Older location labels were printed with the full page URL instead of the short link.
+LOCATION_PATH_RE = re.compile(r"/store/location/(?P<id>[0-9a-fA-F-]{36})")
+
 
 def resolve_short_link(raw_scan):
     """Resolve a short QR link to its object, or None when not a short link."""
@@ -37,6 +40,14 @@ def resolve_short_link(raw_scan):
         return None
     model = SHORT_LINK_MODELS[match.group("kind")]
     return model.objects.filter(id=match.group("id")).first()
+
+
+def resolve_location_path(raw_scan):
+    """Resolve a legacy /store/location/<uuid> label, or None when it is not one."""
+    match = LOCATION_PATH_RE.search(raw_scan or "")
+    if not match:
+        return None
+    return Warehouse.objects.filter(id=match.group("id")).first()
 
 
 def _build_result_for_object(obj):
@@ -124,6 +135,15 @@ class IdentifierApiView(APIView):
                 results.append(item)
                 _set_action(item["link"])
 
+        # 0b) Legacy location label: <base>/store/location/<uuid>
+        if not results:
+            location_obj = resolve_location_path(raw_scan)
+            if location_obj:
+                item = _build_result_for_object(location_obj)
+                if item:
+                    results.append(item)
+                    _set_action(item["link"])
+
         # 1) Internal match: QR/content with ?component=uuid or ?packet=uuid
         if not results and decoded_data:
             if decoded_data.get("packet"):
@@ -162,6 +182,17 @@ class IdentifierApiView(APIView):
 
         response_data["result"] = results
         user = actor_from_request(request)
+        station = {
+            key: value
+            for key in ("stationId", "agentId", "deviceId")
+            if (value := data.get(key))
+        }
+        scan_metadata = {
+            "scan": raw_scan,
+            "reader": data.get("codeReader"),
+            "client": client_info_from_request(request),
+            **station,
+        }
         for item in results:
             if item.get("type") == "packet":
                 packet = Packet.objects.filter(id=item.get("id")).select_related("component").first()
@@ -172,7 +203,7 @@ class IdentifierApiView(APIView):
                         packet=packet,
                         user=user,
                         description="Packet scanned",
-                        metadata={"scan": raw_scan},
+                        metadata=scan_metadata,
                         dedupe_seconds=10,
                     )
             elif item.get("type") == "component":
@@ -184,7 +215,7 @@ class IdentifierApiView(APIView):
                         component=component,
                         user=user,
                         description="Component scanned",
-                        metadata={"scan": raw_scan},
+                        metadata=scan_metadata,
                         dedupe_seconds=10,
                     )
         return Response(response_data, status=status.HTTP_200_OK)

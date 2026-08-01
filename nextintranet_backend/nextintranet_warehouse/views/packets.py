@@ -37,7 +37,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
 from django.db.models import F
 
-from nextintranet_warehouse.models.component import Packet, StockOperation, Component, Identifier, WarehouseActivity, SupplierRelation
+from nextintranet_warehouse.models.component import Packet, PacketState, StockOperation, Component, Identifier, WarehouseActivity, SupplierRelation
 from nextintranet_warehouse.models.warehouse import Warehouse
 from nextintranet_warehouse.models.packet_recalc_job import PacketRecalcJob
 from django_q.tasks import async_task
@@ -175,6 +175,12 @@ class PacketSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         before = packet_snapshot(instance)
+        # is_active is derived from state; a legacy is_active write is mapped onto state,
+        # while an explicit state write always wins.
+        legacy_is_active = validated_data.pop('is_active', None)
+        if legacy_is_active is not None and 'state' not in validated_data:
+            instance.apply_is_active(legacy_is_active)
+            validated_data['state'] = instance.state
         packet = super().update(instance, validated_data)
         after = packet_snapshot(packet)
         changed_before, changed_after = compact_changes(before, after)
@@ -183,9 +189,13 @@ class PacketSerializer(serializers.ModelSerializer):
             if "location" in changed_before:
                 activity_type = "packet_moved"
                 description = "Packet moved"
-            elif "is_active" in changed_before:
+            elif "state" in changed_before or "is_active" in changed_before:
                 activity_type = "packet_status_changed"
-                description = "Packet activated" if changed_after.get("is_active") else "Packet deactivated"
+                state_label = changed_after.get("state")
+                if "state" in changed_before and state_label:
+                    description = f"Packet state changed to {state_label}"
+                else:
+                    description = "Packet activated" if changed_after.get("is_active") else "Packet deactivated"
             else:
                 activity_type = "packet_updated"
                 description = "Packet updated"
@@ -236,6 +246,8 @@ class WarehouseActivitySerializer(serializers.ModelSerializer):
     user_name = serializers.SerializerMethodField()
     packet_id = serializers.UUIDField(source="packet.id", read_only=True)
     component_id = serializers.UUIDField(source="component.id", read_only=True)
+    packet_serial_code = serializers.SerializerMethodField()
+    packet_location_leaf = serializers.SerializerMethodField()
     stock_operation_id = serializers.UUIDField(source="stock_operation.id", read_only=True)
     stock_operation_type = serializers.CharField(source="stock_operation.operation_type", read_only=True)
     quantity = serializers.FloatField(source="stock_operation.quantity", read_only=True)
@@ -248,6 +260,8 @@ class WarehouseActivitySerializer(serializers.ModelSerializer):
             "id",
             "packet_id",
             "component_id",
+            "packet_serial_code",
+            "packet_location_leaf",
             "user",
             "user_name",
             "occurred_at",
@@ -270,6 +284,19 @@ class WarehouseActivitySerializer(serializers.ModelSerializer):
             return None
         full_name = user.get_full_name().strip()
         return full_name or user.username
+
+    def get_packet_serial_code(self, instance):
+        packet = instance.packet
+        if not packet:
+            return None
+        return packet.serial_code or None
+
+    def get_packet_location_leaf(self, instance):
+        packet = instance.packet
+        if not packet or not packet.location:
+            return None
+        full_path = packet.location.full_path
+        return full_path.rsplit("/", 1)[-1] if "/" in full_path else full_path
 
 
 class ActivityPagination(PageNumberPagination):
@@ -296,7 +323,7 @@ class PacketActivitiesAPIView(APIView):
         packet = get_object_or_404(Packet, pk=pk)
         qs = (
             WarehouseActivity.objects.filter(packet=packet)
-            .select_related("user", "packet", "component", "stock_operation")
+            .select_related("user", "packet", "packet__location", "component", "stock_operation")
             .order_by("-occurred_at", "-created_at")
         )
         if request.query_params.get("mode") == "count":
@@ -333,6 +360,7 @@ class CustomPagination(PageNumberPagination):
 class PacketFilter(django_filters.FilterSet):
     location = django_filters.UUIDFilter(method="filter_location")
     is_active = django_filters.BooleanFilter()
+    state = django_filters.ChoiceFilter(choices=PacketState.choices)
     component_name = django_filters.CharFilter(
         field_name="component__name",
         lookup_expr="icontains",
@@ -348,7 +376,7 @@ class PacketFilter(django_filters.FilterSet):
 
     class Meta:
         model = Packet
-        fields = ["location", "component", "is_active", "component_name", "inventory_status"]
+        fields = ["location", "component", "is_active", "state", "component_name", "inventory_status"]
 
     def filter_location(self, queryset, name, value):
         try:

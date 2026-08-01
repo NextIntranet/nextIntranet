@@ -8,6 +8,7 @@ from nextintranet_warehouse.models.component import (
     Identifier,
     Packet,
 )
+from nextintranet_warehouse.models.warehouse import Warehouse
 
 MFPN_PARAM_NAMES = frozenset({
     "mfpn",
@@ -48,6 +49,12 @@ def resolve_identifier_objects(value: str) -> list[object]:
         component = Component.objects.filter(id=parsed_uuid).first()
         if component:
             _add(component)
+        # Warehouse carries a secondary `uuid` field besides its PK, so match both.
+        location = Warehouse.objects.filter(
+            Q(id=parsed_uuid) | Q(uuid=parsed_uuid)
+        ).first()
+        if location:
+            _add(location)
 
     identifier = (
         Identifier.objects.filter(identifier__iexact=value)

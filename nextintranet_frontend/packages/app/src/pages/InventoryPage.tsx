@@ -49,6 +49,7 @@ import {
 import { getOperationLabel } from "@/lib/stockOperations"
 import { useHotkeys } from "@/lib/hotkeys"
 import { resolvePacketIdFromScan } from "@/lib/resolvePacketIdFromScan"
+import { isPacketExpected, packetStateLabel } from "@/lib/packetState"
 
 interface LocationNode {
   id: string
@@ -78,6 +79,7 @@ interface Packet {
   id: string
   // DRF serializes the Decimal field as a string.
   count?: number | string | null
+  state?: string | null
   is_active?: boolean
   component: PacketComponent
   location?: PacketLocation | null
@@ -309,12 +311,16 @@ export function InventoryPage() {
     ? packets.filter((packet) => !inventoriedPacketIds.has(packet.id))
     : packets
 
-  // Inactive packets go to the end of the list, below a separator.
+  // Expected (ordered, not yet received) and inactive packets go to the end of the
+  // list, each below its own separator.
   const activeVisiblePackets = visiblePackets.filter(
     (packet) => packet.is_active !== false,
   )
+  const expectedVisiblePackets = visiblePackets.filter(
+    (packet) => packet.is_active === false && isPacketExpected(packet),
+  )
   const inactiveVisiblePackets = visiblePackets.filter(
-    (packet) => packet.is_active === false,
+    (packet) => packet.is_active === false && !isPacketExpected(packet),
   )
 
   const isPacketResolving =
@@ -716,6 +722,7 @@ export function InventoryPage() {
 
   const renderLocationPacketRow = (packet: Packet) => {
     const isInactive = packet.is_active === false
+    const isExpected = isPacketExpected(packet)
     // DRF serializes the Decimal count as a string, so coerce before use.
     const countValue = Number(packet.count ?? 0)
     const zeroCount = countValue === 0
@@ -744,7 +751,10 @@ export function InventoryPage() {
           }`}
         >
           <div className="truncate">{packet.component.name}</div>
-          <div className="truncate text-xs">{packet.id}</div>
+          <div className="truncate text-xs">
+            {isExpected ? `${packetStateLabel(packet)} · ` : ""}
+            {packet.id}
+          </div>
         </button>
         {zeroCount && !isInactive ? (
           <Button
@@ -1258,6 +1268,14 @@ export function InventoryPage() {
                 ) : visiblePackets.length ? (
                   <div className="divide-y divide-border/70">
                     {activeVisiblePackets.map(renderLocationPacketRow)}
+                    {expectedVisiblePackets.length > 0 && (
+                      <div className="border-t-2 border-border bg-muted/30 px-4 py-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Expected — ordered, not received yet
+                        </span>
+                      </div>
+                    )}
+                    {expectedVisiblePackets.map(renderLocationPacketRow)}
                     {inactiveVisiblePackets.length > 0 && (
                       <div className="border-t-2 border-border bg-muted/30 px-4 py-1">
                         <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
