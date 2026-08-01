@@ -63,6 +63,7 @@ from nextintranet_production.services.bom import (
     revert_placed_scan_stock as _revert_placed_scan_stock,
     merge_lines as _merge_lines,
     assign_component_to_refs as _assign_component_to_refs,
+    unlink_component as _unlink_component,
     bom_availability_rows as _bom_availability_rows,
 )
 
@@ -816,11 +817,15 @@ class TemplateViewSet(viewsets.ModelViewSet):
             # our own bridged copy — exactly like an upload. The URL stays as the source.
             try:
                 html_bytes, content_type = _fetch_https_bytes(ibom_url)
-            except ValueError as exc:
-                return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-            except Exception as exc:
+            except ValueError:
                 return Response(
-                    {"error": f"Failed to download iBOM: {exc}"}, status=status.HTTP_400_BAD_REQUEST
+                    {"error": "iBOM URL is invalid or the response is too large."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            except Exception:
+                return Response(
+                    {"error": "Failed to download iBOM from the provided URL."},
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
             if not _looks_like_html(html_bytes, content_type):
                 return Response(
@@ -1253,9 +1258,12 @@ class TemplateViewSet(viewsets.ModelViewSet):
                 operation = _consume_for_placed_scan(
                     scan=scan, template=template, line=line, packet=packet, user=actor_from_request(request)
                 )
-            except ValueError as exc:
+            except ValueError:
                 transaction.set_rollback(True)
-                return Response({"error": str(exc)}, status=status.HTTP_409_CONFLICT)
+                return Response(
+                    {"error": "No packet is available to deduct stock for this component."},
+                    status=status.HTTP_409_CONFLICT,
+                )
 
             operation.packet.refresh_from_db()
             count_after = _safe_float(operation.packet.count)
@@ -1545,10 +1553,13 @@ class TemplateComponentViewSet(viewsets.ModelViewSet):
                 return Response({"error": "BOM is locked and cannot be edited."}, status=status.HTTP_409_CONFLICT)
         return super().create(request, *args, **kwargs)
 
+    @transaction.atomic
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
         if instance.template.status in CLOSED_TEMPLATE_STATUSES:
             return Response({"error": "BOM is locked and cannot be edited."}, status=status.HTTP_409_CONFLICT)
+        if "component" in request.data and not request.data.get("component") and instance.component_id:
+            _unlink_component(instance)
         return super().update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):

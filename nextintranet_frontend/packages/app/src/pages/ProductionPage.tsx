@@ -2,6 +2,7 @@ import { FormEvent, Fragment, ReactNode, useCallback, useEffect, useMemo, useRef
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { IBOM_EVENT_TYPES, apiFetch, getRealtimeClient, nextIO, tokenStorage, useIbomBridge } from "@nextintranet/core"
 import {
+  AlertTriangle,
   ChevronDown,
   ChevronUp,
   CircleSlash,
@@ -1547,12 +1548,20 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
       .sort((a, b) => `${a.footprint || ""}|${a.value || ""}`.localeCompare(`${b.footprint || ""}|${b.value || ""}`))
   }, [selectedBom, selectedBomComponents])
 
+  const unresolvedScannerLines = useMemo(
+    () => scannerRows.filter((row) => !row.component && !row.exclude_from_bom).length,
+    [scannerRows],
+  )
+
+  // KNOWN LIMITATION: unlinking a line (see unlink_component in services/bom.py)
+  // doesn't clear sourced_total/placed_total or scans, so an unlinked row can still
+  // count toward assemblyProgress below while showing "Unlinked" in the Component
+  // cell. Revisit alongside that backend limitation.
   const findScannerRow = useCallback(
     (lineId: string) =>
       scannerRows.find((row) => row.id === lineId || row._groupedLineIds?.includes(lineId)),
     [scannerRows],
   )
-
   const assemblyProgress = useMemo(() => {
     let neededTotal = 0
     let sourcedTotal = 0
@@ -3167,6 +3176,16 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                 <Switch checked={autoSyncIbomCompletion} onCheckedChange={setAutoSyncIbomCompletion} />
                               </label>
                             </div>
+
+                            {unresolvedScannerLines > 0 ? (
+                              <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-800">
+                                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                                <span>
+                                  {unresolvedScannerLines} BOM {unresolvedScannerLines === 1 ? "line has" : "lines have"} no linked
+                                  component. Resolve the assignment in the BOM view before placing.
+                                </span>
+                              </div>
+                            ) : null}
 
                             <div className="rounded-md border border-border/70 bg-muted/10 p-2">
                               <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] leading-tight">
