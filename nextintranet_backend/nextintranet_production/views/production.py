@@ -817,11 +817,15 @@ class TemplateViewSet(viewsets.ModelViewSet):
             # our own bridged copy — exactly like an upload. The URL stays as the source.
             try:
                 html_bytes, content_type = _fetch_https_bytes(ibom_url)
-            except ValueError as exc:
-                return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-            except Exception as exc:
+            except ValueError:
                 return Response(
-                    {"error": f"Failed to download iBOM: {exc}"}, status=status.HTTP_400_BAD_REQUEST
+                    {"error": "iBOM URL is invalid or the response is too large."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            except Exception:
+                return Response(
+                    {"error": "Failed to download iBOM from the provided URL."},
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
             if not _looks_like_html(html_bytes, content_type):
                 return Response(
@@ -1254,9 +1258,12 @@ class TemplateViewSet(viewsets.ModelViewSet):
                 operation = _consume_for_placed_scan(
                     scan=scan, template=template, line=line, packet=packet, user=actor_from_request(request)
                 )
-            except ValueError as exc:
+            except ValueError:
                 transaction.set_rollback(True)
-                return Response({"error": str(exc)}, status=status.HTTP_409_CONFLICT)
+                return Response(
+                    {"error": "No packet is available to deduct stock for this component."},
+                    status=status.HTTP_409_CONFLICT,
+                )
 
             operation.packet.refresh_from_db()
             count_after = _safe_float(operation.packet.count)
