@@ -319,7 +319,7 @@ _STOCK_OPERATION_TYPES = frozenset({
 def _normalize_stock_quantity(operation_type: str, quantity: float) -> float:
     if quantity == 0:
         raise ValueError("quantity must not be zero.")
-    if operation_type in {"remove", "trans_out", "sell"}:
+    if operation_type in {"remove", "trans_out", "sell", "service"}:
         return -abs(quantity)
     if operation_type in {"add", "trans_in", "buy"}:
         return abs(quantity)
