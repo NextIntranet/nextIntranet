@@ -53,7 +53,7 @@ export async function resolveScannedIdentifier(
 
   const capture = getScannerCapture()
   if (capture) {
-    capture(text)
+    capture(text, sourceContext)
     return "capture"
   }
 

@@ -58,6 +58,7 @@ nav:
     - Warehouse:
       - Components: guide/warehouse/components.md
       - Pricing: guide/warehouse/pricing.md
+      - Put-away check: guide/warehouse/put-away.md
       - Purchases: guide/warehouse/purchases.md
       - Reservations: guide/warehouse/reservations.md
     - Settings:

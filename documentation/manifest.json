@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-29T14:45:12.787Z",
+  "generatedAt": "2026-08-01T16:51:02.876Z",
   "pages": [
     {
       "path": "",
@@ -523,6 +523,45 @@
           "level": 2,
           "text": "Automation",
           "id": "automation"
+        }
+      ]
+    },
+    {
+      "path": "guide/warehouse/put-away",
+      "file": "guide/warehouse/put-away.md",
+      "title": "Put-away check",
+      "description": "Scan a bag and a shelf to check whether the bag belongs there.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "Put-away check",
+          "id": "put-away-check"
+        },
+        {
+          "level": 2,
+          "text": "Modes",
+          "id": "modes"
+        },
+        {
+          "level": 2,
+          "text": "Verdicts",
+          "id": "verdicts"
+        },
+        {
+          "level": 2,
+          "text": "Scanning",
+          "id": "scanning"
+        },
+        {
+          "level": 2,
+          "text": "Keyboard shortcuts",
+          "id": "keyboard-shortcuts"
+        },
+        {
+          "level": 2,
+          "text": "Permissions",
+          "id": "permissions"
         }
       ]
     },
