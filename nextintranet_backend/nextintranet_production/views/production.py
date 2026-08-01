@@ -375,6 +375,21 @@ def _looks_like_html(data: bytes, content_type: str) -> bool:
     return head.startswith(b"<!doctype html") or head.startswith(b"<html")
 
 
+def _home_location_scope(user) -> tuple[set | None, str | None]:
+    """The user's home location subtree, as (location ids, full path).
+
+    (None, None) when no home location is configured — callers treat that as
+    "no home location filtering".
+    """
+    user_settings = UserSetting.objects.filter(user=user).select_related("home_location").first()
+    if not user_settings or not user_settings.home_location:
+        return None, None
+    ids = set(
+        user_settings.home_location.get_descendants(include_self=True).values_list("id", flat=True)
+    )
+    return ids, user_settings.home_location.full_path
+
+
 def _extract_packet_id_from_barcode(barcode: str) -> str | None:
     cleaned = (barcode or "").strip().rstrip(";")
     if not cleaned:
@@ -849,26 +864,59 @@ class TemplateViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"], url_path="ibom-state")
     def ibom_state(self, request, pk=None):
+        """BOM lines as the iBOM page needs them: refs, progress and part identity.
+
+        `?stock=1` additionally joins warehouse availability. That path prefetches
+        packets and reservations, so it stays opt-in — the completion sync in the
+        React app calls this endpoint often and does not need it.
+        """
         template = self.get_object()
+        with_stock = _normalize_text(request.query_params.get("stock")).lower() in {"1", "true", "yes"}
+
+        stock_by_line = {}
+        if with_stock:
+            home_location_ids, _ = _home_location_scope(request.user)
+            stock_by_line = {row["id"]: row for row in _bom_availability_rows(template, home_location_ids)}
+
         components = []
         for line in template.components.select_related("component").all().order_by("position", "id"):
-            components.append(
-                {
-                    "id": str(line.id),
-                    "refs": line.refs or [],
-                    "value": line.value or "",
-                    "footprint": line.footprint or "",
-                    "sourced_total": float(line.sourced_total),
-                    "placed_total": float(line.placed_total),
-                    "qty_per_board": line.qty_per_board,
-                    "dnp": line.dnp,
-                    "exclude_from_bom": line.exclude_from_bom,
-                }
-            )
+            entry = {
+                "id": str(line.id),
+                "refs": line.refs or [],
+                "value": line.value or "",
+                "footprint": line.footprint or "",
+                "sourced_total": float(line.sourced_total),
+                "placed_total": float(line.placed_total),
+                "qty_per_board": line.qty_per_board,
+                "dnp": line.dnp,
+                "exclude_from_bom": line.exclude_from_bom,
+                "component_id": str(line.component_id) if line.component_id else None,
+                "component_name": line.component.name if line.component else None,
+            }
+            row = stock_by_line.get(entry["id"])
+            if row is not None:
+                locations = row.get("locations") or []
+                # Prefer a location inside the operator's home subtree — that is the shelf
+                # they will actually walk to.
+                preferred = next((loc for loc in locations if loc.get("in_home")), None) or (
+                    locations[0] if locations else None
+                )
+                entry.update(
+                    {
+                        "in_stock": row.get("in_stock"),
+                        "needed_total": row.get("needed_total"),
+                        "shortage": row.get("shortage"),
+                        "total_in_home": row.get("total_in_home"),
+                        "location": preferred.get("location") if preferred else None,
+                    }
+                )
+            components.append(entry)
+
         return Response(
             {
                 "template_id": str(template.id),
                 "qty_planned": template.qty_planned,
+                "generated": timezone.now().isoformat(),
                 "components": components,
             }
         )
@@ -1104,14 +1152,7 @@ class TemplateViewSet(viewsets.ModelViewSet):
     def availability(self, request, pk=None):
         template = self.get_object()
 
-        home_location_ids = None
-        home_location_full_path = None
-        user_settings = UserSetting.objects.filter(user=request.user).select_related("home_location").first()
-        if user_settings and user_settings.home_location:
-            home_location_ids = set(
-                user_settings.home_location.get_descendants(include_self=True).values_list("id", flat=True)
-            )
-            home_location_full_path = user_settings.home_location.full_path
+        home_location_ids, home_location_full_path = _home_location_scope(request.user)
 
         rows = _bom_availability_rows(template, home_location_ids)
 

@@ -8,6 +8,8 @@ import {
   type IbomCheckboxPayload,
   type IbomReadyPayload,
   type IbomStateResponse,
+  type IbomGroupingItem,
+  type IbomGroupingPayload,
 } from './ibom-events';
 
 export interface IbomCompletionRefs {
@@ -60,6 +62,37 @@ function emitIbomSync(refs: IbomCompletionRefs): void {
   });
 }
 
+/** Flatten BOM lines into one grouping item per designator. */
+function buildGroupingItems(state: IbomStateResponse): IbomGroupingItem[] {
+  const items: IbomGroupingItem[] = [];
+  for (const line of state.components || []) {
+    for (const ref of Array.isArray(line.refs) ? line.refs : []) {
+      if (!ref) continue;
+      items.push({
+        ref,
+        line_id: line.id,
+        part: line.component_name || '',
+        stock: line.in_stock ?? null,
+        needed: line.needed_total ?? null,
+        shortage: line.shortage ?? null,
+        location: line.location ?? null,
+      });
+    }
+  }
+  return items;
+}
+
+function emitIbomGrouping(templateId: string, state: IbomStateResponse): void {
+  getRealtimeClient().emit({
+    type: IBOM_EVENT_TYPES.GROUPING,
+    payload: {
+      templateId,
+      generated: state.generated,
+      items: buildGroupingItems(state),
+    } satisfies IbomGroupingPayload,
+  });
+}
+
 export function useIbomBridge(templateId: string | null): UseIbomBridgeReturn {
   const [ibomConnected, setIbomConnected] = useState(false);
   const [highlightedRefs, setHighlightedRefs] = useState<string[] | null>(null);
@@ -78,8 +111,12 @@ export function useIbomBridge(templateId: string | null): UseIbomBridgeReturn {
     try {
       let completionRefs = refs;
       if (!completionRefs) {
-        const state = await apiFetch<IbomStateResponse>(`/api/v1/production/templates/${tid}/ibom-state/`);
+        // ?stock=1 also carries the part/stock/location columns the iBOM page shows.
+        const state = await apiFetch<IbomStateResponse>(
+          `/api/v1/production/templates/${tid}/ibom-state/?stock=1`,
+        );
         completionRefs = buildCompletionRefsFromState(state);
+        emitIbomGrouping(tid, state);
       }
       emitIbomSync(completionRefs);
     } catch (err) {

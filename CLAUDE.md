@@ -121,3 +121,19 @@ Commit `package.json` and `pnpm-lock.yaml` together, otherwise Docker build fail
 ## KiCad HTTP Library
 
 Provides KiCad symbol library integration from the warehouse. Config file served at `/api/kicad/nextIntranet.kicad_httplib`. The `root_url` is derived from `SITE_URL` in settings/`.env`.
+
+## iBOM bridge (production)
+
+Uploaded InteractiveHtmlBom files get a vanilla-JS bridge injected before `</body>` at upload
+(`nextintranet_production/ibom_bridge.py`). The script's single source of truth is
+`nextintranet_production/ibom_bridge_js/ni_bridge.js`; `assets/kibot/ibom_user.js` is a
+**symlink** to it (for KiBot-side generation) — edit the source, never the symlink.
+
+- The bridge opens a WebSocket to the station channel (`ibom.*` events) and externally regroups
+  BOM rows from `GET /api/v1/production/templates/<id>/ibom-state/?stock=1` plus `ibom.grouping`
+  pushes. Upstream iBOM files are never patched.
+- Contract, behaviour and console debugging: `docs/ibom-external-grouping.md`.
+- Offline test page: `ibom_bridge_js/harness.html` — open directly in a browser, needs
+  `?template_id=harness`; the failing REST call there is intentional (degradation case).
+- The bridge is baked into stored HTML, so existing boards keep their copy until
+  `python manage.py reinject_ibom_bridge` rewrites them.

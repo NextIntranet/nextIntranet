@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ni_bridge.js — offline harness</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 0; padding: 16px 16px 60px; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  p.lede { color: #555; margin: 0 0 16px; max-width: 70ch; }
+  .bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  button { padding: 5px 10px; cursor: pointer; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; vertical-align: top; }
+  th { background: #f2f2f2; cursor: pointer; user-select: none; }
+  tbody tr:nth-child(even) { background: #fafafa; }
+  #stats { margin: 10px 0; font-family: ui-monospace, monospace; font-size: 12px; color: #333; }
+  code { background: #f2f2f2; padding: 1px 4px; }
+  #needparam { display: none; background: #fef3c7; border: 1px solid #d97706;
+               padding: 10px 12px; margin-bottom: 14px; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<h1>ni_bridge.js — offline harness</h1>
+<p class="lede">
+  Mock <code>pcbdata</code> / <code>config</code> / <code>settings</code> plus a stub
+  <code>populateBomTable()</code>, so the external grouping module can be exercised without the
+  warehouse system. Open this file directly in a browser — no server, no build step. The initial
+  REST fetch is expected to fail here; that <em>is</em> the degradation scenario.
+  Everything else is driven from the buttons below or from
+  <code>NIBridgeDebug.grouping</code> in the console.
+</p>
+
+<div id="needparam">
+  Grouping activates only when <code>template_id</code> is in the query string.
+  <a id="needparamlink" href="?template_id=harness">Reload with <code>?template_id=harness</code></a>.
+</div>
+
+<div class="bar">
+  <button onclick="scenarioFull()">1 · Apply full state</button>
+  <button onclick="scenarioPatch()">2 · Patch one line</button>
+  <button onclick="scenarioUnknown()">3 · Unknown designators</button>
+  <button onclick="scenarioEmpty()">4 · Empty response</button>
+  <button onclick="scenarioGarbage()">5 · Garbage response</button>
+  <button onclick="scenarioXss()">6 · XSS payload in Part</button>
+  <button onclick="NIBridgeDebug.grouping.clear()">Clear grouping</button>
+</div>
+<div class="bar">
+  <button onclick="setLayer('both')">Layer: FB</button>
+  <button onclick="setLayer('F')">Layer: F</button>
+  <button onclick="setLayer('B')">Layer: B</button>
+  <button onclick="toggleUngrouped()">Toggle grouped/ungrouped</button>
+  <button onclick="logState()">Log NIBridgeDebug.grouping.state()</button>
+</div>
+
+<div id="stats"></div>
+<table>
+  <thead><tr id="bomhead"></tr></thead>
+  <tbody id="bombody"></tbody>
+</table>
+
+<script>
+// ---------------------------------------------------------------------------
+// Mock iBOM globals. Shapes match upstream InteractiveHtmlBom:
+//   pcbdata.bom.F/.B/.both  – array of groups, group = array of [ref, refid]
+//   pcbdata.bom.fields      – refid -> array of values indexed by config.fields
+// ---------------------------------------------------------------------------
+
+var REFS = [
+  // ref,   layer, value,    footprint,     UST_ID (deliberately messy)
+  ["R1",  "F", "10k",   "R_0603", "UST-1"],
+  ["R2",  "F", "10k",   "R_0603", "UST-1"],
+  ["R3",  "F", "10k",   "R_0603", "UST-9"],   // same part, wrong id -> split by generator
+  ["R4",  "B", "4k7",   "R_0603", "UST-1"],   // different part, same id -> wrongly merged
+  ["C1",  "F", "100n",  "C_0402", ""],
+  ["C2",  "B", "100n",  "C_0402", ""],
+  ["U1",  "F", "STM32", "LQFP48", "UST-7"],
+  ["J1",  "B", "USB-C", "USB_C",  "UST-8"]
+];
+
+var config = { fields: ["Value", "Footprint", "UST_ID"] };
+
+var pcbdata = { footprints: [], bom: { F: [], B: [], both: [], fields: {} } };
+REFS.forEach(function (r, i) {
+  pcbdata.footprints.push({ ref: r[0], layer: r[1] });
+  pcbdata.bom.fields[i] = [r[2], r[3], r[4]];
+});
+
+// Generator-style grouping: Value + Footprint + UST_ID.
+(function buildGeneratedGroups() {
+  var byKey = {}, order = [];
+  REFS.forEach(function (r, i) {
+    var key = r[2] + "|" + r[3] + "|" + r[4];
+    if (!byKey[key]) { byKey[key] = []; order.push(key); }
+    byKey[key].push([r[0], i]);
+  });
+  pcbdata.bom.both = order.map(function (k) { return byKey[k]; });
+  pcbdata.bom.F = pcbdata.bom.both
+    .map(function (g) { return g.filter(function (e) { return REFS[e[1]][1] === "F"; }); })
+    .filter(function (g) { return g.length; });
+  pcbdata.bom.B = pcbdata.bom.both
+    .map(function (g) { return g.filter(function (e) { return REFS[e[1]][1] === "B"; }); })
+    .filter(function (g) { return g.length; });
+})();
+
+var settings = {
+  columnOrder: ["References", "Value", "Footprint", "UST_ID", "Quantity"],
+  hiddenColumns: [],
+  checkboxes: ["Sourced", "Placed"],
+  checkboxStoredRefs: {},
+  markWhenChecked: "Placed",
+  bommode: "grouped"
+};
+
+var currentLayer = "both";
+var lastClicked = null;
+var markedFootprints = new Set();
+
+function getStoredCheckboxRefs(name) {
+  var raw = settings.checkboxStoredRefs[name] || "";
+  return new Set(raw.split(",").filter(function (s) { return s !== ""; }).map(Number));
+}
+function writeStorage() { /* no localStorage in the harness */ }
+function updateCheckboxStats() { }
+function drawHighlights() { }
+function footprintsClicked(indices) { lastClicked = indices[0]; }
+
+/** Stub of iBOM's table renderer — enough to see grouping, quantity and columns. */
+function populateBomTable() {
+  var table = pcbdata.bom[currentLayer] || [];
+  if (settings.bommode === "ungrouped") {
+    var flat = [];
+    table.forEach(function (g) { g.forEach(function (e) { flat.push([e]); }); });
+    table = flat;
+  }
+
+  var cols = settings.columnOrder.filter(function (c) {
+    return settings.hiddenColumns.indexOf(c) < 0;
+  });
+
+  document.getElementById("bomhead").innerHTML =
+    cols.map(function (c) { return "<th>" + c + "</th>"; }).join("");
+
+  document.getElementById("bombody").innerHTML = table.map(function (group) {
+    var refid = group[0][1];
+    return "<tr>" + cols.map(function (col) {
+      if (col === "References") {
+        return "<td>" + group.map(function (e) { return e[0]; }).join(", ") + "</td>";
+      }
+      if (col === "Quantity") return "<td>" + group.length + "</td>";
+      var idx = config.fields.indexOf(col);
+      var row = pcbdata.bom.fields[refid] || [];
+      // innerHTML, exactly like iBOM — an unescaped API value would execute here.
+      return "<td>" + (idx >= 0 ? (row[idx] || "") : "") + "</td>";
+    }).join("") + "</tr>";
+  }).join("");
+
+  document.getElementById("stats").textContent =
+    "layer=" + currentLayer + "  mode=" + settings.bommode +
+    "  rows=" + table.length +
+    "  components=" + REFS.length +
+    "  fields=[" + config.fields.join(", ") + "]";
+}
+
+populateBomTable();
+
+if (!new URLSearchParams(window.location.search).get("template_id")) {
+  document.getElementById("needparam").style.display = "block";
+}
+
+// ---------------------------------------------------------------------------
+// Scenarios
+// ---------------------------------------------------------------------------
+
+// Three BOM lines, matching what NextIntranet would consider correct:
+// R1+R2+R3 are one part, R4 is its own, C1+C2 are one. U1/J1 stay unmapped.
+function scenarioFull() {
+  NIBridgeDebug.grouping.applyItems([
+    { ref: "R1", line_id: "line-a", part: "RES 10k 0603", stock: 500, needed: 30, location: "A1/Box3" },
+    { ref: "R2", line_id: "line-a", part: "RES 10k 0603", stock: 500, needed: 30, location: "A1/Box3" },
+    { ref: "R3", line_id: "line-a", part: "RES 10k 0603", stock: 500, needed: 30, location: "A1/Box3" },
+    { ref: "R4", line_id: "line-b", part: "RES 4k7 0603", stock: 4, needed: 10, shortage: true, location: "A1/Box4" },
+    { ref: "C1", line_id: "line-c", part: "CAP 100n 0402", stock: 2000, needed: 20, location: "B2/Box1" },
+    { ref: "C2", line_id: "line-c", part: "CAP 100n 0402", stock: 2000, needed: 20, location: "B2/Box1" }
+  ]);
+}
+
+function scenarioPatch() {
+  NIBridgeDebug.grouping.patchItems([
+    { ref: "U1", line_id: "line-d", part: "STM32F103", stock: 12, needed: 10, location: "C3/Tray1" }
+  ]);
+}
+
+function scenarioUnknown() {
+  NIBridgeDebug.grouping.patchItems([
+    { ref: "R99", line_id: "line-x", part: "not on this board" },
+    { ref: "J1", line_id: "line-e", part: "USB-C receptacle", stock: 0, needed: 10, shortage: true }
+  ]);
+}
+
+function scenarioEmpty() { NIBridgeDebug.grouping.applyItems([]); }
+
+function scenarioGarbage() {
+  NIBridgeDebug.grouping.applyItems([null, {}, { ref: "" }, { ref: "R1" }]);
+}
+
+function scenarioXss() {
+  NIBridgeDebug.grouping.patchItems([
+    { ref: "C1", line_id: "line-c", part: '<img src=x onerror="document.title=\'XSS\'">' }
+  ]);
+}
+
+function setLayer(layer) { currentLayer = layer; populateBomTable(); }
+
+function toggleUngrouped() {
+  settings.bommode = settings.bommode === "grouped" ? "ungrouped" : "grouped";
+  populateBomTable();
+}
+
+function logState() { console.log(NIBridgeDebug.grouping.state()); }
+</script>
+
+<!-- Loaded last, exactly like the injected block sits before </body>. -->
+<script src="ni_bridge.js"></script>
+
+</body>
+</html>

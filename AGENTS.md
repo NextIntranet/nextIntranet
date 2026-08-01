@@ -41,6 +41,7 @@ Source-of-truth companion: `CLAUDE.md` covers the same stack in more detail.
 - Auth: JWT (`rest_framework_simplejwt`) + service tokens (`ServiceTokenAuthentication`). `/api/v1/me/` returns `access_permissions` via `UserSerializer`; keep it and preserve it on token refresh.
 - S3/MinIO is the default storage when `S3_ENDPOINT_URL` and `S3_STORAGE_BUCKET_NAME` are set. Bucket names: lowercase, hyphenated, env suffix (e.g. `nextintranet-dev`).
 - `nextintranet_plugins/` is imported as a plain Python package (not a Django app); it holds the plugin registry and driver definitions.
+- iBOM bridge: uploaded iBOM HTML gets `nextintranet_production/ibom_bridge_js/ni_bridge.js` injected at upload (`ibom_bridge.py`). That file is the single source — `assets/kibot/ibom_user.js` is a symlink to it, edit only the source. Stored files keep their injected copy until `python manage.py reinject_ibom_bridge`. Contract & console debugging: `docs/ibom-external-grouping.md`; offline test page: `ibom_bridge_js/harness.html` (open with `?template_id=harness`).
 
 ## Code & UI conventions
 
