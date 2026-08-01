@@ -33,6 +33,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ComponentInfoPopover } from "@/components/ComponentInfoPopover"
 import { ComponentSearchSheet, type SearchComponentItem } from "@/components/ComponentSearchSheet"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { PacketRef } from "@/components/PacketRef"
 import { PacketSelectSheet, type PacketLineProgress, type PacketSelectItem } from "@/components/PacketSelectSheet"
 import { ScanActionDialog, type ScanActionTarget } from "@/components/ScanActionDialog"
 import { Input } from "@/components/ui/input"
@@ -3411,8 +3412,12 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                                     >
                                                       {scan.mode}
                                                     </span>
-                                                    <span className="font-mono text-muted-foreground leading-tight">
-                                                      {scan.resolved_packet_id || scan.barcode}
+                                                    <span className="min-w-0 leading-tight">
+                                                      {scan.resolved_packet_id ? (
+                                                        <PacketRef packetId={scan.resolved_packet_id} className="text-[11px]" />
+                                                      ) : (
+                                                        <span className="font-mono text-muted-foreground">{scan.barcode}</span>
+                                                      )}
                                                     </span>
                                                     <span className="leading-tight">
                                                       {toNumber(row.placed) >= toNumber(row.needed) && scan.mode === "sourced" ? null : `Qty: ${toNumber(scan.qty)}`}
