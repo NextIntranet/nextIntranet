@@ -38,6 +38,8 @@ class ProductionFolderListSerializer(serializers.ModelSerializer):
 
 
 class TemplateComponentScanInlineSerializer(serializers.ModelSerializer):
+    stock_deducted = serializers.SerializerMethodField()
+
     class Meta:
         model = TemplateComponentScan
         fields = [
@@ -47,8 +49,17 @@ class TemplateComponentScanInlineSerializer(serializers.ModelSerializer):
             'resolved_component',
             'resolved_packet_id',
             'qty',
+            'stock_operation',
+            'stock_deducted',
             'created_at',
         ]
+
+    def get_stock_deducted(self, obj):
+        """Quantity currently booked out for this scan; 0 once the operation is returned."""
+        operation = obj.stock_operation
+        if operation is None:
+            return None
+        return abs(operation.quantity or 0)
 
 
 class TemplateComponentRefSerializer(serializers.ModelSerializer):

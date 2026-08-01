@@ -7,8 +7,10 @@ from decimal import Decimal
 from typing import Any
 
 from django.db.models import Sum
+from django.utils import timezone
 
 from nextintranet_warehouse.models.component import Component, Packet, StockOperation
+from nextintranet_warehouse.services.activity import log_activity
 
 from ..models.production import TemplateComponent, TemplateComponentScan
 
@@ -72,63 +74,113 @@ def recalculate_scan_totals(line: TemplateComponent) -> tuple[Decimal, Decimal]:
     return sourced_total, placed_total
 
 
-def consume_component(component: Component, qty: float, reference, user, description: str):
-    """Consume `qty` of a component from warehouse stock, FIFO (oldest packets first).
+def line_deducted_total(line: TemplateComponent) -> float:
+    """How much of this line is currently booked out of the warehouse.
 
-    When stock runs out before `qty` is satisfied, the remainder is deducted from the
-    newest active packet so its count goes negative instead of aborting — production
-    finalize must record real usage even when book stock lags behind. Only raises
-    when the component has no packet at all to attach the deduction to.
+    Sums the live (non-returned) placement operations; reverted ones are zeroed, so
+    they drop out on their own.
     """
-    remaining = float(qty)
-    packets = (
+    total = 0.0
+    for scan in line.scans.select_related("stock_operation").filter(mode="placed"):
+        if scan.stock_operation is not None:
+            total += abs(safe_float(scan.stock_operation.quantity))
+    return total
+
+
+def _fallback_packet(component: Component) -> Packet | None:
+    """Pick a packet to book a placement against when no bag was scanned.
+
+    Oldest active packet that still has stock (FIFO); when everything is empty, the
+    newest active packet so the deduction drives it negative instead of being lost.
+    """
+    packet = (
         Packet.objects.filter(component=component, is_active=True, count__gt=0)
         .order_by("date_added", "id")
-        .all()
+        .first()
+    )
+    if packet is not None:
+        return packet
+    return (
+        Packet.objects.filter(component=component, is_active=True)
+        .order_by("-date_added", "-id")
+        .first()
     )
 
-    last_consumed_packet = None
-    for packet in packets:
-        if remaining <= 0:
-            break
-        packet_count = safe_float(packet.count)
-        if packet_count <= 0:
-            continue
 
-        consume_qty = min(packet_count, remaining)
-        StockOperation.objects.create(
-            packet=packet,
-            reference=reference,
-            operation_type="remove",
-            quantity=-float(consume_qty),
-            relative_quantity=True,
-            unit_price=float(packet.itemValue) if packet.itemValue is not None else None,
-            description=description,
-            metadata={"production_id": str(reference)} if reference else {},
-            author=user,
-        )
-        last_consumed_packet = packet
-        remaining -= consume_qty
+def consume_for_placed_scan(scan, template, line, packet: Packet | None, user) -> StockOperation:
+    """Book the scanned quantity out of the bag that was placed.
 
-    if remaining > 0:
-        target = last_consumed_packet or (
-            Packet.objects.filter(component=component, is_active=True)
-            .order_by("-date_added", "-id")
-            .first()
+    Creates exactly one `remove` operation and links it to the scan, so undoing the
+    placement is a matter of zeroing that single row. When the barcode resolved to a
+    component but not to a bag, falls back to FIFO. A bag holding less than the placed
+    quantity goes negative on purpose — the parts are physically gone either way.
+    """
+    target = packet or _fallback_packet(line.component)
+    if target is None:
+        raise ValueError(
+            f"Component '{line.component.name}' has no packet to deduct {safe_float(scan.qty):.3f} from."
         )
-        if target is None:
-            raise ValueError(f"Component '{component.name}' has no packet to consume {remaining:.3f} from.")
-        StockOperation.objects.create(
-            packet=target,
-            reference=reference,
-            operation_type="remove",
-            quantity=-float(remaining),
-            relative_quantity=True,
-            unit_price=float(target.itemValue) if target.itemValue is not None else None,
-            description=description,
-            metadata={"production_id": str(reference)} if reference else {},
-            author=user,
-        )
+
+    operation = StockOperation.objects.create(
+        packet=target,
+        reference=template.id,
+        operation_type="remove",
+        quantity=-safe_float(scan.qty),
+        relative_quantity=True,
+        unit_price=float(target.itemValue) if target.itemValue is not None else None,
+        description=f"Production placed: {template.name} / {line.ref_group or line.value or line.id}",
+        metadata={
+            "production_id": str(template.id),
+            "line_id": str(line.id),
+            "scan_id": str(scan.id),
+        },
+        author=user,
+    )
+    scan.stock_operation = operation
+    scan.save(update_fields=["stock_operation"])
+    return operation
+
+
+def revert_placed_scan_stock(scan, user) -> StockOperation | None:
+    """Return the stock a placed scan deducted, keeping the ledger row as evidence.
+
+    The operation is zeroed rather than deleted: something did happen with that part,
+    and the packet history should keep saying so. Idempotent.
+    """
+    operation = scan.stock_operation
+    if operation is None or not safe_float(operation.quantity):
+        return None
+
+    returned_qty = abs(safe_float(operation.quantity))
+    operation.quantity = 0
+    if "(returned)" not in (operation.description or ""):
+        operation.description = f"{operation.description or ''} (returned)".strip()
+    operation.metadata = {
+        **(operation.metadata or {}),
+        "reverted": True,
+        "reverted_at": timezone.now().isoformat(),
+        "reverted_by": str(user.id) if user is not None and getattr(user, "is_authenticated", False) else None,
+    }
+    operation.save()
+
+    # StockOperation.save() only logs activity on create, so record the return explicitly.
+    log_activity(
+        activity_type="stock_operation",
+        source="production",
+        packet=operation.packet,
+        stock_operation=operation,
+        user=user if user is not None and getattr(user, "is_authenticated", False) else None,
+        description="Returned production placement",
+        metadata={
+            "returned_qty": returned_qty,
+            **{
+                key: value
+                for key, value in (operation.metadata or {}).items()
+                if key in {"production_id", "line_id", "scan_id"}
+            },
+        },
+    )
+    return operation
 
 
 def bom_availability_rows(template, home_location_ids: set | None = None) -> list[dict[str, Any]]:

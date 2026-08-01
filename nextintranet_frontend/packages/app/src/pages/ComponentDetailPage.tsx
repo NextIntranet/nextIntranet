@@ -28,6 +28,8 @@ import {
   Layers,
   Link2,
   AlertTriangle,
+  MoreHorizontal,
+  ShoppingCart,
   Copy,
   CopyPlus,
   Check,
@@ -55,6 +57,12 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
@@ -85,6 +93,8 @@ import { cn } from "@/lib/utils"
 import { PriceLabel } from "@/components/PriceLabel"
 import { PacketOperationSheet } from "@/components/PacketOperationSheet"
 import { ActivityLogTable } from "@/components/ActivityLogTable"
+import { MarkdownView } from "@/components/MarkdownView"
+import { RequestComponentSheet } from "@/components/RequestComponentSheet"
 import { packetStateLabel } from "@/lib/packetState"
 
 interface Category {
@@ -340,6 +350,7 @@ export function ComponentDetailPage() {
   const [activityPage, setActivityPage] = useState(1)
   const [activityPageSize, setActivityPageSize] = useState(25)
   const [packetSheetOpen, setPacketSheetOpen] = useState(false)
+  const [requestSheetOpen, setRequestSheetOpen] = useState(false)
   const [operationSheetOpen, setOperationSheetOpen] = useState(false)
   const [operationPacketId, setOperationPacketId] = useState<string | null>(null)
   const [supplierSheetOpen, setSupplierSheetOpen] = useState(false)
@@ -2208,20 +2219,36 @@ export function ComponentDetailPage() {
                 </>
               ) : (
                 <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => duplicateComponentMutation.mutate()}
-                    disabled={duplicateComponentMutation.isPending}
-                    className="gap-2"
-                  >
-                    <CopyPlus className="h-4 w-4" />
-                    {duplicateComponentMutation.isPending ? "Duplicating..." : "Duplicate"}
-                  </Button>
                   <Button size="sm" onClick={handleEdit} className="gap-2">
                     <Pencil className="h-4 w-4" />
                     Edit
                   </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm">
+                        <MoreHorizontal className="h-4 w-4" />
+                        <span className="sr-only">More actions</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="min-w-[200px]">
+                      <DropdownMenuItem
+                        onSelect={() => duplicateComponentMutation.mutate()}
+                        disabled={duplicateComponentMutation.isPending}
+                        className="gap-2"
+                      >
+                        <CopyPlus className="h-4 w-4" />
+                        {duplicateComponentMutation.isPending ? "Duplicating..." : "Duplicate"}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => openNewPacketSheet()} className="gap-2">
+                        <Plus className="h-4 w-4" />
+                        Add packet
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => setRequestSheetOpen(true)} className="gap-2">
+                        <ShoppingCart className="h-4 w-4" />
+                        Request component
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </>
               )}
             </>
@@ -2491,10 +2518,10 @@ export function ComponentDetailPage() {
                       onChange={(e) => setEditedData({ ...editedData, description: e.target.value })}
                       className="min-h-[100px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
+                  ) : component.description ? (
+                    <MarkdownView content={component.description} className="break-words" />
                   ) : (
-                    <p className="whitespace-pre-wrap break-words text-sm text-foreground">
-                      {component.description || "No description provided."}
-                    </p>
+                    <p className="text-sm text-muted-foreground">No description provided.</p>
                   )}
                 </div>
               </div>
@@ -3648,6 +3675,13 @@ export function ComponentDetailPage() {
           </SheetFooter>
         </SheetContent>
       </Sheet>
+
+      <RequestComponentSheet
+        open={requestSheetOpen}
+        onOpenChange={setRequestSheetOpen}
+        componentId={component?.id}
+        componentName={component?.name}
+      />
       </div>
     </TooltipProvider>
   )

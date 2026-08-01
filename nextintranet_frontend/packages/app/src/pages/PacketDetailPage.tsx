@@ -3,13 +3,15 @@ import { Link, useParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { type ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table"
 import { apiFetch } from "@nextintranet/core"
-import { Copy, Pencil, Plus, Share2, Trash2 } from "lucide-react"
+import { Copy, MoreHorizontal, Pencil, Plus, Share2, ShoppingCart, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import Select, { type SingleValue } from "react-select"
 import type { StylesConfig } from "react-select"
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts"
 
 import { LocationDisplay } from "@/components/LocationDisplay"
+import { MarkdownView } from "@/components/MarkdownView"
+import { RequestComponentSheet } from "@/components/RequestComponentSheet"
 import { LocationParentSelect } from "@/components/LocationParentSelect"
 import { PacketOperationSheet } from "@/components/PacketOperationSheet"
 import { SerialBadge, serialCodeFromPacket } from "@/components/packetSerial"
@@ -17,8 +19,13 @@ import { PriceLabel } from "@/components/PriceLabel"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Switch } from "@/components/ui/switch"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { ExtensionPoint } from "@/plugins/ExtensionPoint"
@@ -26,7 +33,12 @@ import { PrintActions } from "@/components/PrintActions"
 import { ActivityLogTable, type ActivityLogItem } from "@/components/ActivityLogTable"
 import { setScannerCapture } from "@/lib/scannerCapture"
 import { IDENTIFIER_SCHEME_OPTIONS } from "@/lib/identifierSchemes"
-import { packetStateLabel } from "@/lib/packetState"
+import {
+  packetStateLabel,
+  packetStateLabels,
+  packetStateOf,
+  type PacketStateValue,
+} from "@/lib/packetState"
 import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 
@@ -93,6 +105,11 @@ interface LocationNode {
   children?: LocationNode[]
 }
 
+const packetStateOptions = (Object.keys(packetStateLabels) as PacketStateValue[]).map((value) => ({
+  value,
+  label: packetStateLabels[value],
+}))
+
 interface User {
   is_superuser: boolean
   access_permissions: Array<{
@@ -106,6 +123,7 @@ export function PacketDetailPage() {
   const queryClient = useQueryClient()
   const [editMode, setEditMode] = useState(false)
   const [operationSheetOpen, setOperationSheetOpen] = useState(false)
+  const [requestSheetOpen, setRequestSheetOpen] = useState(false)
   const [identifierSheetOpen, setIdentifierSheetOpen] = useState(false)
   const [identifierForm, setIdentifierForm] = useState({ scheme: "", identifier: "" })
   const [activityMode, setActivityMode] = useState<"all" | "count">("all")
@@ -161,10 +179,14 @@ export function PacketDetailPage() {
     enabled: !!id,
   })
 
-  const [formState, setFormState] = useState({
+  const [formState, setFormState] = useState<{
+    description: string
+    location: string
+    state: PacketStateValue
+  }>({
     description: "",
     location: "",
-    isActive: true,
+    state: "stocked",
   })
 
   useEffect(() => {
@@ -174,7 +196,7 @@ export function PacketDetailPage() {
     setFormState({
       description: packet.description || "",
       location: packet.location?.id || "",
-      isActive: packet.is_active ?? true,
+      state: packetStateOf(packet),
     })
   }, [packet?.id])
 
@@ -193,7 +215,7 @@ export function PacketDetailPage() {
   }, [identifierSheetOpen])
 
   const updateMutation = useMutation({
-    mutationFn: (payload: { description?: string | null; location?: string | null; is_active?: boolean }) =>
+    mutationFn: (payload: { description?: string | null; location?: string | null; state?: PacketStateValue }) =>
       apiFetch(`/api/v1/store/packet/${id}/`, {
         method: "PATCH",
         body: JSON.stringify(payload),
@@ -249,7 +271,7 @@ export function PacketDetailPage() {
     updateMutation.mutate({
       description: formState.description.trim() || null,
       location: formState.location || null,
-      is_active: formState.isActive,
+      state: formState.state,
     })
   }
 
@@ -431,14 +453,43 @@ export function PacketDetailPage() {
             <ExtensionPoint name="packets.actions" context={{ packetId: packet.id }} />
             <PrintActions targetType="packet" targetId={packet.id} label={packet.id} compact />
             {canEdit && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setEditMode((prev) => !prev)}
-              >
-                <Pencil className="h-4 w-4" />
-                {editMode ? "Cancel" : "Edit"}
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEditMode((prev) => !prev)}
+                >
+                  <Pencil className="h-4 w-4" />
+                  {editMode ? "Cancel" : "Edit"}
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="gap-2"
+                  onClick={() => setOperationSheetOpen(true)}
+                >
+                  <Plus className="h-4 w-4" />
+                  Add operation
+                </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      <MoreHorizontal className="h-4 w-4" />
+                      <span className="sr-only">More actions</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="min-w-[200px]">
+                    <DropdownMenuItem
+                      onSelect={() => setRequestSheetOpen(true)}
+                      disabled={!packet.component?.id}
+                      className="gap-2"
+                    >
+                      <ShoppingCart className="h-4 w-4" />
+                      Request component
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
             )}
           </div>
         </div>
@@ -532,16 +583,18 @@ export function PacketDetailPage() {
               <div className="flex items-center justify-between rounded-lg border border-border/70 px-4 py-3">
                 <span className="text-muted-foreground">Status</span>
                 {editMode ? (
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      checked={formState.isActive}
-                      onCheckedChange={(checked) =>
-                        setFormState({ ...formState, isActive: checked })
-                      }
+                  <div className="min-w-[220px]">
+                    <Select
+                      classNamePrefix="rs"
+                      options={packetStateOptions}
+                      value={packetStateOptions.find((option) => option.value === formState.state) ?? null}
+                      placeholder="Select status"
+                      styles={identifierSelectStyles}
+                      onChange={(option: SingleValue<{ value: string; label: string }>) => {
+                        if (!option) return
+                        setFormState({ ...formState, state: option.value as PacketStateValue })
+                      }}
                     />
-                    <span className="text-xs text-muted-foreground">
-                      {formState.isActive ? "Active" : "Inactive"}
-                    </span>
                   </div>
                 ) : (
                   <span className="text-foreground">{packetStateLabel(packet)}</span>
@@ -578,12 +631,12 @@ export function PacketDetailPage() {
                     setFormState({ ...formState, description: e.target.value })
                   }
                   className="min-h-[140px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  placeholder="Packet description"
+                  placeholder="Packet description (markdown supported)"
                 />
+              ) : packet.description ? (
+                <MarkdownView content={packet.description} />
               ) : (
-                <p className="text-sm text-foreground">
-                  {packet.description || "No description."}
-                </p>
+                <p className="text-sm text-muted-foreground">No description.</p>
               )}
             </CardContent>
           </Card>
@@ -859,6 +912,13 @@ export function PacketDetailPage() {
           queryClient.invalidateQueries({ queryKey: ["packet", id] })
           queryClient.invalidateQueries({ queryKey: ["packet-history", id] })
         }}
+      />
+
+      <RequestComponentSheet
+        open={requestSheetOpen}
+        onOpenChange={setRequestSheetOpen}
+        componentId={packet?.component?.id}
+        componentName={packet?.component?.name}
       />
 
     </TooltipProvider>

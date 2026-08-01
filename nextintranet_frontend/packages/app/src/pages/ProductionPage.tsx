@@ -120,7 +120,18 @@ type BomRowScan = {
   resolved_component?: string | null
   resolved_packet_id?: string | null
   qty?: string | number | null
+  stock_operation?: string | null
+  /** Quantity currently booked out of the warehouse for this scan; 0 once returned. */
+  stock_deducted?: number | null
   created_at: string
+}
+
+type ScanStockInfo = {
+  packet_id: string
+  packet_serial?: string | null
+  deducted: number
+  packet_count_after: number
+  negative: boolean
 }
 
 type ScanMode = "FIND" | "SOURCED" | "PLACED"
@@ -141,6 +152,7 @@ type ScanResponse = {
   sourced_total?: number
   placed_total?: number
   mode?: ScanMode
+  stock?: ScanStockInfo
   resolved_component?: {
     id: string
     name: string
@@ -209,6 +221,9 @@ type AvailabilityResponse = {
 
 type TabKey = "bom" | "production" | "finalize"
 
+/** Each BOM section is its own URL segment so it can be linked and reached with back/forward. */
+const TAB_KEYS: TabKey[] = ["bom", "production", "finalize"]
+
 type LinkSheetTarget = {
   lineId: string
   value: string
@@ -241,6 +256,8 @@ type ScannerRow = BomRow & {
   needed: number
   sourced: number
   placed: number
+  /** Quantity already booked out of the warehouse by placed scans (returned ones count as 0). */
+  deducted: number
   scans: BomRowScan[]
 }
 
@@ -346,6 +363,25 @@ const toNumber = (value: string | number | null | undefined) => {
   if (value == null) return 0
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : 0
+}
+
+/** Stock currently booked out by these scans; a returned placement reports 0. */
+const deductedOf = (scans: BomRowScan[] | null | undefined) =>
+  (scans || []).reduce((sum, scan) => sum + toNumber(scan.stock_deducted), 0)
+
+/** Report the immediate warehouse deduction a PLACED scan made, and warn when a bag went negative. */
+const reportScanStock = (stock: ScanStockInfo | undefined, fallback = "Scan saved.") => {
+  if (!stock) {
+    toast.success(fallback)
+    return
+  }
+  const bag = stock.packet_serial || "bag"
+  const message = `Placed ${formatQty(stock.deducted)} pcs — deducted from ${bag}, ${formatQty(stock.packet_count_after)} left`
+  if (stock.negative) {
+    toast.error(`${message} (bag is now negative)`)
+  } else {
+    toast.success(message)
+  }
 }
 
 const toSameOriginS3Url = (value: string | null | undefined) => {
@@ -590,12 +626,19 @@ type ProductionPageProps = {
 }
 
 export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
-  const { productId, bomId } = useParams<{ productId: string; bomId: string }>()
+  const { productId, bomId, tab } = useParams<{ productId: string; bomId: string; tab: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const isBomView = mode === "bom"
 
-  const [activeTab, setActiveTab] = useState<TabKey>("bom")
+  const activeTab: TabKey = TAB_KEYS.includes(tab as TabKey) ? (tab as TabKey) : "bom"
+  const goToTab = useCallback(
+    (next: TabKey, options?: { replace?: boolean }) => {
+      if (!productId || !bomId) return
+      navigate(`/production/${productId}/bom/${bomId}/${next}`, { replace: options?.replace })
+    },
+    [bomId, navigate, productId],
+  )
   // DNP and BOM-excluded rows are always read together, so one toggle drives both.
   const [showHiddenRows, setShowHiddenRows] = useState(false)
   const hideDnp = !showHiddenRows
@@ -623,7 +666,6 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
   const [newLineValue, setNewLineValue] = useState("")
   const [newLineFootprint, setNewLineFootprint] = useState("")
   const [newLineQty, setNewLineQty] = useState("1")
-  const [actualUsed, setActualUsed] = useState<Record<string, string>>({})
   const [linkSheetOpen, setLinkSheetOpen] = useState(false)
   const [linkSheetTarget, setLinkSheetTarget] = useState<LinkSheetTarget | null>(null)
   const [refAssignTarget, setRefAssignTarget] = useState<RefAssignTarget | null>(null)
@@ -786,23 +828,11 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     if (!selectedBom) {
       setSourceUrlInput("")
       setIbomUrlInput("")
-      setActualUsed({})
       setQuickPlaceQtyByScan({})
       return
     }
     setSourceUrlInput(selectedBom.source_url || "")
     setIbomUrlInput(selectedBom.ibom_url || "")
-
-    const initialActual: Record<string, string> = {}
-    selectedBomComponents.forEach((line) => {
-      if (line.dnp) return
-      const placed = toNumber(line.placed_total)
-      const sourced = toNumber(line.sourced_total)
-      // Reflect real production progress: deduct what was actually pulled
-      // from stock / used on boards.
-      initialActual[line.id] = String(Math.max(sourced, placed))
-    })
-    setActualUsed(initialActual)
     setQuickPlaceQtyByScan({})
   }, [selectedBom?.id, selectedBomComponents])
 
@@ -822,11 +852,19 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     }
   }, [isBomView, bomId])
 
+  // Give every section a canonical URL: a bare /bom/<id> and an unknown segment land on "bom".
+  useEffect(() => {
+    if (!isBomView) return
+    if (!TAB_KEYS.includes(tab as TabKey)) {
+      goToTab("bom", { replace: true })
+    }
+  }, [goToTab, isBomView, tab])
+
   useEffect(() => {
     if (isTemplateSeries && (activeTab === "production" || activeTab === "finalize")) {
-      setActiveTab("bom")
+      goToTab("bom", { replace: true })
     }
-  }, [activeTab, isTemplateSeries])
+  }, [activeTab, goToTab, isTemplateSeries])
 
   const updateProductMutation = useMutation({
     mutationFn: (payload: Partial<ProductDetail>) =>
@@ -1172,58 +1210,71 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
 
   const manualPacketMutation = useMutation({
     mutationFn: (payload: { mode: "SOURCED" | "PLACED"; barcode: string; line_id: string; qty: number }) =>
-      apiFetch<{ result?: string; line_id?: string }>(`/api/v1/production/templates/${bomId}/scan/`, {
+      apiFetch<ScanResponse>(`/api/v1/production/templates/${bomId}/scan/`, {
         method: "POST",
         body: JSON.stringify({ ...payload, ...lastScannerSourceRef.current }),
       }),
-    onSuccess: (response: { result?: string; line_id?: string }) => {
+    onSuccess: (response: ScanResponse) => {
       if (response.line_id) {
         setHighlightedLineId(response.line_id)
       }
-      toast.success("Progress saved.")
+      reportScanStock(response.stock, "Progress saved.")
       queryClient.invalidateQueries({ queryKey: ["production-bom", bomId] })
       queryClient.invalidateQueries({ queryKey: ["production-availability", bomId] })
     },
-    onError: () => toast.error("Failed to save progress."),
+    onError: (error) => {
+      const data = (error as { data?: unknown }).data as { error?: string } | undefined
+      toast.error(data?.error || "Failed to save progress.")
+    },
   })
 
   const removeScanMutation = useMutation({
     mutationFn: (scanId: string) =>
-      apiFetch<{ success?: boolean }>(`/api/v1/production/templates/${bomId}/remove-scan/`, {
+      apiFetch<{ success?: boolean; returned_qty?: number }>(`/api/v1/production/templates/${bomId}/remove-scan/`, {
         method: "POST",
         body: JSON.stringify({ scan_id: scanId }),
       }),
-    onSuccess: () => {
-      toast.success("Scan removed.")
+    onSuccess: (response) => {
+      const returned = toNumber(response.returned_qty)
+      toast.success(returned > 0 ? `Scan removed, ${formatQty(returned)} pcs returned to stock.` : "Scan removed.")
       queryClient.invalidateQueries({ queryKey: ["production-bom", bomId] })
       queryClient.invalidateQueries({ queryKey: ["production-availability", bomId] })
     },
-    onError: () => toast.error("Failed to remove scan."),
+    onError: (error) => {
+      const data = (error as { data?: unknown }).data as { error?: string } | undefined
+      toast.error(data?.error || "Failed to remove scan.")
+    },
   })
 
   const undoMutation = useMutation({
     mutationFn: () =>
-      apiFetch(`/api/v1/production/templates/${bomId}/undo-last-scan/`, {
+      apiFetch<{ success?: boolean; returned_qty?: number }>(`/api/v1/production/templates/${bomId}/undo-last-scan/`, {
         method: "POST",
       }),
-    onSuccess: () => {
+    onSuccess: (response) => {
+      const returned = toNumber(response.returned_qty)
       queryClient.invalidateQueries({ queryKey: ["production-bom", bomId] })
-      toast.success("Last scan undone.")
+      queryClient.invalidateQueries({ queryKey: ["production-availability", bomId] })
+      toast.success(
+        returned > 0 ? `Last scan undone, ${formatQty(returned)} pcs returned to stock.` : "Last scan undone.",
+      )
     },
-    onError: () => toast.error("Unable to undo scan."),
+    onError: (error) => {
+      const data = (error as { data?: unknown }).data as { error?: string } | undefined
+      toast.error(data?.error || "Unable to undo scan.")
+    },
   })
 
   const finalizeMutation = useMutation({
     mutationFn: () =>
       apiFetch(`/api/v1/production/templates/${bomId}/finalize/`, {
         method: "POST",
-        body: JSON.stringify({ actual_used: actualUsed }),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["production-bom", bomId] })
       queryClient.invalidateQueries({ queryKey: ["production-product", productId] })
       queryClient.invalidateQueries({ queryKey: ["production-availability", bomId] })
-      toast.success("Finalize completed and BOM locked.")
+      toast.success("BOM finalized and locked.")
     },
     onError: (error) => {
       const data = (error as { data?: unknown }).data as { error?: string; details?: string[] } | undefined
@@ -1392,27 +1443,115 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
   }, [availabilityData?.rows])
 
 
+  /**
+   * Production rows are grouped per linked component: the backend resolves a scanned bag to a
+   * single line (`order_by("dnp", "position", "id").first()`), so sibling lines of the same
+   * component would otherwise never fill up. Unlinked lines stay one row each.
+   */
   const scannerRows = useMemo<ScannerRow[]>(() => {
+    if (!selectedBom) return []
+
+    const neededOf = (line: BomRow) =>
+      line.qty_override_total != null
+        ? toNumber(line.qty_override_total)
+        : toNumber(line.qty_per_board) * toNumber(selectedBom.qty_planned)
+    const sortScans = (scans: BomRowScan[]) =>
+      [...scans].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+    const groups = new Map<string, BomRow[]>()
+    selectedBomComponents.forEach((line, index) => {
+      // Unlinked lines get a unique key so they are never merged with each other.
+      const key = line.component ? `component:${line.component}` : `line:${line.id}:${index}`
+      const group = groups.get(key) || []
+      group.push(line)
+      groups.set(key, group)
+    })
+
+    const rows: ScannerRow[] = []
+    for (const group of groups.values()) {
+      if (group.length === 1) {
+        const line = group[0]
+        rows.push({
+          ...line,
+          needed: neededOf(line),
+          sourced: toNumber(line.sourced_total),
+          placed: toNumber(line.placed_total),
+          deducted: deductedOf(line.scans),
+          scans: sortScans(line.scans || []),
+        })
+        continue
+      }
+
+      // Same tie-break as the backend, so manual line_id writes hit the line scans land on.
+      const representative = group.find((line) => !line.dnp) || group[0]
+      const values = new Set(group.map((line) => line.value).filter(Boolean))
+      const footprints = new Set(group.map((line) => line.footprint).filter(Boolean))
+
+      rows.push({
+        ...representative,
+        refs: [...new Set(group.flatMap((line) => line.refs || []))].sort(),
+        ref_group: group.map((line) => line.ref_group).filter(Boolean).join(", ") || null,
+        qty_per_board: group.reduce((sum, line) => sum + toNumber(line.qty_per_board), 0),
+        value: values.size === 1 ? representative.value : `(${values.size} values)`,
+        footprint: footprints.size === 1 ? representative.footprint : `(${footprints.size} footprints)`,
+        // A component only counts as not assembled when none of its lines are assembled.
+        dnp: group.every((line) => line.dnp),
+        exclude_from_bom: group.every((line) => line.exclude_from_bom),
+        needs_review: group.some((line) => line.needs_review),
+        needed: group.reduce((sum, line) => sum + neededOf(line), 0),
+        sourced: group.reduce((sum, line) => sum + toNumber(line.sourced_total), 0),
+        placed: group.reduce((sum, line) => sum + toNumber(line.placed_total), 0),
+        deducted: group.reduce((sum, line) => sum + deductedOf(line.scans), 0),
+        scans: sortScans(group.flatMap((line) => line.scans || [])),
+        _grouped: true,
+        _valueMismatch: values.size > 1,
+        _footprintMismatch: footprints.size > 1,
+        _groupedLineIds: group.map((line) => line.id),
+      })
+    }
+
+    return rows.sort((a, b) =>
+      `${a.footprint || ""}|${a.value || ""}`.localeCompare(`${b.footprint || ""}|${b.value || ""}`),
+    )
+  }, [selectedBom, selectedBomComponents])
+
+  /** Rows actually being assembled, and the DNP / BOM-excluded ones shown greyed at the end. */
+  const assemblyRows = useMemo(
+    () => scannerRows.filter((row) => !row.dnp && !row.exclude_from_bom),
+    [scannerRows],
+  )
+  const notAssembledRows = useMemo(
+    () => scannerRows.filter((row) => row.dnp || row.exclude_from_bom),
+    [scannerRows],
+  )
+
+  /**
+   * Finalize stays per line so the review table matches the BOM one to one — stock is already
+   * booked out per placed scan, so nothing is posted per line any more.
+   */
+  const finalizeRows = useMemo<ScannerRow[]>(() => {
     if (!selectedBom) return []
     return selectedBomComponents
       .filter((line) => !line.dnp)
-      .map((line) => {
-        const needed =
+      .map((line) => ({
+        ...line,
+        needed:
           line.qty_override_total != null
             ? toNumber(line.qty_override_total)
-            : toNumber(line.qty_per_board) * toNumber(selectedBom.qty_planned)
-        return {
-          ...line,
-          needed,
-          sourced: toNumber(line.sourced_total),
-          placed: toNumber(line.placed_total),
-          scans: [...(line.scans || [])].sort(
-            (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-          ),
-        }
-      })
+            : toNumber(line.qty_per_board) * toNumber(selectedBom.qty_planned),
+        sourced: toNumber(line.sourced_total),
+        placed: toNumber(line.placed_total),
+        deducted: deductedOf(line.scans),
+        scans: line.scans || [],
+      }))
       .sort((a, b) => `${a.footprint || ""}|${a.value || ""}`.localeCompare(`${b.footprint || ""}|${b.value || ""}`))
   }, [selectedBom, selectedBomComponents])
+
+  const findScannerRow = useCallback(
+    (lineId: string) =>
+      scannerRows.find((row) => row.id === lineId || row._groupedLineIds?.includes(lineId)),
+    [scannerRows],
+  )
 
   const assemblyProgress = useMemo(() => {
     let neededTotal = 0
@@ -1422,7 +1561,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     let sourcedOverflowTotal = 0
     let placedOverflowTotal = 0
 
-    scannerRows.forEach((row) => {
+    assemblyRows.forEach((row) => {
       const segments = buildProgressSegments(toNumber(row.needed), toNumber(row.sourced), toNumber(row.placed))
       neededTotal += segments.needed
       sourcedTotal += segments.sourcedSegment
@@ -1455,13 +1594,14 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
       placedPct: (placedTotal / neededTotal) * 100,
       emptyPct: (emptyTotal / neededTotal) * 100,
     }
-  }, [scannerRows])
+  }, [assemblyRows])
 
   const ibomCompletionRefs = useMemo(() => {
     const sourced: Record<string, boolean> = {}
     const placed: Record<string, boolean> = {}
 
-    scannerRows.forEach((row) => {
+    // Only rows that are actually assembled drive the iBOM checkmarks.
+    assemblyRows.forEach((row) => {
       const refs = Array.isArray(row.refs) ? row.refs : []
       if (refs.length === 0) return
 
@@ -1477,7 +1617,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     })
 
     return { sourced, placed }
-  }, [scannerRows])
+  }, [assemblyRows])
 
   useEffect(() => {
     scannerRowRefs.current = {}
@@ -1546,27 +1686,29 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
 
   const focusScannedLine = useCallback(
     (lineId: string) => {
-      setHighlightedLineId(lineId)
-      const matchedRow = scannerRows.find((row) => row.id === lineId)
+      // The backend may report any member of a grouped row; highlight the row that holds it.
+      const matchedRow = findScannerRow(lineId)
+      const rowId = matchedRow?.id || lineId
+      setHighlightedLineId(rowId)
       const firstRef = matchedRow?.refs?.[0]
       if (firstRef && ibomConnected) {
         highlightInIbom(firstRef)
         sendBarcodeScan(firstRef, false)
       }
 
-      const element = scannerRowRefs.current[lineId]
+      const element = scannerRowRefs.current[rowId]
       if (element) {
         element.scrollIntoView({ behavior: "smooth", block: "center" })
         element.focus({ preventScroll: true })
       }
     },
-    [highlightInIbom, ibomConnected, scannerRows, sendBarcodeScan],
+    [findScannerRow, highlightInIbom, ibomConnected, sendBarcodeScan],
   )
 
 
   const openScanAction = useCallback(
     (lineId: string, barcode: string) => {
-      const matchedRow = scannerRows.find((row) => row.id === lineId)
+      const matchedRow = findScannerRow(lineId)
       focusScannedLine(lineId)
       setScanActionTarget({
         barcode,
@@ -1581,7 +1723,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
       })
       setScanInput("")
     },
-    [focusScannedLine, scannerRows],
+    [findScannerRow, focusScannedLine],
   )
 
   const handleConfirmNotInBom = useCallback(async () => {
@@ -1670,7 +1812,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
         if (response.line_id) {
           focusScannedLine(response.line_id)
         }
-        toast.success("Scan saved.")
+        reportScanStock(response.stock)
         refreshScannerData()
         refocusScanInput()
       } catch {
@@ -1791,7 +1933,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
       toast.error("Could not resolve scanned component.")
       return
     }
-    const options = scannerRows
+    const options = assemblyRows
       .filter((row) => (row.refs?.length || 0) > 0)
       .map((row) => ({
         id: row.id,
@@ -2351,7 +2493,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                               type="button"
                               role="tab"
                               aria-selected={active}
-                              onClick={() => setActiveTab(tab.key)}
+                              onClick={() => goToTab(tab.key)}
                               className={cn(
                                 "inline-flex h-9 items-center gap-1.5 border-b-2 px-1 text-sm transition-colors",
                                 active
@@ -2998,7 +3140,13 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                   {mode}
                                 </Button>
                               ))}
-                              <Button variant="outline" size="sm" onClick={() => undoMutation.mutate()}>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => undoMutation.mutate()}
+                                disabled={isBomClosed(selectedBom.status) || undoMutation.isPending}
+                                title="Undo the last scan; a placed one returns its parts to stock"
+                              >
                                 Undo last scan
                               </Button>
                             </div>
@@ -3060,17 +3208,26 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                 </TableHeader>
                                 <TableBody>
                                   {scannerRows.length > 0 ? (
-                                    scannerRows.map((row) => {
+                                    [...assemblyRows, ...notAssembledRows].map((row, rowIndex) => {
                                       const ibomHighlighted = highlightedRefs && (row.refs || []).some((r: string) => highlightedRefs.includes(r))
                                       const rowRefs = (row.refs || []).map((r) => [r, toNumber(row.qty_per_board) || 1] as [string, number])
+                                      // DNP / BOM-excluded rows are kept visible but greyed out at the end.
+                                      const notAssembled = row.dnp || row.exclude_from_bom
                                       return (
                                       <Fragment key={row.id}>
+                                        {notAssembled && rowIndex === assemblyRows.length ? (
+                                          <TableRow className="bg-muted/40 hover:bg-muted/40">
+                                            <TableCell colSpan={5} className="py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                                              Not assembled — DNP or excluded from BOM
+                                            </TableCell>
+                                          </TableRow>
+                                        ) : null}
                                         <TableRow
                                           ref={(element) => {
                                             scannerRowRefs.current[row.id] = element
                                           }}
                                           tabIndex={-1}
-                                          className={cn("text-xs", highlightedLineId === row.id ? "bg-amber-100/50" : undefined, ibomHighlighted ? "ring-2 ring-inset ring-blue-400/60" : undefined)}
+                                          className={cn("text-xs", highlightedLineId === row.id ? "bg-amber-100/50" : undefined, ibomHighlighted ? "ring-2 ring-inset ring-blue-400/60" : undefined, notAssembled ? "text-muted-foreground opacity-60" : undefined)}
                                           onMouseEnter={() => {
                                             if (rowRefs.length > 0) {
                                               sendIbomHover(rowRefs, row.id)
@@ -3112,7 +3269,15 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                               row.ref_group || "-"
                                             )}
                                           </TableCell>
-                                          <TableCell>{row.value || "-"}</TableCell>
+                                          <TableCell>
+                                            {row.value || "-"}
+                                            {row.dnp ? (
+                                              <span className="ml-1.5 rounded border border-border px-1 py-0.5 text-[10px] uppercase">DNP</span>
+                                            ) : null}
+                                            {row.exclude_from_bom ? (
+                                              <span className="ml-1.5 rounded border border-border px-1 py-0.5 text-[10px] uppercase">Excl.</span>
+                                            ) : null}
+                                          </TableCell>
                                           <TableCell>
                                             {row.component ? (
                                               <ComponentInfoPopover
@@ -3209,6 +3374,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                             </div>
                                           </TableCell>
                                         </TableRow>
+                                        {notAssembled ? null : (
                                         <TableRow className={cn("bg-muted/20", highlightedLineId === row.id ? "bg-amber-100/30" : undefined)}>
                                           <TableCell colSpan={5} className="py-1.5">
                                             {row.scans && row.scans.length > 0 ? (
@@ -3232,8 +3398,16 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                                     <span className="leading-tight">
                                                       {toNumber(row.placed) >= toNumber(row.needed) && scan.mode === "sourced" ? null : `Qty: ${toNumber(scan.qty)}`}
                                                     </span>
-                                                    <span className="text-muted-foreground leading-tight">
+                                                    <span className="flex items-center gap-1.5 text-muted-foreground leading-tight">
                                                       {new Date(scan.created_at).toLocaleString()}
+                                                      {toNumber(scan.stock_deducted) > 0 ? (
+                                                        <span
+                                                          className="rounded-md bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700"
+                                                          title="Deducted from warehouse stock; removing this scan returns it."
+                                                        >
+                                                          −{formatQty(toNumber(scan.stock_deducted))} stock
+                                                        </span>
+                                                      ) : null}
                                                     </span>
                                                     {scan.mode === "sourced" ? (
                                                       <div className="flex items-center gap-1 sm:justify-end">
@@ -3285,8 +3459,13 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                                           className="h-6 px-2 text-[11px]"
                                                           disabled={isBomClosed(selectedBom.status) || removeScanMutation.isPending}
                                                           onClick={() => removeScanMutation.mutate(scan.id)}
+                                                          title={
+                                                            toNumber(scan.stock_deducted) > 0
+                                                              ? "Remove this placement and return the parts to stock"
+                                                              : "Remove this placement"
+                                                          }
                                                         >
-                                                          Remove
+                                                          {toNumber(scan.stock_deducted) > 0 ? "Remove & return" : "Remove"}
                                                         </Button>
                                                       </div>
                                                     )}
@@ -3298,6 +3477,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                             )}
                                           </TableCell>
                                         </TableRow>
+                                        )}
                                       </Fragment>
                                     )})
                                   ) : (
@@ -3316,9 +3496,10 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                         {activeTab === "finalize" ? (
                           <div className="space-y-4">
                             <p className="text-sm text-muted-foreground">
-                              Review sourced/placed components and other materials below. The
-                              listed quantities are deducted from warehouse stock on finalize;
-                              stock may go negative.
+                              Stock is deducted from the scanned bag the moment a component is
+                              placed, and returned if that scan is removed. Finalize only closes
+                              the BOM — it books nothing extra, so lines that were never placed
+                              stay in stock. Locking also blocks returning placed stock.
                             </p>
                             <div className="overflow-hidden rounded-lg border border-border/70">
                               <Table>
@@ -3329,42 +3510,47 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                     <TableHead>Needed total</TableHead>
                                     <TableHead>Sourced</TableHead>
                                     <TableHead>Placed</TableHead>
-                                    <TableHead>Actual used</TableHead>
+                                    <TableHead>Deducted from stock</TableHead>
                                   </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                  {scannerRows.map((row) => (
-                                    <TableRow key={row.id}>
-                                      <TableCell>{row.ref_group || "-"}</TableCell>
-                                      <TableCell>
-                                        <span className="flex flex-wrap items-center gap-2">
-                                          {row.component_name || "Unlinked"}
-                                          {row.source_type === "manual" ? (
-                                            <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
-                                              material
-                                            </span>
-                                          ) : null}
-                                        </span>
-                                      </TableCell>
-                                      <TableCell>{row.needed}</TableCell>
-                                      <TableCell>{row.sourced}</TableCell>
-                                      <TableCell>{row.placed}</TableCell>
-                                      <TableCell>
-                                        <Input
-                                          value={actualUsed[row.id] ?? String(Math.max(row.sourced, row.placed))}
-                                          onChange={(e) =>
-                                            setActualUsed((prev) => ({
-                                              ...prev,
-                                              [row.id]: e.target.value,
-                                            }))
-                                          }
-                                        />
-                                      </TableCell>
-                                    </TableRow>
-                                  ))}
+                                  {finalizeRows.map((row) => {
+                                    const incomplete = row.placed < row.needed
+                                    return (
+                                      <TableRow key={row.id} className={incomplete ? "bg-amber-50/60" : undefined}>
+                                        <TableCell>{row.ref_group || "-"}</TableCell>
+                                        <TableCell>
+                                          <span className="flex flex-wrap items-center gap-2">
+                                            {row.component_name || "Unlinked"}
+                                            {row.source_type === "manual" ? (
+                                              <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
+                                                material
+                                              </span>
+                                            ) : null}
+                                          </span>
+                                        </TableCell>
+                                        <TableCell>{row.needed}</TableCell>
+                                        <TableCell>{row.sourced}</TableCell>
+                                        <TableCell className={incomplete ? "font-medium text-amber-700" : undefined}>
+                                          {row.placed}
+                                        </TableCell>
+                                        <TableCell
+                                          className={row.deducted > 0 ? "font-medium text-emerald-700" : "text-muted-foreground"}
+                                        >
+                                          {formatQty(row.deducted)}
+                                        </TableCell>
+                                      </TableRow>
+                                    )
+                                  })}
                                 </TableBody>
                               </Table>
                             </div>
+                            {finalizeRows.some((row) => row.placed < row.needed) ? (
+                              <p className="text-sm text-amber-700">
+                                Highlighted lines are not fully placed — the missing quantity was
+                                never deducted from the warehouse.
+                              </p>
+                            ) : null}
 
                             <div className="flex flex-wrap items-center gap-2">
                               <Button onClick={() => printMutation.mutate()} disabled={printMutation.isPending}>

@@ -638,6 +638,15 @@ class TemplateComponentScan(NIModel):
         default=1,
         verbose_name=_('Quantity'),
     )
+    stock_operation = models.ForeignKey(
+        'nextintranet_warehouse.StockOperation',
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='production_placed_scans',
+        verbose_name=_('Stock operation'),
+        help_text=_('Warehouse deduction booked when this component was placed.'),
+    )
 
     class Meta:
         verbose_name = _('Template component scan')

@@ -56,9 +56,11 @@ from nextintranet_production.services.bom import (
     safe_float as _safe_float,
     safe_decimal as _safe_decimal,
     line_needed_total as _line_needed_total,
+    line_deducted_total as _line_deducted_total,
     line_locations as _line_locations,
     recalculate_scan_totals as _recalculate_scan_totals,
-    consume_component as _consume_component,
+    consume_for_placed_scan as _consume_for_placed_scan,
+    revert_placed_scan_stock as _revert_placed_scan_stock,
     merge_lines as _merge_lines,
     assign_component_to_refs as _assign_component_to_refs,
     bom_availability_rows as _bom_availability_rows,
@@ -747,7 +749,7 @@ class TemplateViewSet(viewsets.ModelViewSet):
         .prefetch_related(
             "components",
             "components__component__parameters__parameter_type",
-            "components__scans",
+            "components__scans__stock_operation",
             "components__ref_items",
         )
         .all()
@@ -1237,6 +1239,34 @@ class TemplateViewSet(viewsets.ModelViewSet):
             qty=qty,
         )
 
+        # Placing a part takes it out of the warehouse right away; the deduction stays
+        # revertible (zeroed, not deleted) for as long as the BOM is open.
+        stock_info = None
+        if scan.mode == "placed":
+            if not line.component:
+                transaction.set_rollback(True)
+                return Response(
+                    {"error": "BOM line is not linked to a component, cannot deduct stock."},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            try:
+                operation = _consume_for_placed_scan(
+                    scan=scan, template=template, line=line, packet=packet, user=actor_from_request(request)
+                )
+            except ValueError as exc:
+                transaction.set_rollback(True)
+                return Response({"error": str(exc)}, status=status.HTTP_409_CONFLICT)
+
+            operation.packet.refresh_from_db()
+            count_after = _safe_float(operation.packet.count)
+            stock_info = {
+                "packet_id": str(operation.packet_id),
+                "packet_serial": operation.packet.serial_code,
+                "deducted": abs(_safe_float(operation.quantity)),
+                "packet_count_after": count_after,
+                "negative": count_after < 0,
+            }
+
         station = {
             key: value
             for key in ("stationId", "agentId", "deviceId")
@@ -1266,32 +1296,37 @@ class TemplateViewSet(viewsets.ModelViewSet):
             template.status = "in_progress"
             template.save(update_fields=["status"])
 
-        return Response(
-            {
-                "result": "saved",
-                "scan_id": str(scan.id),
-                "line_id": str(line.id),
-                "sourced_total": float(sourced_total),
-                "placed_total": float(placed_total),
-                "mode": mode,
-            }
-        )
+        payload = {
+            "result": "saved",
+            "scan_id": str(scan.id),
+            "line_id": str(line.id),
+            "sourced_total": float(sourced_total),
+            "placed_total": float(placed_total),
+            "mode": mode,
+        }
+        if stock_info is not None:
+            payload["stock"] = stock_info
+        return Response(payload)
 
     @action(detail=True, methods=["post"], url_path="undo-last-scan")
     @transaction.atomic
     def undo_last_scan(self, request, pk=None):
         template = self.get_object()
+        if template.status in CLOSED_TEMPLATE_STATUSES:
+            return Response({"error": "BOM is locked."}, status=status.HTTP_409_CONFLICT)
+
         line_id = request.data.get("line_id")
 
         scans = TemplateComponentScan.objects.filter(template=template)
         if line_id:
             scans = scans.filter(template_component_id=line_id)
 
-        last_scan = scans.order_by("-created_at").first()
+        last_scan = scans.select_related("stock_operation").order_by("-created_at").first()
         if not last_scan:
             return Response({"error": "No scan to undo."}, status=status.HTTP_404_NOT_FOUND)
 
         line = last_scan.template_component
+        reverted = _revert_placed_scan_stock(last_scan, actor_from_request(request))
         last_scan.delete()
 
         sourced_total, placed_total = _recalculate_scan_totals(line)
@@ -1302,6 +1337,7 @@ class TemplateViewSet(viewsets.ModelViewSet):
                 "line_id": str(line.id),
                 "sourced_total": float(sourced_total),
                 "placed_total": float(placed_total),
+                "returned_qty": abs(_safe_float(last_scan.qty)) if reverted else 0,
             }
         )
 
@@ -1318,13 +1354,14 @@ class TemplateViewSet(viewsets.ModelViewSet):
 
         scan = (
             TemplateComponentScan.objects.filter(template=template, id=scan_id)
-            .select_related("template_component")
+            .select_related("template_component", "stock_operation")
             .first()
         )
         if not scan:
             return Response({"error": "Scan not found."}, status=status.HTTP_404_NOT_FOUND)
 
         line = scan.template_component
+        reverted = _revert_placed_scan_stock(scan, actor_from_request(request))
         scan.delete()
         sourced_total, placed_total = _recalculate_scan_totals(line)
 
@@ -1334,55 +1371,55 @@ class TemplateViewSet(viewsets.ModelViewSet):
                 "line_id": str(line.id),
                 "sourced_total": float(sourced_total),
                 "placed_total": float(placed_total),
+                "returned_qty": abs(_safe_float(scan.qty)) if reverted else 0,
             }
         )
 
     @action(detail=True, methods=["post"], url_path="finalize")
     @transaction.atomic
     def finalize(self, request, pk=None):
+        """Close the BOM. Stock is already gone — it is deducted when a part is placed."""
         template = self.get_object()
         if template.status in CLOSED_TEMPLATE_STATUSES:
             return Response({"error": "BOM is already finalized."}, status=status.HTTP_409_CONFLICT)
 
-        actual_used_map = request.data.get("actual_used") or {}
-        if not isinstance(actual_used_map, dict):
-            actual_used_map = {}
-
-        errors = []
-        for line in template.components.select_related("component").all().order_by("position", "id"):
+        summary = []
+        not_fully_placed = []
+        lines = (
+            template.components.select_related("component")
+            .prefetch_related("scans__stock_operation")
+            .order_by("position", "id")
+        )
+        for line in lines:
             if line.dnp:
                 continue
-
-            needed_total = _line_needed_total(line, template.qty_planned)
-            actual_used = _safe_float(actual_used_map.get(str(line.id), float(needed_total)))
-            if actual_used <= 0:
-                continue
-
-            if not line.component:
-                errors.append(f"Line '{line.value or line.ref_group or line.id}' is not linked to a component.")
-                continue
-
-            try:
-                _consume_component(
-                    component=line.component,
-                    qty=actual_used,
-                    reference=template.id,
-                    user=request.user,
-                    description=f"Manufacturing finalize: {template.name}",
-                )
-            except ValueError as exc:
-                errors.append(str(exc))
-
-        if errors:
-            transaction.set_rollback(True)
-            return Response({"error": "Finalize failed.", "details": errors}, status=status.HTTP_400_BAD_REQUEST)
+            needed_total = float(_line_needed_total(line, template.qty_planned))
+            placed_total = _safe_float(line.placed_total)
+            summary.append(
+                {
+                    "line_id": str(line.id),
+                    "ref_group": line.ref_group,
+                    "needed_total": needed_total,
+                    "placed_total": placed_total,
+                    "deducted_total": _line_deducted_total(line),
+                }
+            )
+            if placed_total < needed_total:
+                not_fully_placed.append(str(line.id))
 
         template.status = "finished"
         template.locked_at = timezone.now()
         template.locked_by = request.user
         template.save(update_fields=["status", "locked_at", "locked_by"])
 
-        return Response({"success": True, "status": template.status})
+        return Response(
+            {
+                "success": True,
+                "status": template.status,
+                "lines": summary,
+                "lines_not_fully_placed": not_fully_placed,
+            }
+        )
 
     @action(detail=True, methods=["post"], url_path="print-a4")
     def print_a4(self, request, pk=None):

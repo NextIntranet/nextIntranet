@@ -297,6 +297,10 @@ export function App() {
             element={<ProductionBomPage />}
           />
           <Route
+            path="production/:productId/bom/:bomId/:tab"
+            element={<ProductionBomPage />}
+          />
+          <Route
             path="user"
             element={
               <RequirePermission area="user" minLevel="read">

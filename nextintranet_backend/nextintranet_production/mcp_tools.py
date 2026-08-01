@@ -17,7 +17,7 @@ from nextintranet_production.services.bom import (
     bom_availability_rows,
     assign_component_to_refs,
     line_needed_total,
-    consume_component,
+    line_deducted_total,
     safe_float,
 )
 
@@ -215,8 +215,10 @@ class ProductionWriteToolset(MCPToolset):
         return {"line": MCPBomLineSerializer(result_line).data, "merged": merged}
 
     def lock_bom(self, bom_id: str) -> dict:
-        """Lock a BOM, freezing it against further edits. Does not consume stock — use finalize_bom
-        for that.
+        """Lock a BOM, freezing it against further edits and against returning placed stock.
+
+        Does not consume stock: warehouse stock is deducted when a component is scanned as placed
+        during assembly, not on lock or finalize.
 
         Args:
             bom_id: UUID of the BOM (Template).
@@ -233,19 +235,17 @@ class ProductionWriteToolset(MCPToolset):
         template.save(update_fields=["status", "locked_at", "locked_by"])
         return {"success": True, "bom_id": str(template.id), "status": template.status}
 
-    def finalize_bom(self, bom_id: str, actual_used: list[dict] | None = None) -> dict:
-        """Finalize a BOM: irreversibly consumes warehouse stock (FIFO) for every non-DNP line
-        and marks the BOM as finished. Defaults each line's consumed quantity to its needed total
-        (qty_per_board * qty_planned, or qty_override_total if set); pass actual_used to override
-        specific lines. Consumption may drive a packet count negative when book stock is
-        insufficient; fails only when a line has no linked component (or a component with no
-        packet to attach the deduction to), and then nothing is consumed.
+    def finalize_bom(self, bom_id: str) -> dict:
+        """Finalize a BOM: mark it finished and close it for any further edits or stock returns.
+
+        Consumes no stock. Warehouse stock is deducted per bag at the moment a component is
+        scanned as placed during assembly, and can be returned by removing that scan while the
+        BOM is still open. Returns a per-line summary of needed / placed / already deducted
+        quantities plus the lines that were never fully placed — those were never booked out of
+        the warehouse at all.
 
         Args:
             bom_id: UUID of the BOM (Template).
-            actual_used: Optional overrides, each an object with 'line_id' (BOM line UUID) and
-                'qty' (actual quantity consumed), for lines that used less/more than the default
-                needed total.
         """
         _require_write(self.request)
 
@@ -253,47 +253,43 @@ class ProductionWriteToolset(MCPToolset):
         if template.status in CLOSED_TEMPLATE_STATUSES:
             raise ValueError("BOM is already finalized.")
 
-        actual_used_map = {}
-        for index, entry in enumerate(actual_used or []):
-            if not isinstance(entry, dict) or not entry.get("line_id"):
-                raise ValueError(f"actual_used[{index}] must be an object with a line_id.")
-            actual_used_map[str(entry["line_id"])] = entry.get("qty")
-
         actor = _mcp_actor_user(self.request)
 
         with transaction.atomic():
-            errors = []
-            for line in template.components.select_related("component").all().order_by("position", "id"):
+            summary = []
+            not_fully_placed = []
+            lines = (
+                template.components.select_related("component")
+                .prefetch_related("scans__stock_operation")
+                .order_by("position", "id")
+            )
+            for line in lines:
                 if line.dnp:
                     continue
 
-                needed_total = line_needed_total(line, template.qty_planned)
-                override = actual_used_map.get(str(line.id))
-                used = safe_float(override if override is not None else float(needed_total))
-                if used <= 0:
-                    continue
-
-                if not line.component:
-                    errors.append(f"Line '{line.value or line.ref_group or line.id}' is not linked to a component.")
-                    continue
-
-                try:
-                    consume_component(
-                        component=line.component,
-                        qty=used,
-                        reference=template.id,
-                        user=actor,
-                        description=f"Manufacturing finalize (MCP): {template.name}",
-                    )
-                except ValueError as exc:
-                    errors.append(str(exc))
-
-            if errors:
-                raise ValueError("Finalize failed: " + "; ".join(errors))
+                needed_total = float(line_needed_total(line, template.qty_planned))
+                placed_total = safe_float(line.placed_total)
+                summary.append(
+                    {
+                        "line_id": str(line.id),
+                        "ref_group": line.ref_group,
+                        "needed_total": needed_total,
+                        "placed_total": placed_total,
+                        "deducted_total": line_deducted_total(line),
+                    }
+                )
+                if placed_total < needed_total:
+                    not_fully_placed.append(str(line.id))
 
             template.status = "finished"
             template.locked_at = timezone.now()
             template.locked_by = actor
             template.save(update_fields=["status", "locked_at", "locked_by"])
 
-        return {"success": True, "bom_id": str(template.id), "status": template.status}
+        return {
+            "success": True,
+            "bom_id": str(template.id),
+            "status": template.status,
+            "lines": summary,
+            "lines_not_fully_placed": not_fully_placed,
+        }
