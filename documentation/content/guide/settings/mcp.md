@@ -24,6 +24,7 @@ The generated JSON looks like:
 {
   "mcpServers": {
     "nextintranet-warehouse": {
+      "type": "http",
       "url": "https://your-instance/mcp",
       "headers": {
         "X-Service-Token": "<generated-token>"
@@ -60,6 +61,7 @@ Open `~/.claude/claude_code_config.json` and add the server under `"mcpServers"`
 {
   "mcpServers": {
     "nextintranet-warehouse": {
+      "type": "http",
       "url": "https://your-instance/mcp",
       "headers": {
         "X-Service-Token": "<generated-token>"
@@ -77,6 +79,11 @@ Create the file if it does not exist yet.
 
 - **Claude Desktop**: `~/.claude/claude_desktop_config.json` under `"mcpServers"`
 - **Cursor**: Settings → MCP Servers
+
+Make sure the server entry includes `"type": "http"` (as in the examples above).
+Some clients — e.g. Claude Desktop on macOS with more than one MCP server
+configured — fail to recognize the NextIntranet server as a remote HTTP server
+without this key.
 
 ## Available tools
 
