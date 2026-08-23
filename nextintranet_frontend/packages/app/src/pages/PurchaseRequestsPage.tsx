@@ -2,14 +2,14 @@ import { useEffect, useMemo, useState } from "react"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiFetch } from "@nextintranet/core"
-import { Copy, Package, Pencil, Plus, Trash2 } from "lucide-react"
+import { Pencil, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { ComponentAsyncSelect } from "@/components/ComponentAsyncSelect"
+import { ComponentRef } from "@/components/ComponentRef"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
@@ -50,109 +50,7 @@ interface User {
   }>
 }
 
-interface ComponentDetail {
-  id: string
-  name: string
-  description?: string | null
-  category_name?: string | null
-  internal_price?: number | null
-  quantity?: number
-}
-
 type EditMode = "detail" | "edit"
-
-function ComponentPopover({ componentId, componentName }: { componentId: string; componentName: string }) {
-  const [open, setOpen] = useState(false)
-
-  const { data: detail, isLoading } = useQuery<ComponentDetail>({
-    queryKey: ["component-detail-mini", componentId],
-    queryFn: () => apiFetch<ComponentDetail>(`/api/v1/store/components/${componentId}/`),
-    enabled: open,
-    staleTime: 60_000,
-  })
-
-  const copyText = (text: string, label: string) => {
-    navigator.clipboard.writeText(text)
-    toast.success(`${label} copied`)
-  }
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button className="flex min-w-0 items-center gap-1.5 text-left text-primary hover:underline underline-offset-2 truncate">
-          <Package className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          <span className="truncate">{componentName}</span>
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="w-72 p-3" align="start">
-        {isLoading ? (
-          <div className="space-y-2">
-            <Skeleton className="h-4 w-3/4" />
-            <Skeleton className="h-3 w-full" />
-            <Skeleton className="h-3 w-1/2" />
-          </div>
-        ) : detail ? (
-          <div className="space-y-2">
-            <div className="flex items-start justify-between gap-2">
-              <Link
-                to={`/store/component/${detail.id}`}
-                className="text-sm font-medium text-primary hover:underline leading-tight"
-              >
-                {detail.name}
-              </Link>
-              <div className="flex shrink-0 gap-1">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={() => copyText(detail.name, "Name")}
-                      className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                    >
-                      <Copy className="h-3 w-3" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>Copy name</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      onClick={() => copyText(detail.id, "ID")}
-                      className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors font-mono text-[10px]"
-                    >
-                      ID
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>Copy ID ({detail.id})</TooltipContent>
-                </Tooltip>
-              </div>
-            </div>
-            {detail.category_name && (
-              <p className="text-xs text-muted-foreground">{detail.category_name}</p>
-            )}
-            {detail.description && (
-              <p className="text-xs text-muted-foreground line-clamp-3">{detail.description}</p>
-            )}
-            <div className="flex gap-4 border-t pt-2 text-xs">
-              <div>
-                <span className="text-muted-foreground">Stock: </span>
-                <span className={`font-medium ${(detail.quantity ?? 0) <= 0 ? "text-red-500" : "text-emerald-600"}`}>
-                  {detail.quantity ?? 0}
-                </span>
-              </div>
-              {detail.internal_price != null && (
-                <div>
-                  <span className="text-muted-foreground">Price: </span>
-                  <span className="font-medium">{Number(detail.internal_price).toFixed(2)}</span>
-                </div>
-              )}
-            </div>
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">Component not found.</p>
-        )}
-      </PopoverContent>
-    </Popover>
-  )
-}
 
 export function PurchaseRequestsPage() {
   const { id } = useParams<{ id: string }>()
@@ -438,9 +336,9 @@ export function PurchaseRequestsPage() {
                       <TableCell className="h-9 px-3">
                         <div className="flex min-w-0 flex-col gap-0.5">
                           {request.component_id ? (
-                            <ComponentPopover
+                            <ComponentRef
                               componentId={request.component_id}
-                              componentName={request.component_name || request.item_name || "Unknown item"}
+                              fallbackName={request.component_name || request.item_name || "Unknown item"}
                             />
                           ) : (
                             <button
