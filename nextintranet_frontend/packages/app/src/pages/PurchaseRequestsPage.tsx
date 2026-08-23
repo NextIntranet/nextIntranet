@@ -2,41 +2,31 @@ import { useEffect, useMemo, useState } from "react"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiFetch } from "@nextintranet/core"
-import { Pencil, Plus, Trash2 } from "lucide-react"
+import { DndContext, DragEndEvent, DragStartEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core"
+import { FolderPlus, Pencil, Plus } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { ComponentAsyncSelect } from "@/components/ComponentAsyncSelect"
-import { ComponentRef } from "@/components/ComponentRef"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-
-interface SupplierSummary {
-  id: string
-  supplier_id: string
-  supplier_name: string
-  symbol?: string | null
-}
-
-interface PurchaseRequest {
-  id: string
-  component_id?: string | null
-  component_name?: string | null
-  item_name?: string | null
-  quantity: number
-  description?: string | null
-  requested_by_name?: string | null
-  purchase_id?: string | null
-  suppliers?: SupplierSummary[]
-  mfpn?: string | null
-  matching_supplier_relation_id?: string | null
-  created_at: string
-}
+import { TooltipProvider } from "@/components/ui/tooltip"
+import { PurchaseRequestFolderRow } from "@/components/purchase-requests/PurchaseRequestFolderRow"
+import { PurchaseRequestTable } from "@/components/purchase-requests/PurchaseRequestTable"
+import { UngroupedSection } from "@/components/purchase-requests/UngroupedSection"
+import {
+  FOLDER_DRAG_PREFIX,
+  FolderNode,
+  PurchaseRequest,
+  PurchaseRequestFolder,
+  REQUEST_DRAG_PREFIX,
+  ROOT_DROP_ID,
+  isDescendantFolder,
+  suppliersTooltip,
+} from "@/components/purchase-requests/types"
 
 interface PaginatedRequests {
   results: PurchaseRequest[]
@@ -79,6 +69,32 @@ export function PurchaseRequestsPage() {
   })
 
   const requests = Array.isArray(requestsData) ? requestsData : requestsData?.results || []
+
+  const { data: foldersData, isLoading: isFoldersLoading } = useQuery<
+    PurchaseRequestFolder[] | { results: PurchaseRequestFolder[] }
+  >({
+    queryKey: ["purchase-request-folders"],
+    queryFn: () => apiFetch("/api/v1/store/purchase-request-folder/"),
+  })
+
+  const folders = Array.isArray(foldersData) ? foldersData : foldersData?.results || []
+
+  const folderTree = useMemo<FolderNode[]>(() => {
+    const buildTree = (parentId: string | null): FolderNode[] =>
+      folders
+        .filter((folder) => folder.parent === parentId)
+        .map((folder) => ({
+          ...folder,
+          children: buildTree(folder.id),
+          requests: requests.filter((request) => request.folder_id === folder.id),
+        }))
+    return buildTree(null)
+  }, [folders, requests])
+
+  const ungroupedRequests = useMemo(
+    () => requests.filter((request) => !request.folder_id),
+    [requests],
+  )
 
   const { data: requestDetail, isLoading: isDetailLoading } = useQuery<PurchaseRequest>({
     queryKey: ["purchase-request", id],
@@ -164,6 +180,142 @@ export function PurchaseRequestsPage() {
       toast.error("Failed to create request.")
     },
   })
+
+  const moveRequestMutation = useMutation({
+    mutationFn: ({ requestId, folderId }: { requestId: string; folderId: string | null }) =>
+      apiFetch(`/api/v1/store/purchase-request/${requestId}/`, {
+        method: "PATCH",
+        body: JSON.stringify({ folder_id: folderId }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["purchase-requests"] })
+    },
+    onError: () => {
+      toast.error("Failed to move request.")
+    },
+  })
+
+  const createFolderMutation = useMutation({
+    mutationFn: (payload: { name: string; parent: string | null }) =>
+      apiFetch("/api/v1/store/purchase-request-folder/", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["purchase-request-folders"] })
+      toast.success("Folder created.")
+    },
+    onError: () => {
+      toast.error("Failed to create folder.")
+    },
+  })
+
+  const updateFolderMutation = useMutation({
+    mutationFn: ({ folderId, payload }: { folderId: string; payload: Partial<PurchaseRequestFolder> }) =>
+      apiFetch(`/api/v1/store/purchase-request-folder/${folderId}/`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["purchase-request-folders"] })
+    },
+    onError: () => {
+      toast.error("Failed to update folder.")
+    },
+  })
+
+  const deleteFolderMutation = useMutation({
+    mutationFn: (folderId: string) =>
+      apiFetch(`/api/v1/store/purchase-request-folder/${folderId}/`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["purchase-request-folders"] })
+      queryClient.invalidateQueries({ queryKey: ["purchase-requests"] })
+      toast.success("Folder deleted.")
+    },
+    onError: () => {
+      toast.error("Failed to delete folder.")
+    },
+  })
+
+  const handleCreateFolder = (parentId: string | null) => {
+    const name = window.prompt(parentId ? "Subfolder name" : "Folder name")
+    const trimmed = name?.trim()
+    if (!trimmed) {
+      return
+    }
+    createFolderMutation.mutate({ name: trimmed, parent: parentId })
+  }
+
+  const handleRenameFolder = (folderId: string, name: string) => {
+    updateFolderMutation.mutate({ folderId, payload: { name } })
+  }
+
+  const handleDeleteFolder = (folderId: string) => {
+    if (!window.confirm("Delete this folder? Requests inside become ungrouped; subfolders are deleted too.")) {
+      return
+    }
+    deleteFolderMutation.mutate(folderId)
+  }
+
+  const [blockedDropFolderIds, setBlockedDropFolderIds] = useState<Set<string>>(new Set())
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const activeId = String(event.active.id)
+    if (!activeId.startsWith(FOLDER_DRAG_PREFIX)) {
+      return
+    }
+    const draggedFolderId = activeId.slice(FOLDER_DRAG_PREFIX.length)
+    const blocked = new Set<string>([draggedFolderId])
+    for (const folder of folders) {
+      if (isDescendantFolder(folders, folder.id, draggedFolderId)) {
+        blocked.add(folder.id)
+      }
+    }
+    setBlockedDropFolderIds(blocked)
+  }
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setBlockedDropFolderIds(new Set())
+    const { active, over } = event
+    if (!over) {
+      return
+    }
+    const activeId = String(active.id)
+    const overId = String(over.id)
+
+    if (activeId.startsWith(REQUEST_DRAG_PREFIX)) {
+      const requestId = activeId.slice(REQUEST_DRAG_PREFIX.length)
+      const targetFolderId =
+        overId === ROOT_DROP_ID ? null : overId.startsWith(FOLDER_DRAG_PREFIX) ? overId.slice(FOLDER_DRAG_PREFIX.length) : null
+      const currentRequest = requests.find((request) => request.id === requestId)
+      if (!currentRequest || currentRequest.folder_id === targetFolderId) {
+        return
+      }
+      if (overId === ROOT_DROP_ID || overId.startsWith(FOLDER_DRAG_PREFIX)) {
+        moveRequestMutation.mutate({ requestId, folderId: targetFolderId })
+      }
+      return
+    }
+
+    if (activeId.startsWith(FOLDER_DRAG_PREFIX)) {
+      const folderId = activeId.slice(FOLDER_DRAG_PREFIX.length)
+      const targetParentId =
+        overId === ROOT_DROP_ID ? null : overId.startsWith(FOLDER_DRAG_PREFIX) ? overId.slice(FOLDER_DRAG_PREFIX.length) : undefined
+      if (targetParentId === undefined || targetParentId === folderId) {
+        return
+      }
+      const currentFolder = folders.find((folder) => folder.id === folderId)
+      if (!currentFolder || currentFolder.parent === targetParentId) {
+        return
+      }
+      if (targetParentId && isDescendantFolder(folders, targetParentId, folderId)) {
+        return
+      }
+      updateFolderMutation.mutate({ folderId, payload: { parent: targetParentId } })
+    }
+  }
 
   const handleOpen = (requestId: string) => {
     navigate(`/store/purchase-requests/${requestId}`)
@@ -260,24 +412,6 @@ export function PurchaseRequestsPage() {
     }
   }
 
-  const renderSuppliers = (suppliers?: SupplierSummary[]) => {
-    if (!suppliers || suppliers.length === 0) {
-      return "-"
-    }
-    const names = suppliers.map((supplier) => supplier.supplier_name).filter(Boolean)
-    const text = names.join(", ")
-    return text.length > 42 ? `${text.slice(0, 42)}…` : text
-  }
-
-  const suppliersTooltip = useMemo(() => {
-    return (suppliers?: SupplierSummary[]) => {
-      if (!suppliers || suppliers.length === 0) {
-        return "-"
-      }
-      return suppliers.map((supplier) => supplier.supplier_name).filter(Boolean).join(", ")
-    }
-  }, [])
-
   return (
     <TooltipProvider>
       <div className="mx-auto max-w-7xl px-4 py-6 lg:px-6">
@@ -285,144 +419,64 @@ export function PurchaseRequestsPage() {
           <div>
             <h1 className="text-2xl font-semibold text-foreground">Purchase requests</h1>
             <p className="text-sm text-muted-foreground">
-              Review open requests for purchasing components.
+              Review open requests for purchasing components. Drag a request onto a folder to file it.
             </p>
           </div>
-          {canEdit && (
-            <Button className="gap-2" onClick={handleOpenCreateSheet}>
-              <Plus className="h-4 w-4" />
-              New Request
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {canEdit && (
+              <Button variant="outline" className="gap-2" onClick={() => handleCreateFolder(null)}>
+                <FolderPlus className="h-4 w-4" />
+                New Folder
+              </Button>
+            )}
+            {canEdit && (
+              <Button className="gap-2" onClick={handleOpenCreateSheet}>
+                <Plus className="h-4 w-4" />
+                New Request
+              </Button>
+            )}
+          </div>
         </div>
 
         <div className="mt-4">
-          <div className="overflow-hidden rounded-lg border border-border/70">
-            <Table className="w-full table-fixed">
-              <TableHeader className="bg-muted/40">
-                <TableRow className="border-border/50">
-                  <TableHead className="h-9 w-[30%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Component
-                  </TableHead>
-                  <TableHead className="h-9 w-[10%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Qty
-                  </TableHead>
-                  <TableHead className="h-9 w-[16%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Requested by
-                  </TableHead>
-                  <TableHead className="h-9 w-[18%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Suppliers
-                  </TableHead>
-                  <TableHead className="h-9 w-[18%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Description
-                  </TableHead>
-                  <TableHead className="h-9 w-[8%] px-3" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isRequestsLoading ? (
-                  <TableRow className="border-border/40">
-                    <TableCell colSpan={6} className="py-8">
-                      <div className="space-y-2">
-                        <Skeleton className="h-5 w-1/2" />
-                        <Skeleton className="h-5 w-3/4" />
-                        <Skeleton className="h-5 w-2/3" />
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ) : requests.length ? (
-                  requests.map((request) => (
-                    <TableRow key={request.id} className="border-border/40">
-                      <TableCell className="h-9 px-3">
-                        <div className="flex min-w-0 flex-col gap-0.5">
-                          {request.component_id ? (
-                            <ComponentRef
-                              componentId={request.component_id}
-                              fallbackName={request.component_name || request.item_name || "Unknown item"}
-                            />
-                          ) : (
-                            <button
-                              onClick={() => handleOpen(request.id)}
-                              className="truncate text-left text-sm text-primary hover:underline underline-offset-2"
-                            >
-                              {request.item_name || "Unknown item"}
-                            </button>
-                          )}
-                          <button
-                            onClick={() => handleOpen(request.id)}
-                            className="px-0 text-left text-xs text-muted-foreground hover:underline underline-offset-2"
-                          >
-                            Details →
-                          </button>
-                        </div>
-                      </TableCell>
-                      <TableCell className="h-9 px-3 text-sm text-foreground">
-                        {request.quantity}
-                      </TableCell>
-                      <TableCell className="h-9 px-3 text-sm text-muted-foreground">
-                        {request.requested_by_name || "-"}
-                      </TableCell>
-                      <TableCell className="px-3 py-2 text-sm text-muted-foreground align-top">
-                        {request.suppliers && request.suppliers.length > 0 ? (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="block whitespace-normal break-words leading-relaxed">
-                                {renderSuppliers(request.suppliers)}
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              {suppliersTooltip(request.suppliers)}
-                            </TooltipContent>
-                          </Tooltip>
-                        ) : (
-                          "-"
-                        )}
-                      </TableCell>
-                      <TableCell className="px-3 py-2 text-sm text-muted-foreground align-top">
-                        {request.description ? (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="block whitespace-normal break-words leading-relaxed">
-                                {request.description}
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent>{request.description}</TooltipContent>
-                          </Tooltip>
-                        ) : (
-                          "-"
-                        )}
-                      </TableCell>
-                      <TableCell className="px-3 py-2 align-top">
-                        {canEdit && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <button
-                                onClick={() => deleteMutation.mutate(request.id)}
-                                disabled={deleteMutation.isPending}
-                                className="rounded p-1 text-muted-foreground/50 hover:bg-destructive/10 hover:text-destructive transition-colors"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent>Delete request</TooltipContent>
-                          </Tooltip>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow className="border-border/40">
-                    <TableCell
-                      colSpan={6}
-                      className="py-8 text-center text-sm text-muted-foreground"
-                    >
-                      No purchase requests found.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
+          {isRequestsLoading || isFoldersLoading ? (
+            <div className="space-y-2 rounded-lg border border-border/70 p-4">
+              <Skeleton className="h-5 w-1/2" />
+              <Skeleton className="h-5 w-3/4" />
+              <Skeleton className="h-5 w-2/3" />
+            </div>
+          ) : (
+            <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+              <div className="space-y-2">
+                {folderTree.map((node) => (
+                  <PurchaseRequestFolderRow
+                    key={node.id}
+                    node={node}
+                    level={0}
+                    canEdit={!!canEdit}
+                    deletePending={deleteMutation.isPending}
+                    onOpenRequest={handleOpen}
+                    onDeleteRequest={(requestId) => deleteMutation.mutate(requestId)}
+                    onCreateSubfolder={handleCreateFolder}
+                    onRenameFolder={handleRenameFolder}
+                    onDeleteFolder={handleDeleteFolder}
+                    blockedDropFolderIds={blockedDropFolderIds}
+                  />
+                ))}
+              </div>
+
+              <UngroupedSection>
+                <PurchaseRequestTable
+                  requests={ungroupedRequests}
+                  canEdit={!!canEdit}
+                  deletePending={deleteMutation.isPending}
+                  onOpen={handleOpen}
+                  onDelete={(requestId) => deleteMutation.mutate(requestId)}
+                  emptyLabel="No ungrouped purchase requests."
+                />
+              </UngroupedSection>
+            </DndContext>
+          )}
         </div>
 
         <Sheet open={isCreateSheetOpen} onOpenChange={handleCreateSheetOpenChange}>

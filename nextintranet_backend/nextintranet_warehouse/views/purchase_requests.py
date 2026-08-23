@@ -1,11 +1,12 @@
 from django.db.models import Q
-from rest_framework import generics, serializers
+from rest_framework import generics, serializers, viewsets
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 
 from nextintranet_backend.permissions import AreaAccessPermission
+from nextintranet_backend.routers import NoFormatSuffixRouter as DefaultRouter
 from nextintranet_warehouse.models.component import Component, SupplierRelation
-from nextintranet_warehouse.models.purchase import Purchase, PurchaseRequest
+from nextintranet_warehouse.models.purchase import Purchase, PurchaseRequest, PurchaseRequestFolder
 
 
 class SupplierRelationSummarySerializer(serializers.ModelSerializer):
@@ -15,6 +16,26 @@ class SupplierRelationSummarySerializer(serializers.ModelSerializer):
     class Meta:
         model = SupplierRelation
         fields = ['id', 'supplier_id', 'supplier_name', 'symbol']
+
+
+class PurchaseRequestFolderSerializer(serializers.ModelSerializer):
+    full_path = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = PurchaseRequestFolder
+        fields = ['id', 'name', 'parent', 'full_path']
+
+
+class PurchaseRequestFolderViewSet(viewsets.ModelViewSet):
+    serializer_class = PurchaseRequestFolderSerializer
+    permission_classes = [IsAuthenticated, AreaAccessPermission]
+    required_permission_area = 'warehouse'
+    required_level = 'read'
+    queryset = PurchaseRequestFolder.objects.all()
+
+
+PurchaseRequestFolderRouter = DefaultRouter(trailing_slash=True)
+PurchaseRequestFolderRouter.register(r'', PurchaseRequestFolderViewSet, basename='purchase-request-folder')
 
 
 class PurchaseRequestSerializer(serializers.ModelSerializer):
@@ -29,6 +50,12 @@ class PurchaseRequestSerializer(serializers.ModelSerializer):
     purchase_id = serializers.PrimaryKeyRelatedField(
         source='purchase',
         queryset=Purchase.objects.all(),
+        required=False,
+        allow_null=True
+    )
+    folder_id = serializers.PrimaryKeyRelatedField(
+        source='folder',
+        queryset=PurchaseRequestFolder.objects.all(),
         required=False,
         allow_null=True
     )
@@ -47,6 +74,7 @@ class PurchaseRequestSerializer(serializers.ModelSerializer):
             'description',
             'requested_by_name',
             'purchase_id',
+            'folder_id',
             'suppliers',
             'mfpn',
             'matching_supplier_relation_id',
@@ -118,7 +146,7 @@ class PurchaseRequestListAPIView(generics.ListCreateAPIView):
     required_level = 'read'
 
     def get_queryset(self):
-        queryset = PurchaseRequest.objects.select_related('component', 'requested_by', 'purchase')\
+        queryset = PurchaseRequest.objects.select_related('component', 'requested_by', 'purchase', 'folder')\
             .prefetch_related('component__suppliers__supplier', 'component__parameters__parameter_type')
         search = self.request.query_params.get('search')
         supplier = self.request.query_params.get('supplier')
@@ -155,7 +183,7 @@ class PurchaseRequestListAPIView(generics.ListCreateAPIView):
 
 class PurchaseRequestDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = PurchaseRequestSerializer
-    queryset = PurchaseRequest.objects.select_related('component', 'requested_by', 'purchase')\
+    queryset = PurchaseRequest.objects.select_related('component', 'requested_by', 'purchase', 'folder')\
         .prefetch_related('component__suppliers__supplier', 'component__parameters__parameter_type')
     permission_classes = [IsAuthenticated, AreaAccessPermission]
     required_permission_area = 'warehouse'
