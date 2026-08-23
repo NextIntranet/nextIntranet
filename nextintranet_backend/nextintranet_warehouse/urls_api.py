@@ -39,7 +39,7 @@ from .views.parameters import ParameterRouter, ParameterTypeRouter
 from .views.stocktaking_api import StocktakingRouter
 from .views.stocktaking_report import StocktakingReportView
 from .views.stockOperation import StockOperationRouter
-from .views.purchase_requests import PurchaseRequestListAPIView, PurchaseRequestDetailAPIView
+from .views.purchase_requests import PurchaseRequestListAPIView, PurchaseRequestDetailAPIView, PurchaseRequestFolderRouter
 from .views.purchases import (
     PurchaseDetailAPIView,
     PurchaseExportCSVAPIView,
@@ -105,6 +105,7 @@ urlpatterns = [
     path('tags/', TagListAPIView.as_view(), name='api_warehouse_tags'),
     path('purchase-requests/', PurchaseRequestListAPIView.as_view(), name='api_warehouse_purchase_requests'),
     path('purchase-request/<uuid:pk>/', PurchaseRequestDetailAPIView.as_view(), name='api_warehouse_purchase_request_detail'),
+    path('purchase-request-folder/', include(PurchaseRequestFolderRouter.urls), name='api_warehouse_purchase_request_folders'),
     path('purchases/', PurchaseListAPIView.as_view(), name='api_warehouse_purchases'),
     path('purchase/<uuid:pk>/', PurchaseDetailAPIView.as_view(), name='api_warehouse_purchase_detail'),
     path('purchase/<uuid:pk>/receive/', PurchaseReceiveAPIView.as_view(), name='api_warehouse_purchase_receive'),

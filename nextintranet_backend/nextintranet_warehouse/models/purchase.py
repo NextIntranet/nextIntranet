@@ -5,6 +5,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from mptt.models import MPTTModel, TreeForeignKey
 
 from nextintranet_backend.models import NIModel
 
@@ -388,6 +389,32 @@ class PurchaseDelivery(models.Model):
         return f"Delivery for {self.purchase_item} on {self.delivery_date}"
 
 
+class PurchaseRequestFolder(MPTTModel, NIModel):
+    name = models.CharField(max_length=100, verbose_name=_('Name'))
+    parent = TreeForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='children',
+        verbose_name=_('Parent folder'),
+    )
+
+    class MPTTMeta:
+        order_insertion_by = ['name']
+
+    class Meta:
+        verbose_name = _('Purchase request folder')
+        verbose_name_plural = _('Purchase request folders')
+
+    @property
+    def full_path(self):
+        return '/'.join(folder.name for folder in self.get_ancestors(include_self=True))
+
+    def __str__(self):
+        return self.full_path
+
+
 class PurchaseRequest(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -400,6 +427,15 @@ class PurchaseRequest(models.Model):
         on_delete=models.PROTECT,
         related_name='purchase_requests',
         verbose_name=("Component"),
+        null=True,
+        blank=True,
+    )
+
+    folder = models.ForeignKey(
+        PurchaseRequestFolder,
+        on_delete=models.SET_NULL,
+        related_name='purchase_requests',
+        verbose_name=_('Folder'),
         null=True,
         blank=True,
     )
