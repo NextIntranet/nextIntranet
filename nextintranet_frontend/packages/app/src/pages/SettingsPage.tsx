@@ -1,30 +1,34 @@
 import { useEffect, useRef, useState } from "react"
-import { Link } from "react-router-dom"
+import { Link, useLocation } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiFetch, getRealtimeClient, type RealtimeEvent } from "@nextintranet/core"
 import {
+  ChevronDown,
   Cpu,
   Download,
   ImageIcon,
   KeyRound,
   Laptop,
   LayoutTemplate,
+  type LucideIcon,
   RefreshCw,
   Tags,
 } from "lucide-react"
 import { toast } from "sonner"
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import {
   setQuickActionsFabVisible,
   useQuickActionsFabVisible,
 } from "@/lib/quickActionsFabVisibility"
 import { resolveFileUrl } from "@/lib/printing"
 import { usePwaInstall } from "@/lib/branding"
+import { cn } from "@/lib/utils"
 
 interface BrandingSettings {
   company_name: string
@@ -59,10 +63,91 @@ interface PacketRecalcProgressEvent {
   error?: string
 }
 
+function SettingsSection({
+  id,
+  icon: Icon,
+  title,
+  description,
+  open,
+  onToggle,
+  registerRef,
+  children,
+}: {
+  id: string
+  icon: LucideIcon
+  title: string
+  description: string
+  open: boolean
+  onToggle: () => void
+  registerRef: (el: HTMLDivElement | null) => void
+  children: React.ReactNode
+}) {
+  return (
+    <div ref={registerRef} id={id} className="scroll-mt-4">
+      <Card className="overflow-hidden">
+        <Collapsible open={open} onOpenChange={onToggle}>
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="flex w-full items-center gap-4 p-4 text-left hover:bg-muted/50"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                <Icon className="h-5 w-5 text-muted-foreground" />
+              </div>
+              <div className="flex-1 space-y-0.5">
+                <div className="font-medium text-foreground">{title}</div>
+                <div className="text-sm text-muted-foreground">{description}</div>
+              </div>
+              <ChevronDown
+                className={cn(
+                  "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+                  open && "rotate-180",
+                )}
+              />
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <CardContent className="border-t border-border pt-4 pb-4">{children}</CardContent>
+          </CollapsibleContent>
+        </Collapsible>
+      </Card>
+    </div>
+  )
+}
+
 export function SettingsPage() {
   const quickActionsFabVisible = useQuickActionsFabVisible()
   const queryClient = useQueryClient()
   const logoInputRef = useRef<HTMLInputElement | null>(null)
+  const location = useLocation()
+
+  const [openSections, setOpenSections] = useState<Set<string>>(() => {
+    const hash = window.location.hash.replace("#", "")
+    return hash ? new Set([hash]) : new Set()
+  })
+  const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({})
+
+  useEffect(() => {
+    const hash = location.hash.replace("#", "")
+    if (!hash) return
+    setOpenSections((prev) => (prev.has(hash) ? prev : new Set(prev).add(hash)))
+    const el = sectionRefs.current[hash]
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" })
+    }
+  }, [location.hash])
+
+  const toggleSection = (key: string) => {
+    setOpenSections((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      return next
+    })
+  }
 
   const { data: me } = useQuery({
     queryKey: ["me"],
@@ -203,22 +288,21 @@ export function SettingsPage() {
       <div className="space-y-1">
         <h1 className="text-2xl font-semibold text-foreground">Settings</h1>
         <p className="text-sm text-muted-foreground">
-          Choose a section to configure your local workspace.
+          Click a section below to expand it and configure your local workspace.
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-              <LayoutTemplate className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <CardTitle>Interface</CardTitle>
-            <CardDescription>
-              Control optional on-screen shortcuts in the web app.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-row items-center justify-between gap-4">
+      <div className="space-y-3">
+        <SettingsSection
+          id="interface"
+          icon={LayoutTemplate}
+          title="Interface"
+          description="Control optional on-screen shortcuts in the web app."
+          open={openSections.has("interface")}
+          onToggle={() => toggleSection("interface")}
+          registerRef={(el) => (sectionRefs.current["interface"] = el)}
+        >
+          <div className="flex flex-row items-center justify-between gap-4">
             <div className="space-y-0.5">
               <Label htmlFor="quick-actions-fab">Show quick actions button</Label>
               <p className="text-xs text-muted-foreground">
@@ -230,37 +314,33 @@ export function SettingsPage() {
               checked={quickActionsFabVisible}
               onCheckedChange={setQuickActionsFabVisible}
             />
-          </CardContent>
-        </Card>
+          </div>
+        </SettingsSection>
 
-        <Card>
-          <CardHeader>
-            <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-              <Cpu className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <CardTitle>Hardware</CardTitle>
-            <CardDescription>
-              Configure scanners, local agents, and station printer preferences.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button asChild>
-              <Link to="/setting/hardware">Open hardware settings</Link>
-            </Button>
-          </CardContent>
-        </Card>
+        <SettingsSection
+          id="hardware"
+          icon={Cpu}
+          title="Hardware"
+          description="Configure scanners, local agents, and station printer preferences."
+          open={openSections.has("hardware")}
+          onToggle={() => toggleSection("hardware")}
+          registerRef={(el) => (sectionRefs.current["hardware"] = el)}
+        >
+          <Button asChild>
+            <Link to="/setting/hardware">Open hardware settings</Link>
+          </Button>
+        </SettingsSection>
 
-        <Card>
-          <CardHeader>
-            <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-              <RefreshCw className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <CardTitle>Packet recalculation</CardTitle>
-            <CardDescription>
-              Recompute cached count and price fields for every packet in the warehouse.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
+        <SettingsSection
+          id="packet-recalc"
+          icon={RefreshCw}
+          title="Packet recalculation"
+          description="Recompute cached count and price fields for every packet in the warehouse."
+          open={openSections.has("packet-recalc")}
+          onToggle={() => toggleSection("packet-recalc")}
+          registerRef={(el) => (sectionRefs.current["packet-recalc"] = el)}
+        >
+          <div className="space-y-3">
             <Button
               onClick={() => recalculatePacketsMutation.mutate()}
               disabled={recalcRunning || recalculatePacketsMutation.isPending}
@@ -282,71 +362,61 @@ export function SettingsPage() {
                 </p>
               </div>
             ) : null}
-          </CardContent>
-        </Card>
+          </div>
+        </SettingsSection>
 
-        <Card>
-          <CardHeader>
-            <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-              <KeyRound className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <CardTitle>Service tokens</CardTitle>
-            <CardDescription>
-              Generate and manage personal integration tokens.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button asChild>
-              <Link to="/settings/service-token">Open service tokens</Link>
-            </Button>
-          </CardContent>
-        </Card>
+        <SettingsSection
+          id="service-tokens"
+          icon={KeyRound}
+          title="Service tokens"
+          description="Generate and manage personal integration tokens."
+          open={openSections.has("service-tokens")}
+          onToggle={() => toggleSection("service-tokens")}
+          registerRef={(el) => (sectionRefs.current["service-tokens"] = el)}
+        >
+          <Button asChild>
+            <Link to="/settings/service-token">Open service tokens</Link>
+          </Button>
+        </SettingsSection>
 
-        <Card>
-          <CardHeader>
-            <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-              <Laptop className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <CardTitle>Software</CardTitle>
-            <CardDescription>
-              Download integration config files for desktop tools.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button asChild>
-              <Link to="/settings/software">Open software settings</Link>
-            </Button>
-          </CardContent>
-        </Card>
+        <SettingsSection
+          id="software"
+          icon={Laptop}
+          title="Software"
+          description="Download integration config files for desktop tools."
+          open={openSections.has("software")}
+          onToggle={() => toggleSection("software")}
+          registerRef={(el) => (sectionRefs.current["software"] = el)}
+        >
+          <Button asChild>
+            <Link to="/settings/software">Open software settings</Link>
+          </Button>
+        </SettingsSection>
 
-        <Card>
-          <CardHeader>
-            <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-              <Tags className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <CardTitle>Label templates</CardTitle>
-            <CardDescription>
-              Manage label layouts and their supported print formats.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button asChild>
-              <Link to="/settings/label-template">Open label templates</Link>
-            </Button>
-          </CardContent>
-        </Card>
+        <SettingsSection
+          id="label-templates"
+          icon={Tags}
+          title="Label templates"
+          description="Manage label layouts and their supported print formats."
+          open={openSections.has("label-templates")}
+          onToggle={() => toggleSection("label-templates")}
+          registerRef={(el) => (sectionRefs.current["label-templates"] = el)}
+        >
+          <Button asChild>
+            <Link to="/settings/label-template">Open label templates</Link>
+          </Button>
+        </SettingsSection>
 
-        <Card className="md:col-span-2">
-          <CardHeader>
-            <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
-              <ImageIcon className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <CardTitle>Branding</CardTitle>
-            <CardDescription>
-              Organization identity used on labels, the page title, and the PWA install prompt.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
+        <SettingsSection
+          id="branding"
+          icon={ImageIcon}
+          title="Branding"
+          description="Organization identity used on labels, the page title, and the PWA install prompt."
+          open={openSections.has("branding")}
+          onToggle={() => toggleSection("branding")}
+          registerRef={(el) => (sectionRefs.current["branding"] = el)}
+        >
+          <div className="space-y-6">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-2">
                 <Label htmlFor="company-name">Company name</Label>
@@ -560,8 +630,8 @@ export function SettingsPage() {
                 </p>
               )}
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </SettingsSection>
       </div>
     </div>
   )

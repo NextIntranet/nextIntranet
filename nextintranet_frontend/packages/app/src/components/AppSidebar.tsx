@@ -157,9 +157,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       url: "/settings",
       icon: Settings2,
       items: [
+        { title: "Interface", url: "/settings#interface" },
         { title: "Hardware", url: "/setting/hardware" },
-        { title: "Software", url: "/settings/software" },
+        { title: "Packet recalculation", url: "/settings#packet-recalc" },
         { title: "Service tokens", url: "/settings/service-token" },
+        { title: "Software", url: "/settings/software" },
+        { title: "Label templates", url: "/settings/label-template" },
+        { title: "Branding", url: "/settings#branding" },
       ],
     },
   ]
