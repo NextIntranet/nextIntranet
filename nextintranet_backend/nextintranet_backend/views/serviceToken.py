@@ -177,6 +177,7 @@ class ServiceTokenViewSet(viewsets.GenericViewSet):
         mcp_config = {
             "mcpServers": {
                 server_name: {
+                    "type": "http",
                     "url": mcp_url,
                     "headers": {
                         "X-Service-Token": raw_token,
