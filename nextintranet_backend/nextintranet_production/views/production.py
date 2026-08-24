@@ -700,6 +700,20 @@ class ProductionFolderViewSet(viewsets.ModelViewSet):
         tree = self.build_tree(folders)
         return Response(tree)
 
+    def destroy(self, request, *args, **kwargs):
+        folder = self.get_object()
+        if folder.children.exists():
+            return Response(
+                {"error": "Folder has subfolders and cannot be deleted."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        if folder.productions.exists():
+            return Response(
+                {"error": "Folder contains productions and cannot be deleted."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return super().destroy(request, *args, **kwargs)
+
 
 class ProductionViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
@@ -757,6 +771,20 @@ class ProductionViewSet(viewsets.ModelViewSet):
 
         return Response(payload)
 
+    def destroy(self, request, *args, **kwargs):
+        production = self.get_object()
+        if production.templates.exists():
+            return Response(
+                {"error": "Production has BOM series and cannot be deleted."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        if production.realizations.exists():
+            return Response(
+                {"error": "Production has realizations and cannot be deleted."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return super().destroy(request, *args, **kwargs)
+
 
 class TemplateViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
@@ -784,6 +812,15 @@ class TemplateViewSet(viewsets.ModelViewSet):
         if production_id:
             queryset = queryset.filter(production_id=production_id)
         return queryset.order_by("-created_at")
+
+    def destroy(self, request, *args, **kwargs):
+        template = self.get_object()
+        if template.status == "finished":
+            return Response(
+                {"error": "Finished BOM series cannot be deleted."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return super().destroy(request, *args, **kwargs)
 
     @action(detail=True, methods=["post"], url_path="duplicate")
     @transaction.atomic
