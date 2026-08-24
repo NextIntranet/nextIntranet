@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, useRealtimeMessages, type RealtimeEvent } from '@nextintranet/core';
-import { Bar, BarChart, CartesianGrid, XAxis } from 'recharts';
+import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 import {
   Activity,
   PackageSearch,
@@ -13,7 +13,6 @@ import {
   ClipboardList,
   Truck,
   FileText,
-  Wallet,
   ArrowLeftRight,
   UserCheck,
   Banknote,
@@ -63,8 +62,6 @@ interface DashboardMetrics {
   locations_count: number;
   categories_count: number;
   zero_stock_components: number;
-  stock_value_total: number;
-  active_packets: number;
   operations_today: number;
   operations_7d: number;
   active_operators_7d: number;
@@ -230,12 +227,6 @@ export function HomePage() {
 
   const operationsMetricCards = metrics ? [
     {
-      label: 'Warehouse Value',
-      value: formatCurrency.format(metrics.stock_value_total ?? 0),
-      hint: `${(metrics.active_packets ?? 0).toLocaleString()} active packets`,
-      icon: Wallet,
-    },
-    {
       label: 'Operations Today',
       value: (metrics.operations_today ?? 0).toLocaleString(),
       hint: `${(metrics.operations_7d ?? 0).toLocaleString()} in last 7 days`,
@@ -327,7 +318,7 @@ export function HomePage() {
         {metricCards.map(renderMetricCard)}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-3">
         {operationsMetricCards.map(renderMetricCard)}
       </div>
 
@@ -353,30 +344,55 @@ export function HomePage() {
 
       <div className="grid gap-4 md:grid-cols-2">
         <Card className="shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Operations Trend</CardTitle>
+          <CardHeader className="flex flex-row items-start justify-between">
+            <div className="flex flex-col gap-1">
+              <CardTitle>Operations Trend</CardTitle>
+              <span className="text-sm font-normal text-muted-foreground">
+                Inbound and outbound operations, last 180 days
+              </span>
+            </div>
             <History className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             {trendData.length > 0 ? (
               <ChartContainer config={trendChartConfig} className="h-[220px] w-full">
-                <BarChart data={trendData}>
+                <AreaChart data={trendData} margin={{ left: 4, right: 8, top: 8 }}>
                   <CartesianGrid vertical={false} strokeDasharray="3 3" />
                   <XAxis
                     dataKey="label"
                     tickLine={false}
                     axisLine={false}
                     tickMargin={8}
-                    interval="preserveStartEnd"
+                    minTickGap={48}
+                  />
+                  <YAxis
+                    tickLine={false}
+                    axisLine={false}
+                    width={32}
+                    allowDecimals={false}
                   />
                   <ChartTooltip content={<ChartTooltipContent />} />
-                  <Bar dataKey="inbound" stackId="ops" fill="var(--color-inbound)" radius={[0, 0, 2, 2]} />
-                  <Bar dataKey="outbound" stackId="ops" fill="var(--color-outbound)" radius={[2, 2, 0, 0]} />
-                </BarChart>
+                  <Area
+                    dataKey="inbound"
+                    stackId="ops"
+                    type="monotone"
+                    stroke="var(--color-inbound)"
+                    fill="var(--color-inbound)"
+                    fillOpacity={0.35}
+                  />
+                  <Area
+                    dataKey="outbound"
+                    stackId="ops"
+                    type="monotone"
+                    stroke="var(--color-outbound)"
+                    fill="var(--color-outbound)"
+                    fillOpacity={0.35}
+                  />
+                </AreaChart>
               </ChartContainer>
             ) : (
               <div className="rounded-xl bg-muted/70 p-4 text-sm text-muted-foreground">
-                No operations in the last 14 days.
+                No operations in the last 180 days.
               </div>
             )}
           </CardContent>

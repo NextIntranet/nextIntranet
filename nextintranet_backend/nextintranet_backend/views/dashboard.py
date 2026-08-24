@@ -26,7 +26,7 @@ User = get_user_model()
 IN_TYPES = ('add', 'buy', 'trans_in')
 OUT_TYPES = ('remove', 'sell', 'service', 'trans_out')
 
-TREND_DAYS = 14
+TREND_DAYS = 180
 
 
 def _start_of_month(now):
@@ -130,11 +130,6 @@ class DashboardMetricsAPIView(APIView):
             Q(total_stock=0) | Q(total_stock__isnull=True)
         ).count()
 
-        # Total value of stock currently held (Packet.totalValue is maintained by calculate())
-        active_packets_qs = Packet.objects.filter(is_active=True)
-        stock_value_total = active_packets_qs.aggregate(total=Sum('totalValue'))['total'] or 0
-        active_packets = active_packets_qs.count()
-
         # Stock operation throughput
         operations_today = StockOperation.objects.filter(timestamp__gte=start_of_day).count()
         operations_7d = StockOperation.objects.filter(timestamp__gte=week_ago).count()
@@ -180,8 +175,6 @@ class DashboardMetricsAPIView(APIView):
             'locations_count': locations_count,
             'categories_count': categories_count,
             'zero_stock_components': zero_stock_components,
-            'stock_value_total': float(stock_value_total),
-            'active_packets': active_packets,
             'operations_today': operations_today,
             'operations_7d': operations_7d,
             'active_operators_7d': active_operators_7d,
