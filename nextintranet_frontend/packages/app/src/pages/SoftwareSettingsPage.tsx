@@ -51,7 +51,7 @@ const buildKicadFilename = (tokenName: string) => {
   return `nextintranet-${safeName}.kicad_httplib`
 }
 
-export function SoftwareSettingsPage() {
+export function SoftwareSettingsPage({ embedded = false }: { embedded?: boolean } = {}) {
   const queryClient = useQueryClient()
   const { data: me } = useQuery({
     queryKey: ["me"],
@@ -166,13 +166,15 @@ export function SoftwareSettingsPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold text-foreground">Software</h1>
-        <p className="text-sm text-muted-foreground">
-          Generate configuration files for software integrations.
-        </p>
-      </div>
+    <div className={embedded ? "w-full space-y-6" : "mx-auto w-full max-w-3xl space-y-6"}>
+      {!embedded && (
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold text-foreground">Software</h1>
+          <p className="text-sm text-muted-foreground">
+            Generate configuration files for software integrations.
+          </p>
+        </div>
+      )}
 
       <Card>
         <CardHeader>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { Link, useLocation } from "react-router-dom"
+import { useLocation } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiFetch, getRealtimeClient, type RealtimeEvent } from "@nextintranet/core"
 import {
@@ -29,6 +29,10 @@ import {
 import { resolveFileUrl } from "@/lib/printing"
 import { usePwaInstall } from "@/lib/branding"
 import { cn } from "@/lib/utils"
+import { HardwarePage } from "@/pages/HardwarePage"
+import { ServiceTokensPage } from "@/pages/ServiceTokensPage"
+import { SoftwareSettingsPage } from "@/pages/SoftwareSettingsPage"
+import { LabelTemplatesPage } from "@/pages/LabelTemplatesPage"
 
 interface BrandingSettings {
   company_name: string
@@ -326,9 +330,7 @@ export function SettingsPage() {
           onToggle={() => toggleSection("hardware")}
           registerRef={(el) => (sectionRefs.current["hardware"] = el)}
         >
-          <Button asChild>
-            <Link to="/setting/hardware">Open hardware settings</Link>
-          </Button>
+          <HardwarePage embedded />
         </SettingsSection>
 
         <SettingsSection
@@ -374,9 +376,7 @@ export function SettingsPage() {
           onToggle={() => toggleSection("service-tokens")}
           registerRef={(el) => (sectionRefs.current["service-tokens"] = el)}
         >
-          <Button asChild>
-            <Link to="/settings/service-token">Open service tokens</Link>
-          </Button>
+          <ServiceTokensPage embedded />
         </SettingsSection>
 
         <SettingsSection
@@ -388,9 +388,7 @@ export function SettingsPage() {
           onToggle={() => toggleSection("software")}
           registerRef={(el) => (sectionRefs.current["software"] = el)}
         >
-          <Button asChild>
-            <Link to="/settings/software">Open software settings</Link>
-          </Button>
+          <SoftwareSettingsPage embedded />
         </SettingsSection>
 
         <SettingsSection
@@ -402,9 +400,7 @@ export function SettingsPage() {
           onToggle={() => toggleSection("label-templates")}
           registerRef={(el) => (sectionRefs.current["label-templates"] = el)}
         >
-          <Button asChild>
-            <Link to="/settings/label-template">Open label templates</Link>
-          </Button>
+          <LabelTemplatesPage embedded />
         </SettingsSection>
 
         <SettingsSection
