@@ -1,6 +1,7 @@
 import { FormEvent, Fragment, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { IBOM_EVENT_TYPES, apiFetch, getRealtimeClient, nextIO, tokenStorage, useIbomBridge } from "@nextintranet/core"
+import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core"
 import {
   AlertTriangle,
   ChevronDown,
@@ -12,6 +13,7 @@ import {
   EyeOff,
   FilePlus2,
   FileText,
+  Folder,
   FolderPlus,
   Link2,
   Link2Off,
@@ -37,6 +39,18 @@ import { PacketRef } from "@/components/PacketRef"
 import { PacketSelectSheet, type PacketLineProgress, type PacketSelectItem } from "@/components/PacketSelectSheet"
 import { ScanActionDialog, type ScanActionTarget } from "@/components/ScanActionDialog"
 import { Input } from "@/components/ui/input"
+import { ProductionTree } from "@/components/production/ProductionTree"
+import {
+  FOLDER_DRAG_PREFIX,
+  PRODUCTION_DRAG_PREFIX,
+  ROOT_DROP_ID,
+  buildProductionTreeRows,
+  collectFolderAndDescendantIds,
+  findFolderNode,
+  findFolderParentId,
+  type ProductionFolderNode,
+  type ProductionTreeItem,
+} from "@/components/production/types"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
@@ -49,13 +63,7 @@ type Paginated<T> = {
   results: T[]
 }
 
-type FolderNode = {
-  id: string
-  name: string
-  description?: string | null
-  full_path: string
-  children?: FolderNode[]
-}
+type FolderNode = ProductionFolderNode
 
 type ProductListItem = {
   id: string
@@ -63,6 +71,8 @@ type ProductListItem = {
   description?: string | null
   folder?: string | null
   folder_name?: string | null
+  templates_count?: number
+  realizations_count?: number
 }
 
 type ProductCreatePayload = {
@@ -1298,48 +1308,228 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
   })
 
   const productsByFolder = useMemo(() => {
-    const grouped = new Map<string, ProductListItem[]>()
+    const grouped = new Map<string, ProductionTreeItem[]>()
     products.forEach((product) => {
-      const folderKey = product.folder || "__root__"
-      const list = grouped.get(folderKey) || []
-      list.push(product)
-      grouped.set(folderKey, list)
+      if (!product.folder) return
+      const list = grouped.get(product.folder) || []
+      list.push({
+        id: product.id,
+        name: product.name,
+        folder: product.folder,
+        templates_count: product.templates_count,
+        realizations_count: product.realizations_count,
+      })
+      grouped.set(product.folder, list)
     })
     grouped.forEach((list) => list.sort((a, b) => a.name.localeCompare(b.name)))
     return grouped
   }, [products])
 
-  const renderFolderTree = (nodes: FolderNode[], depth = 0): JSX.Element[] => {
-    const result: JSX.Element[] = []
-    nodes.forEach((folder) => {
-      result.push(
-        <div key={`folder-${folder.id}`} className="space-y-1">
-          <div className="px-2 py-1 text-xs font-semibold uppercase text-muted-foreground" style={{ marginLeft: depth * 12 }}>
-            {folder.name}
-          </div>
-          {(productsByFolder.get(folder.id) || []).map((product) => (
-            <button
-              key={product.id}
-              type="button"
-              className={cn(
-                "w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted",
-                productId === product.id ? "bg-muted font-medium text-foreground" : "text-muted-foreground",
-              )}
-              style={{ marginLeft: depth * 12 + 8 }}
-              onClick={() => navigate(`/production/${product.id}`)}
-            >
-              {product.name}
-            </button>
-          ))}
-          {folder.children?.length ? renderFolderTree(folder.children, depth + 1) : null}
-        </div>,
-      )
+  const flatFolderOptions = useMemo(() => flattenFolders(folders), [folders])
+
+  const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(new Set())
+  const hasSeededFolderExpand = useRef(false)
+
+  useEffect(() => {
+    if (hasSeededFolderExpand.current || folders.length === 0) return
+    hasSeededFolderExpand.current = true
+    setExpandedFolderIds(new Set(folders.map((folder) => folder.id)))
+  }, [folders])
+
+  const toggleFolderExpand = (folderId: string) => {
+    setExpandedFolderIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(folderId)) {
+        next.delete(folderId)
+      } else {
+        next.add(folderId)
+      }
+      return next
     })
-    return result
   }
 
-  const rootProducts = productsByFolder.get("__root__") || []
-  const flatFolderOptions = useMemo(() => flattenFolders(folders), [folders])
+  const productionTreeRows = useMemo(
+    () => buildProductionTreeRows(folders, productsByFolder, expandedFolderIds),
+    [folders, productsByFolder, expandedFolderIds],
+  )
+
+  const moveFolderMutation = useMutation({
+    mutationFn: ({ folderId, parent }: { folderId: string; parent: string | null }) =>
+      apiFetch(`/api/v1/production/folders/${folderId}/`, {
+        method: "PATCH",
+        body: JSON.stringify({ parent }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["production-folders-tree"] })
+      toast.success("Folder moved.")
+    },
+    onError: () => toast.error("Failed to move folder."),
+  })
+
+  const renameFolderMutation = useMutation({
+    mutationFn: ({ folderId, name }: { folderId: string; name: string }) =>
+      apiFetch(`/api/v1/production/folders/${folderId}/`, {
+        method: "PATCH",
+        body: JSON.stringify({ name }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["production-folders-tree"] })
+      toast.success("Folder renamed.")
+    },
+    onError: () => toast.error("Failed to rename folder."),
+  })
+
+  const deleteFolderMutation = useMutation({
+    mutationFn: (folderId: string) => apiFetch(`/api/v1/production/folders/${folderId}/`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["production-folders-tree"] })
+      toast.success("Folder deleted.")
+    },
+    onError: (error) => {
+      const data = (error as { data?: unknown }).data as { error?: string } | undefined
+      toast.error(data?.error || "Failed to delete folder.")
+    },
+  })
+
+  const moveProductionMutation = useMutation({
+    mutationFn: ({ productionId, folder }: { productionId: string; folder: string }) =>
+      apiFetch(`/api/v1/production/productions/${productionId}/`, {
+        method: "PATCH",
+        body: JSON.stringify({ folder }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["production-products"] })
+      toast.success("Production moved.")
+    },
+    onError: () => toast.error("Failed to move production."),
+  })
+
+  const renameProductionMutation = useMutation({
+    mutationFn: ({ productionId, name }: { productionId: string; name: string }) =>
+      apiFetch(`/api/v1/production/productions/${productionId}/`, {
+        method: "PATCH",
+        body: JSON.stringify({ name }),
+      }),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["production-products"] })
+      queryClient.invalidateQueries({ queryKey: ["production-product", variables.productionId] })
+      toast.success("Production renamed.")
+    },
+    onError: () => toast.error("Failed to rename production."),
+  })
+
+  const deleteProductionMutation = useMutation({
+    mutationFn: (productionIdToDelete: string) =>
+      apiFetch(`/api/v1/production/productions/${productionIdToDelete}/`, { method: "DELETE" }),
+    onSuccess: (_data, deletedId) => {
+      queryClient.invalidateQueries({ queryKey: ["production-products"] })
+      toast.success("Production deleted.")
+      if (productId === deletedId) {
+        navigate("/production")
+      }
+    },
+    onError: (error) => {
+      const data = (error as { data?: unknown }).data as { error?: string } | undefined
+      toast.error(data?.error || "Failed to delete production.")
+    },
+  })
+
+  const deleteBomMutation = useMutation({
+    mutationFn: (targetBomId: string) => apiFetch(`/api/v1/production/templates/${targetBomId}/`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["production-product", productId] })
+      toast.success("BOM series deleted.")
+    },
+    onError: (error) => {
+      const data = (error as { data?: unknown }).data as { error?: string } | undefined
+      toast.error(data?.error || "Failed to delete BOM series.")
+    },
+  })
+
+  const handleRenameFolder = (folderId: string, name: string) => {
+    renameFolderMutation.mutate({ folderId, name })
+  }
+
+  const handleDeleteFolder = (folderId: string) => {
+    if (!window.confirm("Delete this empty folder?")) return
+    deleteFolderMutation.mutate(folderId)
+  }
+
+  const handleRenameProduction = (renamedProductionId: string, name: string) => {
+    renameProductionMutation.mutate({ productionId: renamedProductionId, name })
+  }
+
+  const handleDeleteProduction = (productionIdToDelete: string) => {
+    if (!window.confirm("Delete this production? It has no BOM series.")) return
+    deleteProductionMutation.mutate(productionIdToDelete)
+  }
+
+  const handleDeleteBom = (targetBomId: string) => {
+    if (!window.confirm("Delete this BOM series? This cannot be undone.")) return
+    deleteBomMutation.mutate(targetBomId)
+  }
+
+  const [blockedDropFolderIds, setBlockedDropFolderIds] = useState<Set<string>>(new Set())
+  const [activeTreeDragId, setActiveTreeDragId] = useState<string | null>(null)
+  const treeSensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
+
+  const handleTreeDragStart = (event: DragStartEvent) => {
+    const activeId = String(event.active.id)
+    setActiveTreeDragId(activeId)
+    if (!activeId.startsWith(FOLDER_DRAG_PREFIX)) return
+    const draggedFolderId = activeId.slice(FOLDER_DRAG_PREFIX.length)
+    const draggedNode = findFolderNode(folders, draggedFolderId)
+    setBlockedDropFolderIds(draggedNode ? collectFolderAndDescendantIds(draggedNode) : new Set([draggedFolderId]))
+  }
+
+  const handleTreeDragEnd = (event: DragEndEvent) => {
+    setBlockedDropFolderIds(new Set())
+    setActiveTreeDragId(null)
+    const { active, over } = event
+    if (!over) return
+    const activeId = String(active.id)
+    const overId = String(over.id)
+
+    if (activeId.startsWith(PRODUCTION_DRAG_PREFIX)) {
+      if (!overId.startsWith(FOLDER_DRAG_PREFIX)) return
+      const draggedProductionId = activeId.slice(PRODUCTION_DRAG_PREFIX.length)
+      const targetFolderId = overId.slice(FOLDER_DRAG_PREFIX.length)
+      const currentProduct = products.find((product) => product.id === draggedProductionId)
+      if (!currentProduct || currentProduct.folder === targetFolderId) return
+      moveProductionMutation.mutate({ productionId: draggedProductionId, folder: targetFolderId })
+      return
+    }
+
+    if (activeId.startsWith(FOLDER_DRAG_PREFIX)) {
+      const folderId = activeId.slice(FOLDER_DRAG_PREFIX.length)
+      const targetParentId =
+        overId === ROOT_DROP_ID ? null : overId.startsWith(FOLDER_DRAG_PREFIX) ? overId.slice(FOLDER_DRAG_PREFIX.length) : undefined
+      if (targetParentId === undefined || targetParentId === folderId) return
+      const currentParentId = findFolderParentId(folders, folderId)
+      if (currentParentId === targetParentId) return
+      moveFolderMutation.mutate({ folderId, parent: targetParentId })
+    }
+  }
+
+  const handleTreeDragCancel = () => {
+    setBlockedDropFolderIds(new Set())
+    setActiveTreeDragId(null)
+  }
+
+  const activeTreeDragLabel = useMemo(() => {
+    if (!activeTreeDragId) return null
+    if (activeTreeDragId.startsWith(PRODUCTION_DRAG_PREFIX)) {
+      const draggedProductionId = activeTreeDragId.slice(PRODUCTION_DRAG_PREFIX.length)
+      const product = products.find((item) => item.id === draggedProductionId)
+      return product ? { type: "production" as const, label: product.name } : null
+    }
+    if (activeTreeDragId.startsWith(FOLDER_DRAG_PREFIX)) {
+      const draggedFolderId = activeTreeDragId.slice(FOLDER_DRAG_PREFIX.length)
+      const folder = findFolderNode(folders, draggedFolderId)
+      return folder ? { type: "folder" as const, label: folder.name } : null
+    }
+    return null
+  }, [activeTreeDragId, products, folders])
 
   const groupedRows = useMemo(() => {
     if (!selectedBom) return []
@@ -2087,6 +2277,17 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                 Lock
               </Button>
             ) : null}
+            {bom.status !== "finished" ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-rose-700 hover:bg-rose-50 hover:text-rose-700"
+                onClick={() => handleDeleteBom(bom.id)}
+                disabled={deleteBomMutation.isPending}
+              >
+                Delete
+              </Button>
+            ) : null}
           </div>
         </TableCell>
       </TableRow>,
@@ -2249,27 +2450,39 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                 <Skeleton className="h-6 w-4/6" />
               </div>
             ) : (
-              <>
-                {rootProducts.length > 0 ? (
-                  <div className="space-y-1">
-                    <div className="px-2 py-1 text-xs font-semibold uppercase text-muted-foreground">Unfiled</div>
-                    {rootProducts.map((product) => (
-                      <button
-                        key={product.id}
-                        type="button"
-                        className={cn(
-                          "w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted",
-                          productId === product.id ? "bg-muted font-medium text-foreground" : "text-muted-foreground",
-                        )}
-                        onClick={() => navigate(`/production/${product.id}`)}
-                      >
-                        {product.name}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-                <div className="space-y-2">{renderFolderTree(folders)}</div>
-              </>
+              <DndContext
+                sensors={treeSensors}
+                onDragStart={handleTreeDragStart}
+                onDragEnd={handleTreeDragEnd}
+                onDragCancel={handleTreeDragCancel}
+              >
+                <ProductionTree
+                  rows={productionTreeRows}
+                  activeProductionId={productId}
+                  canEdit
+                  expandedIds={expandedFolderIds}
+                  onToggleExpand={toggleFolderExpand}
+                  productionsByFolder={productsByFolder}
+                  blockedDropFolderIds={blockedDropFolderIds}
+                  onNavigateProduction={(id) => navigate(`/production/${id}`)}
+                  onRenameFolder={handleRenameFolder}
+                  onDeleteFolder={handleDeleteFolder}
+                  onRenameProduction={handleRenameProduction}
+                  onDeleteProduction={handleDeleteProduction}
+                />
+                <DragOverlay>
+                  {activeTreeDragLabel ? (
+                    <div className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground shadow-lg">
+                      {activeTreeDragLabel.type === "folder" ? (
+                        <Folder className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <Package className="h-4 w-4 text-muted-foreground" />
+                      )}
+                      <span className="max-w-xs truncate">{activeTreeDragLabel.label}</span>
+                    </div>
+                  ) : null}
+                </DragOverlay>
+              </DndContext>
             )}
           </CardContent>
           </Card>
