@@ -49,7 +49,7 @@ const formatDate = (value?: string | null) => {
   }).format(new Date(value))
 }
 
-export function ServiceTokensPage() {
+export function ServiceTokensPage({ embedded = false }: { embedded?: boolean } = {}) {
   const queryClient = useQueryClient()
   const [tokenName, setTokenName] = useState("")
   const [selectedScopes, setSelectedScopes] = useState<string[]>(["api:read"])
@@ -153,13 +153,15 @@ export function ServiceTokensPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold text-foreground">Service tokens</h1>
-        <p className="text-sm text-muted-foreground">
-          Create personal integration tokens and deactivate them when no longer needed.
-        </p>
-      </div>
+    <div className={embedded ? "w-full space-y-6" : "mx-auto w-full max-w-7xl space-y-6"}>
+      {!embedded && (
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold text-foreground">Service tokens</h1>
+          <p className="text-sm text-muted-foreground">
+            Create personal integration tokens and deactivate them when no longer needed.
+          </p>
+        </div>
+      )}
 
       {oneTimeToken ? (
         <Card className="border-amber-300/70 bg-amber-50/40">

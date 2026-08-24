@@ -121,7 +121,7 @@ const emptyEditorState = (): EditorState => ({
   definitionText: JSON.stringify(NEW_TEMPLATE_DEFINITION, null, 2),
 })
 
-export function LabelTemplatesPage() {
+export function LabelTemplatesPage({ embedded = false }: { embedded?: boolean } = {}) {
   const queryClient = useQueryClient()
   const [editor, setEditor] = useState<EditorState | null>(null)
   const [viewMode, setViewMode] = useState<"designer" | "json">("designer")
@@ -313,14 +313,24 @@ export function LabelTemplatesPage() {
   )
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-4 px-4 py-6 lg:px-6">
+    <div
+      className={
+        embedded
+          ? "w-full space-y-4"
+          : "mx-auto w-full max-w-7xl space-y-4 px-4 py-6 lg:px-6"
+      }
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold text-foreground">Label templates</h1>
-          <p className="text-sm text-muted-foreground">
-            Define label layouts as JSON and restrict them to specific print formats.
-          </p>
-        </div>
+        {embedded ? (
+          <div />
+        ) : (
+          <div className="space-y-1">
+            <h1 className="text-2xl font-semibold text-foreground">Label templates</h1>
+            <p className="text-sm text-muted-foreground">
+              Define label layouts as JSON and restrict them to specific print formats.
+            </p>
+          </div>
+        )}
         {canEdit && (
           <Button size="sm" onClick={() => setEditor(emptyEditorState())}>
             New template

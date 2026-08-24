@@ -95,7 +95,7 @@ const createScannerDraft = (): BrowserScannerDraft => ({
   portInfo: null,
 })
 
-export function HardwarePage() {
+export function HardwarePage({ embedded = false }: { embedded?: boolean } = {}) {
   const [profile, setProfile] = useState<StationProfile>(() => loadStationProfile())
   const [statusByAgentId, setStatusByAgentId] = useState<Record<string, Record<string, unknown>>>({})
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -378,15 +378,15 @@ export function HardwarePage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-6 lg:px-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">Hardware</h1>
-          <p className="text-sm text-muted-foreground">
-            Configure local agents and station settings. Profiles are stored in localStorage for now.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+    <div
+      className={
+        embedded
+          ? "flex w-full flex-col gap-6"
+          : "mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-6 lg:px-6"
+      }
+    >
+      {embedded ? (
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <Button variant="outline" size="sm" onClick={handleReloadProfile}>
             Reload
           </Button>
@@ -394,7 +394,24 @@ export function HardwarePage() {
             Save profile
           </Button>
         </div>
-      </div>
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold text-foreground">Hardware</h1>
+            <p className="text-sm text-muted-foreground">
+              Configure local agents and station settings. Profiles are stored in localStorage for now.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handleReloadProfile}>
+              Reload
+            </Button>
+            <Button size="sm" onClick={handleSaveProfile}>
+              Save profile
+            </Button>
+          </div>
+        </div>
+      )}
 
       <Card>
         <CardHeader>
