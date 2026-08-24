@@ -6,36 +6,26 @@ import { TableCell, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 
-import { PurchaseRequest, REQUEST_DRAG_PREFIX, SupplierSummary, suppliersTooltip } from "./types"
-
-function renderSuppliers(suppliers?: SupplierSummary[]) {
-  const text = suppliersTooltip(suppliers)
-  return text.length > 42 ? `${text.slice(0, 42)}…` : text
-}
+import { PurchaseRequest, REQUEST_DRAG_PREFIX, suppliersTooltip } from "./types"
 
 interface Props {
   request: PurchaseRequest
+  depth: number
   canEdit: boolean
   deletePending: boolean
   onOpen: (id: string) => void
   onDelete: (id: string) => void
 }
 
-export function PurchaseRequestRow({ request, canEdit, deletePending, onOpen, onDelete }: Props) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+export function PurchaseRequestRow({ request, depth, canEdit, deletePending, onOpen, onDelete }: Props) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `${REQUEST_DRAG_PREFIX}${request.id}`,
   })
 
+  const suppliersText = suppliersTooltip(request.suppliers)
+
   return (
-    <TableRow
-      ref={setNodeRef}
-      className={cn("border-border/40", isDragging && "opacity-40")}
-      style={
-        transform
-          ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`, position: "relative", zIndex: 10 }
-          : undefined
-      }
-    >
+    <TableRow ref={setNodeRef} className={cn("border-border/40", isDragging && "opacity-30")}>
       <TableCell className="h-9 w-8 px-1">
         <button
           {...attributes}
@@ -46,7 +36,7 @@ export function PurchaseRequestRow({ request, canEdit, deletePending, onOpen, on
           <GripVertical className="h-3.5 w-3.5" />
         </button>
       </TableCell>
-      <TableCell className="h-9 px-3">
+      <TableCell className="h-9 px-3" style={{ paddingLeft: depth * 20 + 12 }}>
         <div className="flex min-w-0 flex-col gap-0.5">
           {request.component_id ? (
             <ComponentRef
@@ -70,32 +60,28 @@ export function PurchaseRequestRow({ request, canEdit, deletePending, onOpen, on
         </div>
       </TableCell>
       <TableCell className="h-9 px-3 text-sm text-foreground">{request.quantity}</TableCell>
-      <TableCell className="h-9 px-3 text-sm text-muted-foreground">
-        {request.requested_by_name || "-"}
-      </TableCell>
       <TableCell className="px-3 py-2 text-sm text-muted-foreground align-top">
-        {request.suppliers && request.suppliers.length > 0 ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="block whitespace-normal break-words leading-relaxed">
-                {renderSuppliers(request.suppliers)}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>{suppliersTooltip(request.suppliers)}</TooltipContent>
-          </Tooltip>
-        ) : (
-          "-"
-        )}
+        <div className="flex flex-col gap-0.5">
+          <span className="truncate">{request.requested_by_name || "-"}</span>
+          {request.suppliers && request.suppliers.length > 0 ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="truncate text-xs text-muted-foreground/80">{suppliersText}</span>
+              </TooltipTrigger>
+              <TooltipContent>{suppliersText}</TooltipContent>
+            </Tooltip>
+          ) : null}
+        </div>
       </TableCell>
       <TableCell className="px-3 py-2 text-sm text-muted-foreground align-top">
         {request.description ? (
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="block whitespace-normal break-words leading-relaxed">
+              <span className="block line-clamp-3 whitespace-normal break-words leading-relaxed">
                 {request.description}
               </span>
             </TooltipTrigger>
-            <TooltipContent>{request.description}</TooltipContent>
+            <TooltipContent className="max-w-sm whitespace-pre-wrap">{request.description}</TooltipContent>
           </Tooltip>
         ) : (
           "-"
