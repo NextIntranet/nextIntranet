@@ -28,6 +28,15 @@ export interface ActivityLogItem {
   after?: Record<string, unknown> | null
 }
 
+export interface PaginatedActivities {
+  count: number
+  total_pages: number
+  current_page: number
+  next?: string | null
+  previous?: string | null
+  results: ActivityLogItem[]
+}
+
 const ACTIVITY_TYPE_LABELS: Record<string, string> = {
   scan: "Scan",
   packet_created: "Created",

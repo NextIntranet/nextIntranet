@@ -650,6 +650,9 @@ class StockOperation(NIModel):
         verbose_name = _('Stock operation')
         verbose_name_plural = _('Stock operations')
         ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['-timestamp'], name='stockop_time_idx'),
+        ]
 
     packet = models.ForeignKey(Packet, on_delete=models.PROTECT, related_name='operations', verbose_name=_('Packet'))
     reference = UUIDField(default=uuid.uuid4, unique=False, editable=True, verbose_name=_('Reference'), help_text=_('Reference to the stocktaking or other operation.'), blank=True, null=True)
