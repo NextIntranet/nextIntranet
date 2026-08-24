@@ -1,7 +1,10 @@
+from datetime import timedelta
+
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django.db.models import Sum, Q
+from django.db.models import Sum, Q, Count, F, FloatField
+from django.db.models.functions import TruncDate
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
@@ -14,13 +17,52 @@ from nextintranet_warehouse.models import (
     PurchaseStatus,
     Warehouse,
     Category,
+    StockOperation,
 )
 
 User = get_user_model()
 
+# Operation flow classification, mirrors packages/app/src/lib/stockOperations.ts
+IN_TYPES = ('add', 'buy', 'trans_in')
+OUT_TYPES = ('remove', 'sell', 'service', 'trans_out')
+
+TREND_DAYS = 180
+
 
 def _start_of_month(now):
     return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+def _start_of_day(now):
+    return now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def _operations_trend(trend_start, days):
+    """Daily inbound/outbound operation counts, zero-filled so the chart always
+    receives exactly `days` points."""
+    rows = (
+        StockOperation.objects.filter(timestamp__gte=trend_start)
+        .annotate(day=TruncDate('timestamp'))
+        .values('day')
+        .annotate(
+            inbound=Count('id', filter=Q(operation_type__in=IN_TYPES)),
+            outbound=Count('id', filter=Q(operation_type__in=OUT_TYPES)),
+        )
+        .order_by('day')
+    )
+    by_day = {row['day']: row for row in rows}
+
+    first_day = trend_start.date()
+    trend = []
+    for offset in range(days):
+        day = first_day + timedelta(days=offset)
+        row = by_day.get(day)
+        trend.append({
+            'date': day.isoformat(),
+            'inbound': row['inbound'] if row else 0,
+            'outbound': row['outbound'] if row else 0,
+        })
+    return trend
 
 
 class DashboardMetricsAPIView(APIView):
@@ -29,6 +71,9 @@ class DashboardMetricsAPIView(APIView):
     def get(self, request):
         now = timezone.now()
         start_of_month = _start_of_month(now)
+        start_of_day = _start_of_day(now)
+        week_ago = now - timedelta(days=7)
+        trend_start = _start_of_day(now) - timedelta(days=TREND_DAYS - 1)
 
         # Total warehouse components count
         total_components = Component.objects.count()
@@ -85,6 +130,23 @@ class DashboardMetricsAPIView(APIView):
             Q(total_stock=0) | Q(total_stock__isnull=True)
         ).count()
 
+        # Stock operation throughput
+        operations_today = StockOperation.objects.filter(timestamp__gte=start_of_day).count()
+        operations_7d = StockOperation.objects.filter(timestamp__gte=week_ago).count()
+        active_operators_7d = StockOperation.objects.filter(
+            timestamp__gte=week_ago,
+            author__isnull=False,
+        ).values('author').distinct().count()
+
+        # Value bought in this month (FIFO-priced 'buy' operations)
+        purchased_value_this_month = StockOperation.objects.filter(
+            operation_type='buy',
+            timestamp__gte=start_of_month,
+            unit_price__isnull=False,
+        ).aggregate(
+            total=Sum(F('quantity') * F('unit_price'), output_field=FloatField())
+        )['total'] or 0
+
         # Recent purchases (last 10)
         recent_purchases_qs = (
             Purchase.objects.select_related('supplier')
@@ -113,5 +175,10 @@ class DashboardMetricsAPIView(APIView):
             'locations_count': locations_count,
             'categories_count': categories_count,
             'zero_stock_components': zero_stock_components,
+            'operations_today': operations_today,
+            'operations_7d': operations_7d,
+            'active_operators_7d': active_operators_7d,
+            'purchased_value_this_month': float(purchased_value_this_month),
+            'operations_trend': _operations_trend(trend_start, TREND_DAYS),
             'recent_purchases': recent_purchases,
         })

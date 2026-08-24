@@ -39,6 +39,10 @@ from django.db.models import F
 
 from nextintranet_warehouse.models.component import Packet, PacketState, StockOperation, Component, Identifier, WarehouseActivity, SupplierRelation
 from nextintranet_warehouse.models.warehouse import Warehouse
+from nextintranet_warehouse.serializers.activity import (
+    ActivityPagination,
+    WarehouseActivitySerializer,
+)
 from nextintranet_warehouse.models.packet_recalc_job import PacketRecalcJob
 from django_q.tasks import async_task
 
@@ -241,78 +245,6 @@ class StockOperationSerializer(serializers.ModelSerializer):
         full_name = author.get_full_name().strip()
         return full_name or author.username
 
-
-class WarehouseActivitySerializer(serializers.ModelSerializer):
-    user_name = serializers.SerializerMethodField()
-    packet_id = serializers.UUIDField(source="packet.id", read_only=True)
-    component_id = serializers.UUIDField(source="component.id", read_only=True)
-    packet_serial_code = serializers.SerializerMethodField()
-    packet_location_leaf = serializers.SerializerMethodField()
-    stock_operation_id = serializers.UUIDField(source="stock_operation.id", read_only=True)
-    stock_operation_type = serializers.CharField(source="stock_operation.operation_type", read_only=True)
-    quantity = serializers.FloatField(source="stock_operation.quantity", read_only=True)
-    relative_quantity = serializers.BooleanField(source="stock_operation.relative_quantity", read_only=True)
-    unit_price = serializers.FloatField(source="stock_operation.unit_price", read_only=True)
-
-    class Meta:
-        model = WarehouseActivity
-        fields = [
-            "id",
-            "packet_id",
-            "component_id",
-            "packet_serial_code",
-            "packet_location_leaf",
-            "user",
-            "user_name",
-            "occurred_at",
-            "activity_type",
-            "source",
-            "stock_operation_id",
-            "stock_operation_type",
-            "quantity",
-            "relative_quantity",
-            "unit_price",
-            "description",
-            "metadata",
-            "before",
-            "after",
-        ]
-
-    def get_user_name(self, instance):
-        user = instance.user
-        if not user:
-            return None
-        full_name = user.get_full_name().strip()
-        return full_name or user.username
-
-    def get_packet_serial_code(self, instance):
-        packet = instance.packet
-        if not packet:
-            return None
-        return packet.serial_code or None
-
-    def get_packet_location_leaf(self, instance):
-        packet = instance.packet
-        if not packet or not packet.location:
-            return None
-        full_path = packet.location.full_path
-        return full_path.rsplit("/", 1)[-1] if "/" in full_path else full_path
-
-
-class ActivityPagination(PageNumberPagination):
-    page_size = 25
-    page_size_query_param = "page_size"
-    max_page_size = 100
-
-    def get_paginated_response(self, data):
-        return Response({
-            "count": self.page.paginator.count,
-            "total_pages": self.page.paginator.num_pages,
-            "current_page": self.page.number,
-            "next": self.get_next_link(),
-            "previous": self.get_previous_link(),
-            "results": data,
-        })
 
 
 class PacketActivitiesAPIView(APIView):

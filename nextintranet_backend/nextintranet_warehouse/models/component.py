@@ -99,16 +99,16 @@ class Component(NIModel):
         return total_quantity
 
     def min_purchase_price(self):
-        return StockOperation.objects.filter(packet__component=self, operation_type='purchase').aggregate(models.Min('unit_price'))['unit_price__min']
+        return StockOperation.objects.filter(packet__component=self, operation_type='buy').aggregate(models.Min('unit_price'))['unit_price__min']
 
     def max_purchase_price(self):
-        return StockOperation.objects.filter(packet__component=self, operation_type='purchase').aggregate(models.Max('unit_price'))['unit_price__max']
+        return StockOperation.objects.filter(packet__component=self, operation_type='buy').aggregate(models.Max('unit_price'))['unit_price__max']
 
     def average_purchase_price(self):
-        return StockOperation.objects.filter(packet__component=self, operation_type='purchase').aggregate(models.Avg('unit_price'))['unit_price__avg']
+        return StockOperation.objects.filter(packet__component=self, operation_type='buy').aggregate(models.Avg('unit_price'))['unit_price__avg']
 
     def last_purchase_price(self):
-        last_purchase = StockOperation.objects.filter(packet__component=self, operation_type='purchase').order_by('-timestamp').first()
+        last_purchase = StockOperation.objects.filter(packet__component=self, operation_type='buy').order_by('-timestamp').first()
         return last_purchase.unit_price if last_purchase else None
 
     def track_price_history(self, price_type, new_price):
@@ -650,6 +650,9 @@ class StockOperation(NIModel):
         verbose_name = _('Stock operation')
         verbose_name_plural = _('Stock operations')
         ordering = ['-timestamp']
+        indexes = [
+            models.Index(fields=['-timestamp'], name='stockop_time_idx'),
+        ]
 
     packet = models.ForeignKey(Packet, on_delete=models.PROTECT, related_name='operations', verbose_name=_('Packet'))
     reference = UUIDField(default=uuid.uuid4, unique=False, editable=True, verbose_name=_('Reference'), help_text=_('Reference to the stocktaking or other operation.'), blank=True, null=True)
@@ -664,10 +667,6 @@ class StockOperation(NIModel):
     author = models.ForeignKey(User, on_delete=models.SET_NULL, blank=True, null=True, related_name='stock_operations', verbose_name=_('Author'))
 
     @property
-    def next_operation(self):
-        return self.next_operation
-
-    @property
     def operation_price(self):
         return self.quantity * self.unit_price
 
@@ -676,19 +675,19 @@ class StockOperation(NIModel):
 
     @classmethod
     def min_purchase_price(cls):
-        return cls.objects.filter(operation_type='purchase').aggregate(models.Min('unit_price'))['unit_price__min']
+        return cls.objects.filter(operation_type='buy').aggregate(models.Min('unit_price'))['unit_price__min']
 
     @classmethod
     def max_purchase_price(cls):
-        return cls.objects.filter(operation_type='purchase').aggregate(models.Max('unit_price'))['unit_price__max']
+        return cls.objects.filter(operation_type='buy').aggregate(models.Max('unit_price'))['unit_price__max']
 
     @classmethod
     def average_purchase_price(cls):
-        return cls.objects.filter(operation_type='purchase').aggregate(models.Avg('unit_price'))['unit_price__avg']
+        return cls.objects.filter(operation_type='buy').aggregate(models.Avg('unit_price'))['unit_price__avg']
 
     # @classmethod
     # def last_purchase_price(cls):
-    #     last_purchase = cls.objects.filter(operation_type='purchase').order_by('-timestamp').first()
+    #     last_purchase = cls.objects.filter(operation_type='buy').order_by('-timestamp').first()
     #     return last_purchase.unit_price if last_purchase else None
     def save(self, *args, **kwargs):
         is_create = self._state.adding

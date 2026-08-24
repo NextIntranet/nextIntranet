@@ -30,7 +30,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { ExtensionPoint } from "@/plugins/ExtensionPoint"
 import { PrintActions } from "@/components/PrintActions"
-import { ActivityLogTable, type ActivityLogItem } from "@/components/ActivityLogTable"
+import { ActivityLogTable, type PaginatedActivities } from "@/components/ActivityLogTable"
 import { setScannerCapture } from "@/lib/scannerCapture"
 import { IDENTIFIER_SCHEME_OPTIONS } from "@/lib/identifierSchemes"
 import {
@@ -78,16 +78,6 @@ interface PacketDetail {
   external_identifiers?: ExternalIdentifier[]
 }
 
-type WarehouseActivity = ActivityLogItem
-
-interface PaginatedActivities {
-  count: number
-  total_pages: number
-  current_page: number
-  next?: string | null
-  previous?: string | null
-  results: WarehouseActivity[]
-}
 
 interface PacketHistoryEntry {
   timestamp: string

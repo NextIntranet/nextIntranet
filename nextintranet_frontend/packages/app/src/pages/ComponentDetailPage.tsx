@@ -92,7 +92,7 @@ import {
 import { cn } from "@/lib/utils"
 import { PriceLabel } from "@/components/PriceLabel"
 import { PacketOperationSheet } from "@/components/PacketOperationSheet"
-import { ActivityLogTable } from "@/components/ActivityLogTable"
+import { ActivityLogTable, type PaginatedActivities } from "@/components/ActivityLogTable"
 import { MarkdownView } from "@/components/MarkdownView"
 import { RequestComponentSheet } from "@/components/RequestComponentSheet"
 import { packetStateLabel } from "@/lib/packetState"
@@ -222,36 +222,6 @@ interface ComponentHistoryEntry {
 interface ComponentHistoryResponse {
   packets: Array<{ id: string; label: string }>
   history: ComponentHistoryEntry[]
-}
-
-interface ComponentActivity {
-  id: string
-  packet_id?: string | null
-  packet_label?: string | null
-  packet_serial_code?: string | null
-  packet_location_leaf?: string | null
-  activity_type: string
-  source: string
-  occurred_at: string
-  user_name?: string | null
-  stock_operation_id?: string | null
-  stock_operation_type?: string | null
-  quantity?: number | null
-  relative_quantity?: boolean | null
-  unit_price?: number | null
-  description?: string | null
-  before?: Record<string, unknown> | null
-  after?: Record<string, unknown> | null
-  metadata?: Record<string, unknown> | null
-}
-
-interface PaginatedActivities {
-  count: number
-  total_pages: number
-  current_page: number
-  next?: string | null
-  previous?: string | null
-  results: ComponentActivity[]
 }
 
 interface UsedInManufacturing {

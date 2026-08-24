@@ -31,6 +31,7 @@ from .views.packets import (
     PacketIdentifierListCreateAPIView,
     PacketIdentifierDetailAPIView,
 )
+from .views.activity import WarehouseActivityListAPIView
 from .views.tags import TagListAPIView
 from .views.supplier import SupplierRouter, SupplierRelationRouter, ComponentSuppliersRelationCreateAPIView, ComponentSuppliersRelationListAPIView, SupplierListCreateAPIView, SupplierDetailAPIView, SupplierRelationViewSet
 # from .views.parameters import ParameterTypeListAPIView, ParameterTypeDetailAPIView, ComponentParameterDetailAPIView
@@ -58,6 +59,7 @@ urlpatterns = [
     path('components/', ComponentListAPIView.as_view(), name='api_warehouse_components'),
     path('component/<uuid:pk>/', ComponentDetailAPIView.as_view(), name='api_warehouse_component_detail'),
     path('component/<uuid:pk>/duplicate/', ComponentDuplicateAPIView.as_view(), name='api_warehouse_component_duplicate'),
+    path('activity/', WarehouseActivityListAPIView.as_view(), name='api_warehouse_activity'),
     path('component/<uuid:pk>/activities/', ComponentActivitiesAPIView.as_view(), name='api_warehouse_component_activities'),
     path('component/<uuid:pk>/history/', ComponentHistoryAPIView.as_view(), name='api_warehouse_component_history'),
     path('component/<uuid:pk>/identifiers/', ComponentIdentifierListCreateAPIView.as_view(), name='api_warehouse_component_identifiers'),
