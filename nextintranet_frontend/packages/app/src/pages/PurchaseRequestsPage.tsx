@@ -1,9 +1,17 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiFetch } from "@nextintranet/core"
-import { DndContext, DragEndEvent, DragStartEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core"
-import { FolderPlus, Pencil, Plus } from "lucide-react"
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core"
+import { Folder, FolderPlus, Package, Pencil, Plus } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -14,9 +22,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { TooltipProvider } from "@/components/ui/tooltip"
-import { PurchaseRequestFolderRow } from "@/components/purchase-requests/PurchaseRequestFolderRow"
 import { PurchaseRequestTable } from "@/components/purchase-requests/PurchaseRequestTable"
-import { UngroupedSection } from "@/components/purchase-requests/UngroupedSection"
 import {
   FOLDER_DRAG_PREFIX,
   FolderNode,
@@ -24,6 +30,8 @@ import {
   PurchaseRequestFolder,
   REQUEST_DRAG_PREFIX,
   ROOT_DROP_ID,
+  UNGROUPED_ID,
+  buildVisibleRows,
   isDescendantFolder,
   suppliersTooltip,
 } from "@/components/purchase-requests/types"
@@ -94,6 +102,42 @@ export function PurchaseRequestsPage() {
   const ungroupedRequests = useMemo(
     () => requests.filter((request) => !request.folder_id),
     [requests],
+  )
+
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set([UNGROUPED_ID]))
+  const hasSeededExpand = useRef(false)
+
+  useEffect(() => {
+    if (hasSeededExpand.current || folders.length === 0) {
+      return
+    }
+    hasSeededExpand.current = true
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      for (const folder of folders) {
+        if (!folder.parent) {
+          next.add(folder.id)
+        }
+      }
+      return next
+    })
+  }, [folders])
+
+  const toggleExpand = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  const visibleRows = useMemo(
+    () => buildVisibleRows(folderTree, ungroupedRequests, expandedIds),
+    [folderTree, ungroupedRequests, expandedIds],
   )
 
   const { data: requestDetail, isLoading: isDetailLoading } = useQuery<PurchaseRequest>({
@@ -258,11 +302,13 @@ export function PurchaseRequestsPage() {
   }
 
   const [blockedDropFolderIds, setBlockedDropFolderIds] = useState<Set<string>>(new Set())
+  const [activeDragId, setActiveDragId] = useState<string | null>(null)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
   const handleDragStart = (event: DragStartEvent) => {
     const activeId = String(event.active.id)
+    setActiveDragId(activeId)
     if (!activeId.startsWith(FOLDER_DRAG_PREFIX)) {
       return
     }
@@ -278,6 +324,7 @@ export function PurchaseRequestsPage() {
 
   const handleDragEnd = (event: DragEndEvent) => {
     setBlockedDropFolderIds(new Set())
+    setActiveDragId(null)
     const { active, over } = event
     if (!over) {
       return
@@ -316,6 +363,32 @@ export function PurchaseRequestsPage() {
       updateFolderMutation.mutate({ folderId, payload: { parent: targetParentId } })
     }
   }
+
+  const handleDragCancel = () => {
+    setBlockedDropFolderIds(new Set())
+    setActiveDragId(null)
+  }
+
+  const activeDragLabel = useMemo(() => {
+    if (!activeDragId) {
+      return null
+    }
+    if (activeDragId.startsWith(REQUEST_DRAG_PREFIX)) {
+      const request = requests.find((r) => r.id === activeDragId.slice(REQUEST_DRAG_PREFIX.length))
+      if (!request) {
+        return null
+      }
+      return { type: "request" as const, label: request.component_name || request.item_name || "Unknown item" }
+    }
+    if (activeDragId.startsWith(FOLDER_DRAG_PREFIX)) {
+      const folder = folders.find((f) => f.id === activeDragId.slice(FOLDER_DRAG_PREFIX.length))
+      if (!folder) {
+        return null
+      }
+      return { type: "folder" as const, label: folder.name }
+    }
+    return null
+  }, [activeDragId, requests, folders])
 
   const handleOpen = (requestId: string) => {
     navigate(`/store/purchase-requests/${requestId}`)
@@ -414,7 +487,7 @@ export function PurchaseRequestsPage() {
 
   return (
     <TooltipProvider>
-      <div className="mx-auto max-w-7xl px-4 py-6 lg:px-6">
+      <div className="w-full px-4 py-6 lg:px-6">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold text-foreground">Purchase requests</h1>
@@ -446,35 +519,38 @@ export function PurchaseRequestsPage() {
               <Skeleton className="h-5 w-2/3" />
             </div>
           ) : (
-            <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-              <div className="space-y-2">
-                {folderTree.map((node) => (
-                  <PurchaseRequestFolderRow
-                    key={node.id}
-                    node={node}
-                    level={0}
-                    canEdit={!!canEdit}
-                    deletePending={deleteMutation.isPending}
-                    onOpenRequest={handleOpen}
-                    onDeleteRequest={(requestId) => deleteMutation.mutate(requestId)}
-                    onCreateSubfolder={handleCreateFolder}
-                    onRenameFolder={handleRenameFolder}
-                    onDeleteFolder={handleDeleteFolder}
-                    blockedDropFolderIds={blockedDropFolderIds}
-                  />
-                ))}
-              </div>
+            <DndContext
+              sensors={sensors}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              onDragCancel={handleDragCancel}
+            >
+              <PurchaseRequestTable
+                rows={visibleRows}
+                canEdit={!!canEdit}
+                deletePending={deleteMutation.isPending}
+                onOpenRequest={handleOpen}
+                onDeleteRequest={(requestId) => deleteMutation.mutate(requestId)}
+                expandedIds={expandedIds}
+                onToggleExpand={toggleExpand}
+                onCreateSubfolder={handleCreateFolder}
+                onRenameFolder={handleRenameFolder}
+                onDeleteFolder={handleDeleteFolder}
+                blockedDropFolderIds={blockedDropFolderIds}
+              />
 
-              <UngroupedSection>
-                <PurchaseRequestTable
-                  requests={ungroupedRequests}
-                  canEdit={!!canEdit}
-                  deletePending={deleteMutation.isPending}
-                  onOpen={handleOpen}
-                  onDelete={(requestId) => deleteMutation.mutate(requestId)}
-                  emptyLabel="No ungrouped purchase requests."
-                />
-              </UngroupedSection>
+              <DragOverlay>
+                {activeDragLabel ? (
+                  <div className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm font-medium text-foreground shadow-lg">
+                    {activeDragLabel.type === "folder" ? (
+                      <Folder className="h-4 w-4 text-muted-foreground" />
+                    ) : (
+                      <Package className="h-4 w-4 text-muted-foreground" />
+                    )}
+                    <span className="max-w-xs truncate">{activeDragLabel.label}</span>
+                  </div>
+                ) : null}
+              </DragOverlay>
             </DndContext>
           )}
         </div>
