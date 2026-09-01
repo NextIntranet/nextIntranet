@@ -68,7 +68,7 @@ Source-of-truth companion: `CLAUDE.md` covers the same stack in more detail.
 ## MCP server
 
 - Exposed at `/mcp` via `django-mcp-server`; tools live in `nextintranet_warehouse/mcp_tools.py`.
-- Auth: `X-Service-Token` header, scopes `mcp:read` / `mcp:write`.
+- Auth: `X-Service-Token` header (alias: `X-Application-Key`), scopes `mcp:read` / `mcp:write`.
 - After MCP changes, restart **all** `web` replicas together. Mixed versions behind a load balancer cause intermittent `Unknown tool` errors.
 
 ## Hardware agent & KiCad

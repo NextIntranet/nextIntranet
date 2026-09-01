@@ -31,6 +31,7 @@ auth and are meant for system integrations.
 Use one of:
 
 - `X-Service-Token: <token>`
+- `X-Application-Key: <token>` — alias for clients that cannot set `X-Service-Token`
 - `Authorization: Service <token>`
 
 ## Create a token

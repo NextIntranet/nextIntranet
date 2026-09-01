@@ -19,8 +19,10 @@ def debug_middleware(get_response):
     def middleware(request):
         authorization = request.META.get("HTTP_AUTHORIZATION")
         service_token = request.META.get("HTTP_X_SERVICE_TOKEN")
+        application_key = request.META.get("HTTP_X_APPLICATION_KEY")
         print(f"Authorization Header: {_mask_secret(authorization)}")
         print(f"Service Token Header: {_mask_secret(service_token)}")
+        print(f"Application Key Header: {_mask_secret(application_key)}")
         print(f"User: {request.user}")
         return get_response(request)
     return middleware
@@ -89,7 +91,7 @@ class LoginRequiredMiddleware:
         return any(request.path.startswith(path) for path in exempt_paths)
 
     def _has_service_token_header(self, request):
-        if request.headers.get("X-Service-Token"):
+        if request.headers.get("X-Service-Token") or request.headers.get("X-Application-Key"):
             return True
         auth_header = request.headers.get("Authorization", "")
         auth_header_lower = auth_header.lower()
