@@ -107,7 +107,7 @@ Commit `package.json` and `pnpm-lock.yaml` together, otherwise Docker build fail
 ## MCP server
 
 - Exposed at `/mcp`, implemented in `nextintranet_warehouse/mcp_tools.py` (warehouse/inventory) and `nextintranet_production/mcp_tools.py` (production BOMs). Each app registers its toolsets via `apps.py` `ready()` → `mcp.py`.
-- Auth: `X-Service-Token` header, scopes `mcp:read` / `mcp:write`.
+- Auth: `X-Service-Token` header (alias: `X-Application-Key`), scopes `mcp:read` / `mcp:write`.
 - After deploying MCP changes, restart **all** `web` replicas together — mixed versions cause intermittent `Unknown tool` errors.
 
 ## Plugin system

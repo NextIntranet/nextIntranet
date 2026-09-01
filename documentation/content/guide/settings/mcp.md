@@ -202,7 +202,7 @@ The first `image` document on a component is set as primary automatically; use `
 ## Architecture
 
 - Backend: `django-mcp-server` library, toolsets in `nextintranet_warehouse/mcp_tools.py`
-- Auth: ServiceToken with `mcp:read` / `mcp:write` scopes via `X-Service-Token` header
+- Auth: ServiceToken with `mcp:read` / `mcp:write` scopes via `X-Service-Token` header (or the `X-Application-Key` alias)
 - Nginx proxies `/mcp` to the Django container with SSE buffering disabled
 
 See also [Service tokens](service-tokens.md) for token mechanics shared with printers and other integrations.

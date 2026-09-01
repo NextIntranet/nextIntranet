@@ -9,6 +9,8 @@ from nextintranet_backend.models.serviceToken import ServiceToken
 
 
 SERVICE_TOKEN_HEADER = "X-Service-Token"
+# Alias header for clients that cannot send X-Service-Token (same "<prefix>.<secret>" value).
+APPLICATION_KEY_HEADER = "X-Application-Key"
 
 
 def hash_service_token(raw_token):
@@ -81,9 +83,10 @@ class ServiceTokenAuthentication(BaseAuthentication):
         return ServiceTokenPrincipal(token), token
 
     def _get_raw_token(self, request):
-        header_token = request.headers.get(SERVICE_TOKEN_HEADER)
-        if header_token:
-            return header_token.strip()
+        for header in (SERVICE_TOKEN_HEADER, APPLICATION_KEY_HEADER):
+            header_token = request.headers.get(header)
+            if header_token:
+                return header_token.strip()
 
         auth_header = request.headers.get("Authorization")
         if not auth_header:
