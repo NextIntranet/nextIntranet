@@ -48,6 +48,7 @@ typing_extensions>=4.12.2
 zope.interface>=7.2
 psycopg2
 fpdf2
+openpyxl
 # pylibdmtx
 # pyStrich
 treepoem

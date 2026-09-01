@@ -1,6 +1,6 @@
 import { FormEvent, Fragment, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { IBOM_EVENT_TYPES, apiFetch, getRealtimeClient, nextIO, tokenStorage, useIbomBridge } from "@nextintranet/core"
+import { IBOM_EVENT_TYPES, apiFetch, getApiConfig, getRealtimeClient, nextIO, tokenStorage, useIbomBridge } from "@nextintranet/core"
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core"
 import {
   AlertTriangle,
@@ -35,6 +35,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ComponentInfoPopover } from "@/components/ComponentInfoPopover"
 import { ComponentSearchSheet, type SearchComponentItem } from "@/components/ComponentSearchSheet"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { PacketRef } from "@/components/PacketRef"
 import { PacketSelectSheet, type PacketLineProgress, type PacketSelectItem } from "@/components/PacketSelectSheet"
 import { ScanActionDialog, type ScanActionTarget } from "@/components/ScanActionDialog"
@@ -973,6 +974,27 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     },
     onError: () => toast.error("Failed to duplicate BOM."),
   })
+
+  const downloadBomExport = useCallback(async (targetBomId: string, exportFormat: "csv" | "xlsx") => {
+    try {
+      const cfg = getApiConfig()
+      const url = `${cfg.baseUrl}/api/v1/production/templates/${targetBomId}/export/?format=${exportFormat}`
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${cfg.getToken()}` } })
+      if (!res.ok) throw new Error(res.statusText)
+      const blob = await res.blob()
+      const disp = res.headers.get("Content-Disposition")
+      const match = disp?.match(/filename="?([^";]+)"?/)
+      const filename = match?.[1] ?? `bom-${targetBomId}.${exportFormat}`
+      const a = document.createElement("a")
+      a.href = URL.createObjectURL(blob)
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(a.href)
+      toast.success(`BOM exported as ${exportFormat.toUpperCase()}.`)
+    } catch {
+      toast.error(`Failed to export BOM as ${exportFormat.toUpperCase()}.`)
+    }
+  }, [])
 
   const lockBomMutation = useMutation({
     mutationFn: (targetBomId: string) =>
@@ -2336,6 +2358,22 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                 Create working series
               </Button>
             ) : null}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" variant="outline" size="sm" className="gap-1.5">
+                  <Download className="h-4 w-4" />
+                  Export BOM
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => downloadBomExport(bomId, "csv")}>
+                  Download as CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => downloadBomExport(bomId, "xlsx")}>
+                  Download as XLSX
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button
               type="button"
               variant="outline"

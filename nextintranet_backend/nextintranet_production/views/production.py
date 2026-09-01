@@ -13,6 +13,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.db.models import Max
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from fpdf import FPDF
@@ -65,6 +66,8 @@ from nextintranet_production.services.bom import (
     assign_component_to_refs as _assign_component_to_refs,
     unlink_component as _unlink_component,
     bom_availability_rows as _bom_availability_rows,
+    bom_export_csv as _bom_export_csv,
+    bom_export_xlsx as _bom_export_xlsx,
 )
 
 
@@ -1201,6 +1204,31 @@ class TemplateViewSet(viewsets.ModelViewSet):
         if home_location_full_path is not None:
             payload["home_location_full_path"] = home_location_full_path
         return Response(payload)
+
+    @action(detail=True, methods=["get"], url_path="export")
+    def export(self, request, pk=None):
+        template = self.get_object()
+        export_format = (request.query_params.get("format") or "csv").lower()
+        include_dnp = str(request.query_params.get("include_dnp", "true")).lower() == "true"
+        short_id = str(template.id).replace("-", "")[:8]
+        filename_base = f"bom-{template.name}-{short_id}".replace(" ", "_")
+
+        if export_format == "xlsx":
+            content = _bom_export_xlsx(template, include_dnp)
+            response = HttpResponse(
+                content,
+                content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+            response["Content-Disposition"] = f'attachment; filename="{filename_base}.xlsx"'
+            return response
+
+        if export_format != "csv":
+            return Response({"error": "Unsupported format. Use 'csv' or 'xlsx'."}, status=status.HTTP_400_BAD_REQUEST)
+
+        content = _bom_export_csv(template, include_dnp)
+        response = HttpResponse(content, content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = f'attachment; filename="{filename_base}.csv"'
+        return response
 
     @action(detail=True, methods=["post"], url_path="scan")
     @transaction.atomic

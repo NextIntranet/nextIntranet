@@ -3,11 +3,14 @@
 Kept separate from views/production.py so the MCP tools don't have to import
 private helpers out of a view module.
 """
+import csv
+import io
 from decimal import Decimal
 from typing import Any
 
 from django.db.models import Sum
 from django.utils import timezone
+from openpyxl import Workbook
 
 from nextintranet_warehouse.models.component import Component, Packet, Reservation, StockOperation
 from nextintranet_warehouse.services.activity import log_activity
@@ -241,6 +244,70 @@ def bom_availability_rows(template, home_location_ids: set | None = None) -> lis
             row["total_in_home"] = total_in_home
         rows.append(row)
     return rows
+
+
+BOM_EXPORT_HEADER = [
+    "Ref",
+    "Value",
+    "Footprint",
+    "Datasheet",
+    "Description",
+    "Qty per board",
+    "Qty needed",
+    "DNP",
+    "Exclude from BOM",
+    "Linked component",
+    "Notes",
+]
+
+
+def bom_export_rows(template, include_dnp: bool = True) -> list[list]:
+    """Flat rows for a BOM export (CSV/XLSX), one row per BOM line."""
+    lines = template.components.select_related("component").order_by("position", "id")
+    if not include_dnp:
+        lines = lines.filter(dnp=False, exclude_from_bom=False)
+
+    rows = []
+    for line in lines:
+        needed_total = line_needed_total(line, template.qty_planned)
+        rows.append([
+            line.ref_group or "",
+            line.value or "",
+            line.footprint or "",
+            line.datasheet or "",
+            line.bom_description or "",
+            safe_float(line.qty_per_board),
+            float(needed_total),
+            "Yes" if line.dnp else "No",
+            "Yes" if line.exclude_from_bom else "No",
+            line.component.name if line.component else "",
+            line.notes or "",
+        ])
+    return rows
+
+
+def bom_export_csv(template, include_dnp: bool = True) -> str:
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(BOM_EXPORT_HEADER)
+    writer.writerows(bom_export_rows(template, include_dnp))
+    return buffer.getvalue()
+
+
+def bom_export_xlsx(template, include_dnp: bool = True) -> bytes:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "BOM"
+    sheet.append(BOM_EXPORT_HEADER)
+    for row in bom_export_rows(template, include_dnp):
+        sheet.append(row)
+    for column_cells in sheet.columns:
+        length = max(len(str(cell.value)) if cell.value is not None else 0 for cell in column_cells)
+        sheet.column_dimensions[column_cells[0].column_letter].width = min(max(length + 2, 10), 60)
+
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
 
 
 def merge_lines(target: TemplateComponent, source: TemplateComponent) -> TemplateComponent:
