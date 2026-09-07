@@ -39,6 +39,7 @@ import { PacketRef } from "@/components/PacketRef"
 import { PacketSelectSheet, type PacketLineProgress, type PacketSelectItem } from "@/components/PacketSelectSheet"
 import { ScanActionDialog, type ScanActionTarget } from "@/components/ScanActionDialog"
 import { Input } from "@/components/ui/input"
+import { LocationParentSelect } from "@/components/LocationParentSelect"
 import { ProductionTree } from "@/components/production/ProductionTree"
 import {
   FOLDER_DRAG_PREFIX,
@@ -64,6 +65,13 @@ type Paginated<T> = {
 }
 
 type FolderNode = ProductionFolderNode
+
+type LocationNode = {
+  id: string
+  name: string
+  full_path: string
+  children?: LocationNode[]
+}
 
 type ProductListItem = {
   id: string
@@ -810,6 +818,13 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     queryKey: ["production-availability", bomId],
     queryFn: () => apiFetch<AvailabilityResponse>(`/api/v1/production/templates/${bomId}/availability/`),
     enabled: isBomView && !!bomId,
+  })
+
+  const { data: locationsTree } = useQuery<LocationNode[]>({
+    queryKey: ["locations-tree"],
+    queryFn: () => apiFetch<LocationNode[]>("/api/v1/store/location/tree/"),
+    enabled: isBomView,
+    staleTime: 5 * 60 * 1000,
   })
 
   const { data: reservationsData } = useQuery<Reservation[] | { results: Reservation[] }>({
@@ -1733,12 +1748,37 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     },
     [sideByRef],
   )
+  // Filter by warehouse location subtree: shows only the components you'd pass while
+  // physically walking that shelf/rack, using the same location tree as the Locations page.
+  const [locationFilterId, setLocationFilterId] = useState<string | null>(null)
+  const locationFilterPath = useMemo(() => {
+    if (!locationFilterId || !locationsTree) return null
+    const stack = [...locationsTree]
+    while (stack.length) {
+      const node = stack.shift()!
+      if (node.id === locationFilterId) return node.full_path
+      if (node.children) stack.push(...node.children)
+    }
+    return null
+  }, [locationFilterId, locationsTree])
+  const matchesLocationFilter = useCallback(
+    (row: ScannerRow) => {
+      if (!locationFilterPath) return true
+      const availability = availabilityByLineId.get(row.id)
+      const locations = availability?.locations || []
+      return locations.some(
+        (loc) => loc.location === locationFilterPath || loc.location?.startsWith(`${locationFilterPath} / `),
+      )
+    },
+    [availabilityByLineId, locationFilterPath],
+  )
   const visibleAssemblyRows = useMemo(
     () =>
-      sideFilter === "all"
-        ? assemblyRows
-        : assemblyRows.filter((row) => resolvedSideOf(row) === "both" || resolvedSideOf(row) === sideFilter),
-    [assemblyRows, resolvedSideOf, sideFilter],
+      assemblyRows.filter((row) => {
+        const sideOk = sideFilter === "all" || resolvedSideOf(row) === "both" || resolvedSideOf(row) === sideFilter
+        return sideOk && matchesLocationFilter(row)
+      }),
+    [assemblyRows, matchesLocationFilter, resolvedSideOf, sideFilter],
   )
   const notAssembledRows = useMemo(
     () => scannerRows.filter((row) => row.dnp || row.exclude_from_bom),
@@ -2899,6 +2939,15 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                     {label}
                                   </button>
                                 ))}
+                              </div>
+                              <div className="w-56" title="Only show components stocked in this location or below it">
+                                <LocationParentSelect
+                                  locations={locationsTree || []}
+                                  value={locationFilterId}
+                                  onChange={setLocationFilterId}
+                                  emptyLabel="All locations"
+                                  placeholder="Filter by location"
+                                />
                               </div>
                               <span className="mx-1 h-6 w-px bg-border" />
                               {(() => {
