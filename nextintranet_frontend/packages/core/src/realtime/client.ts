@@ -180,6 +180,13 @@ export class RealtimeClient {
   private handleMessage(data: string): void {
     try {
       const parsed = JSON.parse(data) as RealtimeEvent;
+      // Broadcast events carry the originating stationId for context, but a
+      // client only cares about its own station's activity: an event tagged
+      // for a different station is noise here and would just trigger a
+      // pointless redraw.
+      if (parsed.stationId && this.currentStationId && parsed.stationId !== this.currentStationId) {
+        return;
+      }
       this.messageHandlers.forEach(handler => handler(parsed));
     } catch {
       // Ignore malformed payloads

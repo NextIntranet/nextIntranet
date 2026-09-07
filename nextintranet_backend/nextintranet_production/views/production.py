@@ -927,6 +927,7 @@ class TemplateViewSet(viewsets.ModelViewSet):
                 "qty_per_board": line.qty_per_board,
                 "dnp": line.dnp,
                 "exclude_from_bom": line.exclude_from_bom,
+                "side": line.side,
                 "component_id": str(line.component_id) if line.component_id else None,
                 "component_name": line.component.name if line.component else None,
             }

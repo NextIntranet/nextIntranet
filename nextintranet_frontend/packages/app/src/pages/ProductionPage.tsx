@@ -39,6 +39,7 @@ import { PacketRef } from "@/components/PacketRef"
 import { PacketSelectSheet, type PacketLineProgress, type PacketSelectItem } from "@/components/PacketSelectSheet"
 import { ScanActionDialog, type ScanActionTarget } from "@/components/ScanActionDialog"
 import { Input } from "@/components/ui/input"
+import { LocationParentSelect } from "@/components/LocationParentSelect"
 import { ProductionTree } from "@/components/production/ProductionTree"
 import {
   FOLDER_DRAG_PREFIX,
@@ -64,6 +65,13 @@ type Paginated<T> = {
 }
 
 type FolderNode = ProductionFolderNode
+
+type LocationNode = {
+  id: string
+  name: string
+  full_path: string
+  children?: LocationNode[]
+}
 
 type ProductListItem = {
   id: string
@@ -113,6 +121,7 @@ type BomRow = {
   bom_description?: string | null
   dnp: boolean
   exclude_from_bom: boolean
+  side: "both" | "top" | "bottom"
   needs_review: boolean
   import_snapshot?: Record<string, unknown> | null
   sourced_total?: string | number | null
@@ -759,7 +768,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     return toSameOriginS3Url(selectedBom?.ibom_file_url || selectedBom?.ibom_url || null)
   }, [selectedBom?.ibom_file_url, selectedBom?.ibom_url])
 
-  const { highlightInIbom, sendBarcodeScan, syncIbomState, ibomConnected, highlightedRefs } = useIbomBridge(
+  const { highlightInIbom, sendBarcodeScan, syncIbomState, ibomConnected, highlightedRefs, sideByRef } = useIbomBridge(
     isBomView && bomId ? bomId : null,
   )
 
@@ -809,6 +818,13 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     queryKey: ["production-availability", bomId],
     queryFn: () => apiFetch<AvailabilityResponse>(`/api/v1/production/templates/${bomId}/availability/`),
     enabled: isBomView && !!bomId,
+  })
+
+  const { data: locationsTree } = useQuery<LocationNode[]>({
+    queryKey: ["locations-tree"],
+    queryFn: () => apiFetch<LocationNode[]>("/api/v1/store/location/tree/"),
+    enabled: isBomView,
+    staleTime: 5 * 60 * 1000,
   })
 
   const { data: reservationsData } = useQuery<Reservation[] | { results: Reservation[] }>({
@@ -1678,6 +1694,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
       const representative = group.find((line) => !line.dnp) || group[0]
       const values = new Set(group.map((line) => line.value).filter(Boolean))
       const footprints = new Set(group.map((line) => line.footprint).filter(Boolean))
+      const sides = new Set(group.map((line) => line.side || "both"))
 
       rows.push({
         ...representative,
@@ -1686,6 +1703,8 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
         qty_per_board: group.reduce((sum, line) => sum + toNumber(line.qty_per_board), 0),
         value: values.size === 1 ? representative.value : `(${values.size} values)`,
         footprint: footprints.size === 1 ? representative.footprint : `(${footprints.size} footprints)`,
+        // Mixed-side groups fall back to "both" so the filter never hides them entirely.
+        side: sides.size === 1 ? representative.side : "both",
         // A component only counts as not assembled when none of its lines are assembled.
         dnp: group.every((line) => line.dnp),
         exclude_from_bom: group.every((line) => line.exclude_from_bom),
@@ -1711,6 +1730,55 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
   const assemblyRows = useMemo(
     () => scannerRows.filter((row) => !row.dnp && !row.exclude_from_bom),
     [scannerRows],
+  )
+
+  // Which PCB side is being worked on right now. This only narrows what's shown/scanned
+  // here — it must never affect assemblyRows/ibomCompletionRefs below, otherwise
+  // already-placed components on the other side would lose their iBOM checkmark.
+  const [sideFilter, setSideFilter] = useState<"all" | "top" | "bottom">("all")
+  // A manual side tag on the line wins; otherwise fall back to the PCB's own layer
+  // data (from the loaded iBOM) so the filter works without tagging every line by hand.
+  const resolvedSideOf = useCallback(
+    (row: ScannerRow): "both" | "top" | "bottom" => {
+      if (row.side && row.side !== "both") return row.side
+      if (!sideByRef) return "both"
+      const refs = Array.isArray(row.refs) ? row.refs : []
+      const sides = new Set(refs.map((ref) => sideByRef[ref]).filter(Boolean))
+      return sides.size === 1 ? ([...sides][0] as "top" | "bottom") : "both"
+    },
+    [sideByRef],
+  )
+  // Filter by warehouse location subtree: shows only the components you'd pass while
+  // physically walking that shelf/rack, using the same location tree as the Locations page.
+  const [locationFilterId, setLocationFilterId] = useState<string | null>(null)
+  const locationFilterPath = useMemo(() => {
+    if (!locationFilterId || !locationsTree) return null
+    const stack = [...locationsTree]
+    while (stack.length) {
+      const node = stack.shift()!
+      if (node.id === locationFilterId) return node.full_path
+      if (node.children) stack.push(...node.children)
+    }
+    return null
+  }, [locationFilterId, locationsTree])
+  const matchesLocationFilter = useCallback(
+    (row: ScannerRow) => {
+      if (!locationFilterPath) return true
+      const availability = availabilityByLineId.get(row.id)
+      const locations = availability?.locations || []
+      return locations.some(
+        (loc) => loc.location === locationFilterPath || loc.location?.startsWith(`${locationFilterPath} / `),
+      )
+    },
+    [availabilityByLineId, locationFilterPath],
+  )
+  const visibleAssemblyRows = useMemo(
+    () =>
+      assemblyRows.filter((row) => {
+        const sideOk = sideFilter === "all" || resolvedSideOf(row) === "both" || resolvedSideOf(row) === sideFilter
+        return sideOk && matchesLocationFilter(row)
+      }),
+    [assemblyRows, matchesLocationFilter, resolvedSideOf, sideFilter],
   )
   const notAssembledRows = useMemo(
     () => scannerRows.filter((row) => row.dnp || row.exclude_from_bom),
@@ -2848,6 +2916,39 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                 <option value="grouped">Grouped</option>
                                 <option value="component">By component</option>
                               </select>
+                              <div
+                                className="inline-flex overflow-hidden rounded-md border border-input"
+                                title="Filter which PCB side is being populated"
+                              >
+                                {(
+                                  [
+                                    { key: "all", label: "Both sides" },
+                                    { key: "top", label: "Top" },
+                                    { key: "bottom", label: "Bottom" },
+                                  ] as const
+                                ).map(({ key, label }) => (
+                                  <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => setSideFilter(key)}
+                                    className={cn(
+                                      "h-8 px-2.5 text-sm border-r border-input last:border-r-0",
+                                      sideFilter === key ? "bg-secondary font-medium" : "bg-background hover:bg-accent",
+                                    )}
+                                  >
+                                    {label}
+                                  </button>
+                                ))}
+                              </div>
+                              <div className="w-56" title="Only show components stocked in this location or below it">
+                                <LocationParentSelect
+                                  locations={locationsTree || []}
+                                  value={locationFilterId}
+                                  onChange={setLocationFilterId}
+                                  emptyLabel="All locations"
+                                  placeholder="Filter by location"
+                                />
+                              </div>
                               <span className="mx-1 h-6 w-px bg-border" />
                               {(() => {
                                 const linkedLines = selectedBomComponents.filter(
@@ -3281,6 +3382,22 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                               <EyeOff className="h-3.5 w-3.5" />
                                             </BomLineAction>
                                             <BomLineAction
+                                              title={`PCB side: ${line.side === "both" ? "both" : line.side} — click to change`}
+                                              active={line.side !== "both"}
+                                              disabled={isBomClosed(selectedBom.status)}
+                                              onClick={() => {
+                                                const next = line.side === "both" ? "top" : line.side === "top" ? "bottom" : "both"
+                                                updateLineMutation.mutate({
+                                                  lineId,
+                                                  payload: { side: next },
+                                                })
+                                              }}
+                                            >
+                                              <span className="text-[10px] font-semibold leading-none">
+                                                {line.side === "top" ? "T" : line.side === "bottom" ? "B" : "—"}
+                                              </span>
+                                            </BomLineAction>
+                                            <BomLineAction
                                               title="Delete this BOM line"
                                               destructive
                                               disabled={isBomClosed(selectedBom.status)}
@@ -3441,14 +3558,14 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                 </TableHeader>
                                 <TableBody>
                                   {scannerRows.length > 0 ? (
-                                    [...assemblyRows, ...notAssembledRows].map((row, rowIndex) => {
+                                    [...visibleAssemblyRows, ...notAssembledRows].map((row, rowIndex) => {
                                       const ibomHighlighted = highlightedRefs && (row.refs || []).some((r: string) => highlightedRefs.includes(r))
                                       const rowRefs = (row.refs || []).map((r) => [r, toNumber(row.qty_per_board) || 1] as [string, number])
                                       // DNP / BOM-excluded rows are kept visible but greyed out at the end.
                                       const notAssembled = row.dnp || row.exclude_from_bom
                                       return (
                                       <Fragment key={row.id}>
-                                        {notAssembled && rowIndex === assemblyRows.length ? (
+                                        {notAssembled && rowIndex === visibleAssemblyRows.length ? (
                                           <TableRow className="bg-muted/40 hover:bg-muted/40">
                                             <TableCell colSpan={5} className="py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                                               Not assembled — DNP or excluded from BOM
