@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { apiFetch } from "@nextintranet/core"
 import { Loader2 } from "lucide-react"
@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { cn } from "@/lib/utils"
 
 export type ScanOperation = "FIND" | "SOURCED" | "PLACED"
 
@@ -109,16 +110,28 @@ export function ScanActionDialog({
 
   const bags = useMemo(() => {
     const rows = unwrap(data).filter((p) => p.is_active !== false && toNumber(p.count) > 0)
-    if (!homePath) return rows
+    // The bag that was just scanned always leads, then home-location bags, then the rest.
     return rows
       .map((packet, index) => ({ packet, index }))
       .sort((a, b) => {
+        const aScanned = a.packet.id === target?.barcode ? 0 : 1
+        const bScanned = b.packet.id === target?.barcode ? 0 : 1
+        if (aScanned !== bScanned) return aScanned - bScanned
         const ah = isInHome(a.packet, homePath) ? 0 : 1
         const bh = isInHome(b.packet, homePath) ? 0 : 1
         return ah - bh || a.index - b.index
       })
       .map((entry) => entry.packet)
-  }, [data, homePath])
+  }, [data, homePath, target?.barcode])
+
+  const scannedBagRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (!open) return
+    const handle = window.setTimeout(() => {
+      scannedBagRef.current?.scrollIntoView({ block: "nearest" })
+    }, 50)
+    return () => window.clearTimeout(handle)
+  }, [open, target?.barcode])
 
   if (!target) return null
 
@@ -194,11 +207,25 @@ export function ScanActionDialog({
                 ) : bags.length === 0 ? (
                   <div className="p-3 text-sm text-muted-foreground">No bags with stock.</div>
                 ) : (
-                  bags.map((packet) => (
-                    <div key={packet.id} className="flex items-center justify-between gap-2 px-3 py-1.5 text-[11px]">
+                  bags.map((packet) => {
+                    const isScanned = packet.id === target.barcode
+                    return (
+                    <div
+                      key={packet.id}
+                      ref={isScanned ? scannedBagRef : undefined}
+                      className={cn(
+                        "flex items-center justify-between gap-2 px-3 py-1.5 text-[11px]",
+                        isScanned ? "bg-sky-100/70 ring-2 ring-inset ring-sky-400/70" : undefined,
+                      )}
+                    >
                       <div className="leading-tight">
                         <div className="flex items-center gap-1.5">
                           <span className="font-mono">{packet.id}</span>
+                          {isScanned ? (
+                            <span className="inline-flex rounded bg-sky-100 px-1 py-0.5 text-[9px] font-semibold uppercase text-sky-800">
+                              scanned
+                            </span>
+                          ) : null}
                           {isInHome(packet, homePath) ? (
                             <span className="inline-flex rounded bg-emerald-100 px-1 py-0.5 text-[9px] font-semibold uppercase text-emerald-800">
                               home
@@ -220,7 +247,8 @@ export function ScanActionDialog({
                         Use
                       </Button>
                     </div>
-                  ))
+                    )
+                  })
                 )}
               </div>
             </div>
