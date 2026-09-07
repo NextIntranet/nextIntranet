@@ -17,6 +17,9 @@ export interface IbomCompletionRefs {
   placed: Record<string, boolean>;
 }
 
+/** 'top' = front (F.Cu), 'bottom' = back (B.Cu), as reported by the loaded PCB itself. */
+export type IbomLayerSide = 'top' | 'bottom';
+
 export interface UseIbomBridgeReturn {
   highlightInIbom: (ref: string) => void;
   markSourced: (ref: string, state: boolean) => void;
@@ -24,6 +27,8 @@ export interface UseIbomBridgeReturn {
   syncIbomState: (refs?: IbomCompletionRefs) => Promise<void>;
   ibomConnected: boolean;
   highlightedRefs: string[] | null;
+  /** Per-designator PCB side, read from the loaded board's own layer data (null until ready). */
+  sideByRef: Record<string, IbomLayerSide> | null;
 }
 
 function buildCompletionRefsFromState(state: IbomStateResponse): IbomCompletionRefs {
@@ -96,6 +101,7 @@ function emitIbomGrouping(templateId: string, state: IbomStateResponse): void {
 export function useIbomBridge(templateId: string | null): UseIbomBridgeReturn {
   const [ibomConnected, setIbomConnected] = useState(false);
   const [highlightedRefs, setHighlightedRefs] = useState<string[] | null>(null);
+  const [sideByRef, setSideByRef] = useState<Record<string, IbomLayerSide> | null>(null);
   const templateIdRef = useRef(templateId);
   templateIdRef.current = templateId;
   const syncInFlightRef = useRef(false);
@@ -182,6 +188,14 @@ export function useIbomBridge(templateId: string | null): UseIbomBridgeReturn {
           break;
         }
         setIbomConnected(true);
+        if (Array.isArray(rp.footprints) && rp.footprints.length > 0) {
+          const nextSideByRef: Record<string, IbomLayerSide> = {};
+          for (const fp of rp.footprints) {
+            if (!fp.ref) continue;
+            nextSideByRef[fp.ref] = fp.layer === 'B.Cu' ? 'bottom' : 'top';
+          }
+          setSideByRef(nextSideByRef);
+        }
         pushStateToIbom();
         break;
       }
@@ -204,6 +218,7 @@ export function useIbomBridge(templateId: string | null): UseIbomBridgeReturn {
     return () => {
       setIbomConnected(false);
       setHighlightedRefs(null);
+      setSideByRef(null);
     };
   }, [templateId]);
 
@@ -274,5 +289,6 @@ export function useIbomBridge(templateId: string | null): UseIbomBridgeReturn {
     syncIbomState,
     ibomConnected,
     highlightedRefs,
+    sideByRef,
   };
 }

@@ -760,7 +760,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     return toSameOriginS3Url(selectedBom?.ibom_file_url || selectedBom?.ibom_url || null)
   }, [selectedBom?.ibom_file_url, selectedBom?.ibom_url])
 
-  const { highlightInIbom, sendBarcodeScan, syncIbomState, ibomConnected, highlightedRefs } = useIbomBridge(
+  const { highlightInIbom, sendBarcodeScan, syncIbomState, ibomConnected, highlightedRefs, sideByRef } = useIbomBridge(
     isBomView && bomId ? bomId : null,
   )
 
@@ -1721,12 +1721,24 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
   // here — it must never affect assemblyRows/ibomCompletionRefs below, otherwise
   // already-placed components on the other side would lose their iBOM checkmark.
   const [sideFilter, setSideFilter] = useState<"all" | "top" | "bottom">("all")
+  // A manual side tag on the line wins; otherwise fall back to the PCB's own layer
+  // data (from the loaded iBOM) so the filter works without tagging every line by hand.
+  const resolvedSideOf = useCallback(
+    (row: ScannerRow): "both" | "top" | "bottom" => {
+      if (row.side && row.side !== "both") return row.side
+      if (!sideByRef) return "both"
+      const refs = Array.isArray(row.refs) ? row.refs : []
+      const sides = new Set(refs.map((ref) => sideByRef[ref]).filter(Boolean))
+      return sides.size === 1 ? ([...sides][0] as "top" | "bottom") : "both"
+    },
+    [sideByRef],
+  )
   const visibleAssemblyRows = useMemo(
     () =>
       sideFilter === "all"
         ? assemblyRows
-        : assemblyRows.filter((row) => row.side === "both" || row.side === sideFilter),
-    [assemblyRows, sideFilter],
+        : assemblyRows.filter((row) => resolvedSideOf(row) === "both" || resolvedSideOf(row) === sideFilter),
+    [assemblyRows, resolvedSideOf, sideFilter],
   )
   const notAssembledRows = useMemo(
     () => scannerRows.filter((row) => row.dnp || row.exclude_from_bom),
