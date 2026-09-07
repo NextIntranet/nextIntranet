@@ -364,6 +364,19 @@ class TemplateComponent(NIModel):
         verbose_name=_('Placed total'),
     )
 
+    SIDE_CHOICES = [
+        ('both', _('Both sides')),
+        ('top', _('Top (front)')),
+        ('bottom', _('Bottom (back)')),
+    ]
+    side = models.CharField(
+        max_length=10,
+        choices=SIDE_CHOICES,
+        default='both',
+        verbose_name=_('PCB side'),
+        help_text=_('Which side of the board this component is populated on.'),
+    )
+
     class Meta:
         verbose_name = _('Template Component')
         verbose_name_plural = _('Template Components')

@@ -113,6 +113,7 @@ type BomRow = {
   bom_description?: string | null
   dnp: boolean
   exclude_from_bom: boolean
+  side: "both" | "top" | "bottom"
   needs_review: boolean
   import_snapshot?: Record<string, unknown> | null
   sourced_total?: string | number | null
@@ -1678,6 +1679,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
       const representative = group.find((line) => !line.dnp) || group[0]
       const values = new Set(group.map((line) => line.value).filter(Boolean))
       const footprints = new Set(group.map((line) => line.footprint).filter(Boolean))
+      const sides = new Set(group.map((line) => line.side || "both"))
 
       rows.push({
         ...representative,
@@ -1686,6 +1688,8 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
         qty_per_board: group.reduce((sum, line) => sum + toNumber(line.qty_per_board), 0),
         value: values.size === 1 ? representative.value : `(${values.size} values)`,
         footprint: footprints.size === 1 ? representative.footprint : `(${footprints.size} footprints)`,
+        // Mixed-side groups fall back to "both" so the filter never hides them entirely.
+        side: sides.size === 1 ? representative.side : "both",
         // A component only counts as not assembled when none of its lines are assembled.
         dnp: group.every((line) => line.dnp),
         exclude_from_bom: group.every((line) => line.exclude_from_bom),
@@ -1711,6 +1715,18 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
   const assemblyRows = useMemo(
     () => scannerRows.filter((row) => !row.dnp && !row.exclude_from_bom),
     [scannerRows],
+  )
+
+  // Which PCB side is being worked on right now. This only narrows what's shown/scanned
+  // here — it must never affect assemblyRows/ibomCompletionRefs below, otherwise
+  // already-placed components on the other side would lose their iBOM checkmark.
+  const [sideFilter, setSideFilter] = useState<"all" | "top" | "bottom">("all")
+  const visibleAssemblyRows = useMemo(
+    () =>
+      sideFilter === "all"
+        ? assemblyRows
+        : assemblyRows.filter((row) => row.side === "both" || row.side === sideFilter),
+    [assemblyRows, sideFilter],
   )
   const notAssembledRows = useMemo(
     () => scannerRows.filter((row) => row.dnp || row.exclude_from_bom),
@@ -2848,6 +2864,30 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                 <option value="grouped">Grouped</option>
                                 <option value="component">By component</option>
                               </select>
+                              <div
+                                className="inline-flex overflow-hidden rounded-md border border-input"
+                                title="Filter which PCB side is being populated"
+                              >
+                                {(
+                                  [
+                                    { key: "all", label: "Both sides" },
+                                    { key: "top", label: "Top" },
+                                    { key: "bottom", label: "Bottom" },
+                                  ] as const
+                                ).map(({ key, label }) => (
+                                  <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => setSideFilter(key)}
+                                    className={cn(
+                                      "h-8 px-2.5 text-sm border-r border-input last:border-r-0",
+                                      sideFilter === key ? "bg-secondary font-medium" : "bg-background hover:bg-accent",
+                                    )}
+                                  >
+                                    {label}
+                                  </button>
+                                ))}
+                              </div>
                               <span className="mx-1 h-6 w-px bg-border" />
                               {(() => {
                                 const linkedLines = selectedBomComponents.filter(
@@ -3281,6 +3321,22 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                               <EyeOff className="h-3.5 w-3.5" />
                                             </BomLineAction>
                                             <BomLineAction
+                                              title={`PCB side: ${line.side === "both" ? "both" : line.side} — click to change`}
+                                              active={line.side !== "both"}
+                                              disabled={isBomClosed(selectedBom.status)}
+                                              onClick={() => {
+                                                const next = line.side === "both" ? "top" : line.side === "top" ? "bottom" : "both"
+                                                updateLineMutation.mutate({
+                                                  lineId,
+                                                  payload: { side: next },
+                                                })
+                                              }}
+                                            >
+                                              <span className="text-[10px] font-semibold leading-none">
+                                                {line.side === "top" ? "T" : line.side === "bottom" ? "B" : "—"}
+                                              </span>
+                                            </BomLineAction>
+                                            <BomLineAction
                                               title="Delete this BOM line"
                                               destructive
                                               disabled={isBomClosed(selectedBom.status)}
@@ -3441,14 +3497,14 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                 </TableHeader>
                                 <TableBody>
                                   {scannerRows.length > 0 ? (
-                                    [...assemblyRows, ...notAssembledRows].map((row, rowIndex) => {
+                                    [...visibleAssemblyRows, ...notAssembledRows].map((row, rowIndex) => {
                                       const ibomHighlighted = highlightedRefs && (row.refs || []).some((r: string) => highlightedRefs.includes(r))
                                       const rowRefs = (row.refs || []).map((r) => [r, toNumber(row.qty_per_board) || 1] as [string, number])
                                       // DNP / BOM-excluded rows are kept visible but greyed out at the end.
                                       const notAssembled = row.dnp || row.exclude_from_bom
                                       return (
                                       <Fragment key={row.id}>
-                                        {notAssembled && rowIndex === assemblyRows.length ? (
+                                        {notAssembled && rowIndex === visibleAssemblyRows.length ? (
                                           <TableRow className="bg-muted/40 hover:bg-muted/40">
                                             <TableCell colSpan={5} className="py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                                               Not assembled — DNP or excluded from BOM
