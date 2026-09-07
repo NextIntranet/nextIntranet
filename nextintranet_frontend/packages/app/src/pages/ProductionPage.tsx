@@ -39,7 +39,6 @@ import { PacketRef } from "@/components/PacketRef"
 import { PacketSelectSheet, type PacketLineProgress, type PacketSelectItem } from "@/components/PacketSelectSheet"
 import { ScanActionDialog, type ScanActionTarget } from "@/components/ScanActionDialog"
 import { Input } from "@/components/ui/input"
-import { LocationParentSelect } from "@/components/LocationParentSelect"
 import { ProductionTree } from "@/components/production/ProductionTree"
 import {
   FOLDER_DRAG_PREFIX,
@@ -482,6 +481,150 @@ const buildProgressSegments = (neededRaw: number, sourcedRaw: number, placedRaw:
     placedPct: (placedSegment / needed) * 100,
     emptyPct: (emptySegment / needed) * 100,
   }
+}
+
+/**
+ * One colored slice of the assembly progress bar. When `otherPct` is a positive portion of
+ * `totalPct`, that trailing slice gets a diagonal hatch overlay — quantity belonging to the
+ * PCB side not currently selected in the side filter.
+ */
+function BarSegment({ colorClass, totalPct, otherPct = 0 }: { colorClass: string; totalPct: number; otherPct?: number }) {
+  if (totalPct <= 0) return null
+  const otherShare = totalPct > 0 ? Math.min(100, (otherPct / totalPct) * 100) : 0
+  return (
+    <div className={cn("relative h-full overflow-hidden", colorClass)} style={{ width: `${totalPct}%` }}>
+      {otherShare > 0 ? (
+        <div
+          className="absolute inset-y-0 right-0"
+          style={{
+            width: `${otherShare}%`,
+            backgroundImage:
+              "repeating-linear-gradient(45deg, rgba(0,0,0,0.32) 0px, rgba(0,0,0,0.32) 3px, transparent 3px, transparent 6px)",
+          }}
+          title="Other side"
+        />
+      ) : null}
+    </div>
+  )
+}
+
+type LocationPacketItem = {
+  lineId: string
+  componentId: string | null
+  componentName: string | null
+  packetId: string
+  quantity: number
+}
+
+function buildPacketsByLocation(availabilityByLineId: Map<string, AvailabilityRow>): Map<string, LocationPacketItem[]> {
+  const map = new Map<string, LocationPacketItem[]>()
+  availabilityByLineId.forEach((row) => {
+    ;(row.locations || []).forEach((loc) => {
+      const items = map.get(loc.location) || []
+      items.push({
+        lineId: row.id,
+        componentId: row.linked_component || null,
+        componentName: row.linked_component_name || null,
+        packetId: loc.packet_id,
+        quantity: loc.quantity,
+      })
+      map.set(loc.location, items)
+    })
+  })
+  return map
+}
+
+/**
+ * Warehouse location tree, same shape as the Locations page, but with each node showing the
+ * packets (bags) stocked there that are actually usable for this BOM — i.e. everything the
+ * availability check already resolved for a linked component, listed like the main component
+ * table's rows (component link + quantity + packet reference).
+ */
+function LocationsTreeView({
+  locations,
+  availabilityByLineId,
+}: {
+  locations: LocationNode[]
+  availabilityByLineId: Map<string, AvailabilityRow>
+}) {
+  const packetsByLocation = useMemo(() => buildPacketsByLocation(availabilityByLineId), [availabilityByLineId])
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set())
+
+  const nodeHasPackets = useCallback(
+    (node: LocationNode): boolean => {
+      if ((packetsByLocation.get(node.full_path) || []).length > 0) return true
+      return (node.children || []).some(nodeHasPackets)
+    },
+    [packetsByLocation],
+  )
+
+  const toggleCollapsed = (id: string) => {
+    setCollapsedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const renderNode = (node: LocationNode, depth: number): ReactNode => {
+    if (!nodeHasPackets(node)) return null
+    const items = packetsByLocation.get(node.full_path) || []
+    const isCollapsed = collapsedIds.has(node.id)
+    return (
+      <div key={node.id}>
+        <button
+          type="button"
+          className="flex w-full items-center gap-1.5 py-1 text-left text-xs font-medium hover:text-primary"
+          style={{ paddingLeft: `${depth * 16}px` }}
+          onClick={() => toggleCollapsed(node.id)}
+        >
+          {isCollapsed ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronUp className="h-3.5 w-3.5 shrink-0" />}
+          <MapPin className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          {node.name}
+          {items.length > 0 ? (
+            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">
+              {items.length} bag{items.length === 1 ? "" : "s"}
+            </span>
+          ) : null}
+        </button>
+        {!isCollapsed ? (
+          <div>
+            {items.map((item) => (
+              <div
+                key={item.packetId}
+                className="flex flex-wrap items-center gap-x-3 gap-y-0.5 border-b border-border/40 py-1 text-xs last:border-b-0"
+                style={{ paddingLeft: `${depth * 16 + 22}px` }}
+              >
+                {item.componentId ? (
+                  <Link to={`/store/component/${item.componentId}`} className="text-primary hover:underline">
+                    {item.componentName || item.componentId}
+                  </Link>
+                ) : (
+                  <span className="text-muted-foreground">Unlinked</span>
+                )}
+                <span className="text-muted-foreground">×{formatQty(item.quantity)}</span>
+                <PacketRef packetId={item.packetId} className="text-[11px] text-muted-foreground" />
+              </div>
+            ))}
+            {(node.children || []).map((child) => renderNode(child, depth + 1))}
+          </div>
+        ) : null}
+      </div>
+    )
+  }
+
+  const rendered = locations.map((node) => renderNode(node, 0)).filter(Boolean)
+
+  return (
+    <div className="rounded-lg border border-border/70 p-2">
+      {rendered.length > 0 ? (
+        rendered
+      ) : (
+        <p className="p-2 text-xs text-muted-foreground">No stocked bags match this BOM&apos;s linked components.</p>
+      )}
+    </div>
+  )
 }
 
 const flattenFolders = (nodes: FolderNode[], depth = 0): Array<{ id: string; label: string }> => {
@@ -1598,8 +1741,8 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
           ref_group: refGroups.join(", ") || null,
           qty_per_board: qtyPerBoard,
           qty_override_total: neededTotal,
-          value: allValues.size === 1 ? first.value : `(${allValues.size} values)`,
-          footprint: allFootprints.size === 1 ? first.footprint : `(${allFootprints.size} footprints)`,
+          value: allValues.size === 1 ? first.value : [...allValues].join(", "),
+          footprint: allFootprints.size === 1 ? first.footprint : [...allFootprints].join(", "),
           bom_description: allDescriptions.size === 1 ? first.bom_description : null,
           dnp: group.some((line) => line.dnp),
           exclude_from_bom: group.some((line) => line.exclude_from_bom),
@@ -1701,8 +1844,8 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
         refs: [...new Set(group.flatMap((line) => line.refs || []))].sort(),
         ref_group: group.map((line) => line.ref_group).filter(Boolean).join(", ") || null,
         qty_per_board: group.reduce((sum, line) => sum + toNumber(line.qty_per_board), 0),
-        value: values.size === 1 ? representative.value : `(${values.size} values)`,
-        footprint: footprints.size === 1 ? representative.footprint : `(${footprints.size} footprints)`,
+        value: values.size === 1 ? representative.value : [...values].join(", "),
+        footprint: footprints.size === 1 ? representative.footprint : [...footprints].join(", "),
         // Mixed-side groups fall back to "both" so the filter never hides them entirely.
         side: sides.size === 1 ? representative.side : "both",
         // A component only counts as not assembled when none of its lines are assembled.
@@ -1731,9 +1874,51 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     () => scannerRows.filter((row) => !row.dnp && !row.exclude_from_bom),
     [scannerRows],
   )
+  const notAssembledRows = useMemo(
+    () => scannerRows.filter((row) => row.dnp || row.exclude_from_bom),
+    [scannerRows],
+  )
 
-  // Which PCB side is being worked on right now. This only narrows what's shown/scanned
-  // here — it must never affect assemblyRows/ibomCompletionRefs below, otherwise
+  /** One row per original BOM line — the "By line" production view, unmerged. */
+  const scannerRowsByLine = useMemo<ScannerRow[]>(() => {
+    if (!selectedBom) return []
+    const neededOf = (line: BomRow) =>
+      line.qty_override_total != null
+        ? toNumber(line.qty_override_total)
+        : toNumber(line.qty_per_board) * toNumber(selectedBom.qty_planned)
+    const sortScans = (scans: BomRowScan[]) =>
+      [...scans].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+    return selectedBomComponents
+      .map((line) => ({
+        ...line,
+        needed: neededOf(line),
+        sourced: toNumber(line.sourced_total),
+        placed: toNumber(line.placed_total),
+        deducted: deductedOf(line.scans),
+        scans: sortScans(line.scans || []),
+      }))
+      .sort((a, b) => `${a.footprint || ""}|${a.value || ""}`.localeCompare(`${b.footprint || ""}|${b.value || ""}`))
+  }, [selectedBom, selectedBomComponents])
+  const assemblyRowsByLine = useMemo(
+    () => scannerRowsByLine.filter((row) => !row.dnp && !row.exclude_from_bom),
+    [scannerRowsByLine],
+  )
+  const notAssembledRowsByLine = useMemo(
+    () => scannerRowsByLine.filter((row) => row.dnp || row.exclude_from_bom),
+    [scannerRowsByLine],
+  )
+
+  /** How the production table is currently displayed: merged by component, one row per BOM
+   * line, or a warehouse-location tree of usable packets. Display-only — it never affects
+   * assemblyRows/ibomCompletionRefs, which stay on the merged-by-component data the backend's
+   * scan resolution actually uses. */
+  const [productionViewMode, setProductionViewMode] = useState<"component" | "line" | "tree">("component")
+  const displayAssemblyRows = productionViewMode === "line" ? assemblyRowsByLine : assemblyRows
+  const displayNotAssembledRows = productionViewMode === "line" ? notAssembledRowsByLine : notAssembledRows
+
+  // Which PCB side is being worked on right now. This only affects styling (dimming the
+  // other side) — it must never hide rows or affect ibomCompletionRefs below, otherwise
   // already-placed components on the other side would lose their iBOM checkmark.
   const [sideFilter, setSideFilter] = useState<"all" | "top" | "bottom">("all")
   // A manual side tag on the line wins; otherwise fall back to the PCB's own layer
@@ -1748,41 +1933,9 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     },
     [sideByRef],
   )
-  // Filter by warehouse location subtree: shows only the components you'd pass while
-  // physically walking that shelf/rack, using the same location tree as the Locations page.
-  const [locationFilterId, setLocationFilterId] = useState<string | null>(null)
-  const locationFilterPath = useMemo(() => {
-    if (!locationFilterId || !locationsTree) return null
-    const stack = [...locationsTree]
-    while (stack.length) {
-      const node = stack.shift()!
-      if (node.id === locationFilterId) return node.full_path
-      if (node.children) stack.push(...node.children)
-    }
-    return null
-  }, [locationFilterId, locationsTree])
-  const matchesLocationFilter = useCallback(
-    (row: ScannerRow) => {
-      if (!locationFilterPath) return true
-      const availability = availabilityByLineId.get(row.id)
-      const locations = availability?.locations || []
-      return locations.some(
-        (loc) => loc.location === locationFilterPath || loc.location?.startsWith(`${locationFilterPath} / `),
-      )
-    },
-    [availabilityByLineId, locationFilterPath],
-  )
-  const visibleAssemblyRows = useMemo(
-    () =>
-      assemblyRows.filter((row) => {
-        const sideOk = sideFilter === "all" || resolvedSideOf(row) === "both" || resolvedSideOf(row) === sideFilter
-        return sideOk && matchesLocationFilter(row)
-      }),
-    [assemblyRows, matchesLocationFilter, resolvedSideOf, sideFilter],
-  )
-  const notAssembledRows = useMemo(
-    () => scannerRows.filter((row) => row.dnp || row.exclude_from_bom),
-    [scannerRows],
+  const isDimmedBySide = useCallback(
+    (row: ScannerRow) => sideFilter !== "all" && resolvedSideOf(row) !== "both" && resolvedSideOf(row) !== sideFilter,
+    [resolvedSideOf, sideFilter],
   )
 
   /**
@@ -1828,8 +1981,13 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     let emptyTotal = 0
     let sourcedOverflowTotal = 0
     let placedOverflowTotal = 0
+    // Portion of each segment that belongs to the side NOT currently selected — rendered as a
+    // hatched overlay so the operator can see how much of the bar isn't today's work.
+    let otherSideSourced = 0
+    let otherSidePlaced = 0
+    let otherSideEmpty = 0
 
-    assemblyRows.forEach((row) => {
+    displayAssemblyRows.forEach((row) => {
       const segments = buildProgressSegments(toNumber(row.needed), toNumber(row.sourced), toNumber(row.placed))
       neededTotal += segments.needed
       sourcedTotal += segments.sourcedSegment
@@ -1837,6 +1995,11 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
       emptyTotal += segments.emptySegment
       sourcedOverflowTotal += segments.sourcedOverflow
       placedOverflowTotal += segments.placedOverflow
+      if (isDimmedBySide(row)) {
+        otherSideSourced += segments.sourcedSegment
+        otherSidePlaced += segments.placedSegment
+        otherSideEmpty += segments.emptySegment
+      }
     })
 
     if (neededTotal <= 0) {
@@ -1849,6 +2012,9 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
         sourcedPct: 0,
         placedPct: 0,
         emptyPct: 0,
+        sourcedOtherPct: 0,
+        placedOtherPct: 0,
+        emptyOtherPct: 0,
       }
     }
 
@@ -1861,8 +2027,11 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
       sourcedPct: (sourcedTotal / neededTotal) * 100,
       placedPct: (placedTotal / neededTotal) * 100,
       emptyPct: (emptyTotal / neededTotal) * 100,
+      sourcedOtherPct: (otherSideSourced / neededTotal) * 100,
+      placedOtherPct: (otherSidePlaced / neededTotal) * 100,
+      emptyOtherPct: (otherSideEmpty / neededTotal) * 100,
     }
-  }, [assemblyRows])
+  }, [displayAssemblyRows, isDimmedBySide])
 
   const ibomCompletionRefs = useMemo(() => {
     const sourced: Record<string, boolean> = {}
@@ -2916,39 +3085,6 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                 <option value="grouped">Grouped</option>
                                 <option value="component">By component</option>
                               </select>
-                              <div
-                                className="inline-flex overflow-hidden rounded-md border border-input"
-                                title="Filter which PCB side is being populated"
-                              >
-                                {(
-                                  [
-                                    { key: "all", label: "Both sides" },
-                                    { key: "top", label: "Top" },
-                                    { key: "bottom", label: "Bottom" },
-                                  ] as const
-                                ).map(({ key, label }) => (
-                                  <button
-                                    key={key}
-                                    type="button"
-                                    onClick={() => setSideFilter(key)}
-                                    className={cn(
-                                      "h-8 px-2.5 text-sm border-r border-input last:border-r-0",
-                                      sideFilter === key ? "bg-secondary font-medium" : "bg-background hover:bg-accent",
-                                    )}
-                                  >
-                                    {label}
-                                  </button>
-                                ))}
-                              </div>
-                              <div className="w-56" title="Only show components stocked in this location or below it">
-                                <LocationParentSelect
-                                  locations={locationsTree || []}
-                                  value={locationFilterId}
-                                  onChange={setLocationFilterId}
-                                  emptyLabel="All locations"
-                                  placeholder="Filter by location"
-                                />
-                              </div>
                               <span className="mx-1 h-6 w-px bg-border" />
                               {(() => {
                                 const linkedLines = selectedBomComponents.filter(
@@ -3491,6 +3627,57 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                               </Button>
                             </div>
 
+                            <div className="flex flex-wrap items-center gap-2">
+                              <div
+                                className="inline-flex overflow-hidden rounded-md border border-input"
+                                title="Which PCB side is being populated — the other side is greyed out, not hidden"
+                              >
+                                {(
+                                  [
+                                    { key: "all", label: "Both sides" },
+                                    { key: "top", label: "Top" },
+                                    { key: "bottom", label: "Bottom" },
+                                  ] as const
+                                ).map(({ key, label }) => (
+                                  <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => setSideFilter(key)}
+                                    className={cn(
+                                      "h-8 px-2.5 text-sm border-r border-input last:border-r-0",
+                                      sideFilter === key ? "bg-secondary font-medium" : "bg-background hover:bg-accent",
+                                    )}
+                                  >
+                                    {label}
+                                  </button>
+                                ))}
+                              </div>
+                              <div
+                                className="inline-flex overflow-hidden rounded-md border border-input"
+                                title="How the components below are displayed"
+                              >
+                                {(
+                                  [
+                                    { key: "component", label: "Group by component" },
+                                    { key: "line", label: "By line" },
+                                    { key: "tree", label: "Locations tree" },
+                                  ] as const
+                                ).map(({ key, label }) => (
+                                  <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => setProductionViewMode(key)}
+                                    className={cn(
+                                      "h-8 px-2.5 text-sm border-r border-input last:border-r-0",
+                                      productionViewMode === key ? "bg-secondary font-medium" : "bg-background hover:bg-accent",
+                                    )}
+                                  >
+                                    {label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
                             <div className="grid gap-2 rounded-md border border-border/70 bg-muted/15 p-2 text-xs sm:grid-cols-2">
                               <label className="flex items-center justify-between gap-3 rounded-md border border-border/60 bg-background px-2 py-1.5">
                                 <span className="leading-tight">
@@ -3518,6 +3705,13 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                               </div>
                             ) : null}
 
+                            {productionViewMode === "tree" ? (
+                              <LocationsTreeView
+                                locations={locationsTree || []}
+                                availabilityByLineId={availabilityByLineId}
+                              />
+                            ) : (
+                            <>
                             <div className="rounded-md border border-border/70 bg-muted/10 p-2">
                               <div className="mb-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] leading-tight">
                                 <span className="font-medium text-foreground">Assembly progress</span>
@@ -3528,9 +3722,9 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                               </div>
                               <div className="flex items-center gap-1.5">
                                 <div className="flex h-2 w-full flex-1 overflow-hidden rounded-full bg-muted">
-                                  <div className="bg-amber-400" style={{ width: `${assemblyProgress.sourcedPct}%` }} />
-                                  <div className="bg-emerald-500" style={{ width: `${assemblyProgress.placedPct}%` }} />
-                                  <div className="bg-muted" style={{ width: `${assemblyProgress.emptyPct}%` }} />
+                                  <BarSegment colorClass="bg-amber-400" totalPct={assemblyProgress.sourcedPct} otherPct={assemblyProgress.sourcedOtherPct} />
+                                  <BarSegment colorClass="bg-emerald-500" totalPct={assemblyProgress.placedPct} otherPct={assemblyProgress.placedOtherPct} />
+                                  <BarSegment colorClass="bg-muted" totalPct={assemblyProgress.emptyPct} otherPct={assemblyProgress.emptyOtherPct} />
                                 </div>
                                 {assemblyProgress.sourcedOverflow > 0 ? (
                                   <span className="inline-flex rounded border border-amber-300 bg-amber-100 px-1 py-0.5 text-[10px] font-medium text-amber-800">
@@ -3558,14 +3752,15 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                 </TableHeader>
                                 <TableBody>
                                   {scannerRows.length > 0 ? (
-                                    [...visibleAssemblyRows, ...notAssembledRows].map((row, rowIndex) => {
+                                    [...displayAssemblyRows, ...displayNotAssembledRows].map((row, rowIndex) => {
                                       const ibomHighlighted = highlightedRefs && (row.refs || []).some((r: string) => highlightedRefs.includes(r))
                                       const rowRefs = (row.refs || []).map((r) => [r, toNumber(row.qty_per_board) || 1] as [string, number])
                                       // DNP / BOM-excluded rows are kept visible but greyed out at the end.
                                       const notAssembled = row.dnp || row.exclude_from_bom
+                                      const dimmedBySide = isDimmedBySide(row)
                                       return (
                                       <Fragment key={row.id}>
-                                        {notAssembled && rowIndex === visibleAssemblyRows.length ? (
+                                        {notAssembled && rowIndex === displayAssemblyRows.length ? (
                                           <TableRow className="bg-muted/40 hover:bg-muted/40">
                                             <TableCell colSpan={5} className="py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                                               Not assembled — DNP or excluded from BOM
@@ -3577,7 +3772,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                             scannerRowRefs.current[row.id] = element
                                           }}
                                           tabIndex={-1}
-                                          className={cn("text-xs", highlightedLineId === row.id ? "bg-amber-100/50" : undefined, ibomHighlighted ? "ring-2 ring-inset ring-blue-400/60" : undefined, notAssembled ? "text-muted-foreground opacity-60" : undefined)}
+                                          className={cn("text-xs", highlightedLineId === row.id ? "bg-amber-100/50" : undefined, ibomHighlighted ? "ring-2 ring-inset ring-blue-400/60" : undefined, notAssembled ? "text-muted-foreground opacity-60" : dimmedBySide ? "text-muted-foreground/70" : undefined)}
                                           onMouseEnter={() => {
                                             if (rowRefs.length > 0) {
                                               sendIbomHover(rowRefs, row.id)
@@ -3844,6 +4039,8 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                 </TableBody>
                               </Table>
                             </div>
+                            </>
+                            )}
                           </div>
                         ) : null}
 
