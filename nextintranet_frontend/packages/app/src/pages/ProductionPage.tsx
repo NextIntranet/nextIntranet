@@ -543,9 +543,15 @@ function buildPacketsByLocation(availabilityByLineId: Map<string, AvailabilityRo
 function LocationsTreeView({
   locations,
   availabilityByLineId,
+  findScannerRow,
+  highlightInIbom,
+  openScanAction,
 }: {
   locations: LocationNode[]
   availabilityByLineId: Map<string, AvailabilityRow>
+  findScannerRow: (lineId: string) => ScannerRow | undefined
+  highlightInIbom: (ref: string) => void
+  openScanAction: (lineId: string, barcode: string) => void
 }) {
   const packetsByLocation = useMemo(() => buildPacketsByLocation(availabilityByLineId), [availabilityByLineId])
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set())
@@ -590,23 +596,69 @@ function LocationsTreeView({
         </button>
         {!isCollapsed ? (
           <div>
-            {items.map((item) => (
-              <div
-                key={item.packetId}
-                className="flex flex-wrap items-center gap-x-3 gap-y-0.5 border-b border-border/40 py-1 text-xs last:border-b-0"
-                style={{ paddingLeft: `${depth * 16 + 22}px` }}
-              >
-                {item.componentId ? (
-                  <Link to={`/store/component/${item.componentId}`} className="text-primary hover:underline">
-                    {item.componentName || item.componentId}
-                  </Link>
-                ) : (
-                  <span className="text-muted-foreground">Unlinked</span>
-                )}
-                <span className="text-muted-foreground">×{formatQty(item.quantity)}</span>
-                <PacketRef packetId={item.packetId} className="text-[11px] text-muted-foreground" />
-              </div>
-            ))}
+            {items.map((item) => {
+              const row = findScannerRow(item.lineId)
+              const needed = row ? toNumber(row.needed) : 0
+              const sourced = row ? toNumber(row.sourced) : 0
+              const placed = row ? toNumber(row.placed) : 0
+              const segments = buildProgressSegments(needed, sourced, placed)
+              const firstRef = row?.refs?.[0]
+              return (
+                <div
+                  key={item.packetId}
+                  className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border/40 py-1.5 text-xs last:border-b-0"
+                  style={{ paddingLeft: `${depth * 16 + 22}px` }}
+                >
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                      {item.componentId ? (
+                        <Link to={`/store/component/${item.componentId}`} className="text-primary hover:underline">
+                          {item.componentName || item.componentId}
+                        </Link>
+                      ) : (
+                        <span className="text-muted-foreground">Unlinked</span>
+                      )}
+                      <span className="text-muted-foreground">×{formatQty(item.quantity)}</span>
+                      <PacketRef packetId={item.packetId} className="text-[11px] text-muted-foreground" />
+                    </div>
+                    {row ? (
+                      <div className="flex items-center gap-1.5">
+                        <div className="flex h-1.5 w-32 overflow-hidden rounded-full bg-muted">
+                          <BarSegment colorClass="bg-amber-400" totalPct={segments.sourcedPct} />
+                          <BarSegment colorClass="bg-emerald-500" totalPct={segments.placedPct} />
+                          <BarSegment colorClass="bg-muted" totalPct={segments.emptyPct} />
+                        </div>
+                        <span className="text-[10px] text-muted-foreground">
+                          {formatQty(placed)}/{formatQty(needed)} placed
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 text-[11px]"
+                      disabled={!firstRef}
+                      title="Highlight this component in the iBOM"
+                      onClick={() => firstRef && highlightInIbom(firstRef)}
+                    >
+                      Show in iBOM
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-7 px-2 text-[11px]"
+                      title="Open the place dialog for this bag"
+                      onClick={() => openScanAction(item.lineId, item.packetId)}
+                    >
+                      Place
+                    </Button>
+                  </div>
+                </div>
+              )
+            })}
             {(node.children || []).map((child) => renderNode(child, depth + 1))}
           </div>
         ) : null}
@@ -3709,6 +3761,9 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                               <LocationsTreeView
                                 locations={locationsTree || []}
                                 availabilityByLineId={availabilityByLineId}
+                                findScannerRow={findScannerRow}
+                                highlightInIbom={highlightInIbom}
+                                openScanAction={openScanAction}
                               />
                             ) : (
                             <>
