@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import threading
 import time
 import uuid
 from typing import Optional
@@ -8,6 +9,14 @@ from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 
 logger = logging.getLogger(__name__)
+
+# Rapid-fire saves on the same object (e.g. stock ops during production scanning)
+# would otherwise each trigger their own broadcast, flooding clients faster than
+# they can redraw. Callers that pass a debounce_key get coalesced: only the last
+# call within the window is actually sent.
+DEFAULT_DEBOUNCE_SECONDS = 0.3
+_debounce_lock = threading.Lock()
+_debounce_timers: dict = {}
 
 
 def build_event(
@@ -26,22 +35,10 @@ def build_event(
     }
 
 
-def broadcast_event(
-    event_type: str,
-    payload: dict,
-    group: str = 'broadcast',
-    station_id: Optional[str] = None,
-    device_id: Optional[str] = None,
-) -> None:
+def _send_now(group: str, message: dict) -> None:
     channel_layer = get_channel_layer()
     if channel_layer is None:
         return
-
-    event = build_event(event_type, payload, station_id=station_id, device_id=device_id)
-    message = {
-        'type': 'broadcast.message',
-        'event': event,
-    }
 
     async def _send() -> None:
         await channel_layer.group_send(group, message)
@@ -65,3 +62,44 @@ def broadcast_event(
         logger.warning("Skipped realtime broadcast during interpreter shutdown")
     except Exception:
         logger.warning("Failed to broadcast realtime event", exc_info=True)
+
+
+def broadcast_event(
+    event_type: str,
+    payload: dict,
+    group: str = 'broadcast',
+    station_id: Optional[str] = None,
+    device_id: Optional[str] = None,
+    debounce_key: Optional[str] = None,
+    debounce_seconds: Optional[float] = None,
+) -> None:
+    event = build_event(event_type, payload, station_id=station_id, device_id=device_id)
+    message = {
+        'type': 'broadcast.message',
+        'event': event,
+    }
+
+    if debounce_key is None:
+        _send_now(group, message)
+        return
+
+    # Trailing debounce: reset the timer on every call for this key, so a burst
+    # of saves on the same object collapses into one broadcast after the quiet
+    # period, carrying the most recent payload.
+    key = (group, event_type, debounce_key)
+    interval = DEFAULT_DEBOUNCE_SECONDS if debounce_seconds is None else debounce_seconds
+
+    with _debounce_lock:
+        existing = _debounce_timers.get(key)
+        if existing is not None:
+            existing.cancel()
+
+        def _fire():
+            with _debounce_lock:
+                _debounce_timers.pop(key, None)
+            _send_now(group, message)
+
+        timer = threading.Timer(interval, _fire)
+        timer.daemon = True
+        _debounce_timers[key] = timer
+        timer.start()

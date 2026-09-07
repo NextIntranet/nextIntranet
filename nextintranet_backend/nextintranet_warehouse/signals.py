@@ -39,7 +39,11 @@ def _emit_model_change(
     if extra:
         payload.update(extra)
 
-    transaction.on_commit(lambda: broadcast_event('model.changed', payload), using=using)
+    debounce_key = f"{payload['appLabel']}.{payload['model']}:{payload['pk']}"
+    transaction.on_commit(
+        lambda: broadcast_event('model.changed', payload, debounce_key=debounce_key),
+        using=using,
+    )
 
 
 def _emit_component_update(
@@ -55,7 +59,10 @@ def _emit_component_update(
         'entityId': str(entity_id) if entity_id else None,
     }
 
-    transaction.on_commit(lambda: broadcast_event('component.updated', payload))
+    debounce_key = f"component:{component_id}:{change}:{entity_id or ''}"
+    transaction.on_commit(
+        lambda: broadcast_event('component.updated', payload, debounce_key=debounce_key)
+    )
 
 
 @receiver(post_save, sender=Component)
