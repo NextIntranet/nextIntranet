@@ -3,7 +3,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 import { FolderTreeRow } from "./FolderTreeRow"
 import { PurchaseRequestRow } from "./PurchaseRequestRow"
-import { TreeRow } from "./types"
+import { PurchaseRequest, TreeRow } from "./types"
 
 interface Props {
   rows: TreeRow[]
@@ -11,6 +11,7 @@ interface Props {
   deletePending: boolean
   onOpenRequest: (id: string) => void
   onDeleteRequest: (id: string) => void
+  onAddToOrder: (request: PurchaseRequest) => void
   expandedIds: Set<string>
   onToggleExpand: (id: string) => void
   onCreateSubfolder: (parentId: string) => void
@@ -26,6 +27,7 @@ export function PurchaseRequestTable({
   deletePending,
   onOpenRequest,
   onDeleteRequest,
+  onAddToOrder,
   expandedIds,
   onToggleExpand,
   onCreateSubfolder,
@@ -90,6 +92,7 @@ export function PurchaseRequestTable({
                   deletePending={deletePending}
                   onOpen={onOpenRequest}
                   onDelete={onDeleteRequest}
+                  onAddToOrder={onAddToOrder}
                 />
               ),
             )

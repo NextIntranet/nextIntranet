@@ -11,7 +11,7 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core"
-import { Folder, FolderPlus, Package, Pencil, Plus } from "lucide-react"
+import { Eye, EyeOff, Folder, FolderPlus, Package, Pencil, Plus } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
@@ -22,6 +22,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { AddToPurchaseDialog } from "@/components/purchase-requests/AddToPurchaseDialog"
 import { PurchaseRequestTable } from "@/components/purchase-requests/PurchaseRequestTable"
 import {
   FOLDER_DRAG_PREFIX,
@@ -56,6 +57,8 @@ export function PurchaseRequestsPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [isCreateSheetOpen, setIsCreateSheetOpen] = useState(false)
+  const [showOrdered, setShowOrdered] = useState(false)
+  const [addToOrderRequest, setAddToOrderRequest] = useState<PurchaseRequest | null>(null)
 
   const mode: EditMode = searchParams.get("mode") === "edit" ? "edit" : "detail"
   const createFromQuery = searchParams.get("create") === "1"
@@ -72,11 +75,15 @@ export function PurchaseRequestsPage() {
     queryKey: ["purchase-requests"],
     queryFn: () =>
       apiFetch<PurchaseRequest[] | PaginatedRequests>(
-        "/api/v1/store/purchase-requests/?page_size=1000",
+        "/api/v1/store/purchase-requests/?page_size=1000&assigned=all",
       ),
   })
 
-  const requests = Array.isArray(requestsData) ? requestsData : requestsData?.results || []
+  const allRequests = Array.isArray(requestsData) ? requestsData : requestsData?.results || []
+  const requests = useMemo(
+    () => (showOrdered ? allRequests : allRequests.filter((request) => request.status !== "ordered")),
+    [allRequests, showOrdered],
+  )
 
   const { data: foldersData, isLoading: isFoldersLoading } = useQuery<
     PurchaseRequestFolder[] | { results: PurchaseRequestFolder[] }
@@ -454,7 +461,7 @@ export function PurchaseRequestsPage() {
     const quantityValue = formState.quantity.trim()
     updateMutation.mutate({
       quantity: quantityValue ? Number(quantityValue) : 0,
-      description: formState.description.trim() || null,
+      description: formState.description.trim(),
     })
   }
 
@@ -496,6 +503,10 @@ export function PurchaseRequestsPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <Button variant="outline" className="gap-2" onClick={() => setShowOrdered((prev) => !prev)}>
+              {showOrdered ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              {showOrdered ? "Hide ordered items" : "Show ordered items"}
+            </Button>
             {canEdit && (
               <Button variant="outline" className="gap-2" onClick={() => handleCreateFolder(null)}>
                 <FolderPlus className="h-4 w-4" />
@@ -531,6 +542,7 @@ export function PurchaseRequestsPage() {
                 deletePending={deleteMutation.isPending}
                 onOpenRequest={handleOpen}
                 onDeleteRequest={(requestId) => deleteMutation.mutate(requestId)}
+                onAddToOrder={setAddToOrderRequest}
                 expandedIds={expandedIds}
                 onToggleExpand={toggleExpand}
                 onCreateSubfolder={handleCreateFolder}
@@ -712,6 +724,12 @@ export function PurchaseRequestsPage() {
                         {requestDetail.description || "No description."}
                       </p>
                     </div>
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase text-muted-foreground">Status</p>
+                      <p className="text-sm text-foreground">
+                        {requestDetail.status === "ordered" ? "Ordered" : "Open"}
+                      </p>
+                    </div>
                     {canEdit && (
                       <Button className="mt-2 w-full gap-2" onClick={() => handleEditMode("edit")}>
                         <Pencil className="h-4 w-4" />
@@ -770,6 +788,18 @@ export function PurchaseRequestsPage() {
             )}
           </SheetContent>
         </Sheet>
+
+        {addToOrderRequest && (
+          <AddToPurchaseDialog
+            request={addToOrderRequest}
+            open={!!addToOrderRequest}
+            onOpenChange={(open) => {
+              if (!open) {
+                setAddToOrderRequest(null)
+              }
+            }}
+          />
+        )}
       </div>
     </TooltipProvider>
   )

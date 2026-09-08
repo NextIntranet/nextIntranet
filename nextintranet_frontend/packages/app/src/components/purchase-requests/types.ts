@@ -5,6 +5,8 @@ export interface SupplierSummary {
   symbol?: string | null
 }
 
+export type PurchaseRequestStatus = "open" | "ordered"
+
 export interface PurchaseRequest {
   id: string
   component_id?: string | null
@@ -19,6 +21,7 @@ export interface PurchaseRequest {
   mfpn?: string | null
   matching_supplier_relation_id?: string | null
   created_at: string
+  status: PurchaseRequestStatus
 }
 
 export interface PurchaseRequestFolder {
@@ -42,6 +45,11 @@ export type TreeRow =
   | { kind: 'folder'; node: FolderNode; depth: number }
   | { kind: 'request'; request: PurchaseRequest; depth: number }
 
+/** Oldest first, so requests within a folder read chronologically by date added. */
+export function sortByCreatedAt(requests: PurchaseRequest[]): PurchaseRequest[] {
+  return [...requests].sort((a, b) => a.created_at.localeCompare(b.created_at))
+}
+
 /** Flattens folders (+ an "Ungrouped" pseudo-folder for root-level requests) into one
  * ordered list of visible rows, respecting which folder ids are currently expanded. */
 export function buildVisibleRows(
@@ -56,7 +64,7 @@ export function buildVisibleRows(
       rows.push({ kind: 'folder', node, depth })
       if (expandedIds.has(node.id)) {
         visit(node.children, depth + 1)
-        for (const request of node.requests) {
+        for (const request of sortByCreatedAt(node.requests)) {
           rows.push({ kind: 'request', request, depth: depth + 1 })
         }
       }
@@ -75,7 +83,7 @@ export function buildVisibleRows(
   }
   rows.push({ kind: 'folder', node: ungroupedNode, depth: 0 })
   if (expandedIds.has(UNGROUPED_ID)) {
-    for (const request of ungroupedRequests) {
+    for (const request of sortByCreatedAt(ungroupedRequests)) {
       rows.push({ kind: 'request', request, depth: 1 })
     }
   }

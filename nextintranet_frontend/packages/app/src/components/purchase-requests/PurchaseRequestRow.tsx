@@ -1,5 +1,5 @@
 import { useDraggable } from "@dnd-kit/core"
-import { GripVertical, Trash2 } from "lucide-react"
+import { GripVertical, PackagePlus, Trash2 } from "lucide-react"
 
 import { ComponentRef } from "@/components/ComponentRef"
 import { TableCell, TableRow } from "@/components/ui/table"
@@ -15,9 +15,18 @@ interface Props {
   deletePending: boolean
   onOpen: (id: string) => void
   onDelete: (id: string) => void
+  onAddToOrder: (request: PurchaseRequest) => void
 }
 
-export function PurchaseRequestRow({ request, depth, canEdit, deletePending, onOpen, onDelete }: Props) {
+export function PurchaseRequestRow({
+  request,
+  depth,
+  canEdit,
+  deletePending,
+  onOpen,
+  onDelete,
+  onAddToOrder,
+}: Props) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `${REQUEST_DRAG_PREFIX}${request.id}`,
   })
@@ -38,19 +47,26 @@ export function PurchaseRequestRow({ request, depth, canEdit, deletePending, onO
       </TableCell>
       <TableCell className="h-9 px-3" style={{ paddingLeft: depth * 20 + 12 }}>
         <div className="flex min-w-0 flex-col gap-0.5">
-          {request.component_id ? (
-            <ComponentRef
-              componentId={request.component_id}
-              fallbackName={request.component_name || request.item_name || "Unknown item"}
-            />
-          ) : (
-            <button
-              onClick={() => onOpen(request.id)}
-              className="truncate text-left text-sm text-primary hover:underline underline-offset-2"
-            >
-              {request.item_name || "Unknown item"}
-            </button>
-          )}
+          <div className="flex min-w-0 items-center gap-2">
+            {request.component_id ? (
+              <ComponentRef
+                componentId={request.component_id}
+                fallbackName={request.component_name || request.item_name || "Unknown item"}
+              />
+            ) : (
+              <button
+                onClick={() => onOpen(request.id)}
+                className="truncate text-left text-sm text-primary hover:underline underline-offset-2"
+              >
+                {request.item_name || "Unknown item"}
+              </button>
+            )}
+            {request.status === "ordered" && (
+              <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-700">
+                Ordered
+              </span>
+            )}
+          </div>
           <button
             onClick={() => onOpen(request.id)}
             className="px-0 text-left text-xs text-muted-foreground hover:underline underline-offset-2"
@@ -89,18 +105,33 @@ export function PurchaseRequestRow({ request, depth, canEdit, deletePending, onO
       </TableCell>
       <TableCell className="px-3 py-2 align-top">
         {canEdit && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                onClick={() => onDelete(request.id)}
-                disabled={deletePending}
-                className="rounded p-1 text-muted-foreground/50 hover:bg-destructive/10 hover:text-destructive transition-colors"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Delete request</TooltipContent>
-          </Tooltip>
+          <div className="flex items-center gap-1">
+            {request.status !== "ordered" && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => onAddToOrder(request)}
+                    className="rounded p-1 text-muted-foreground/50 hover:bg-accent/40 hover:text-foreground transition-colors"
+                  >
+                    <PackagePlus className="h-3.5 w-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Add to purchase order</TooltipContent>
+              </Tooltip>
+            )}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => onDelete(request.id)}
+                  disabled={deletePending}
+                  className="rounded p-1 text-muted-foreground/50 hover:bg-destructive/10 hover:text-destructive transition-colors"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Delete request</TooltipContent>
+            </Tooltip>
+          </div>
         )}
       </TableCell>
     </TableRow>
