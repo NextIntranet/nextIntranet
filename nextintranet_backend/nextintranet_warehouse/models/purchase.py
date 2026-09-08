@@ -415,12 +415,23 @@ class PurchaseRequestFolder(MPTTModel, NIModel):
         return self.full_path
 
 
+class PurchaseRequestStatus(models.TextChoices):
+    OPEN = 'open', _('Open')
+    ORDERED = 'ordered', _('Ordered')
+
+
 class PurchaseRequest(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     created_at = models.DateTimeField(auto_now_add=True)
     quantity = models.PositiveIntegerField(default=1, verbose_name=("Quantity"))
     description = models.TextField(blank=True, verbose_name=("Description"))
     item_name = models.CharField(max_length=255, blank=True, null=True, verbose_name=("Item name"))
+    status = models.CharField(
+        max_length=20,
+        choices=PurchaseRequestStatus.choices,
+        default=PurchaseRequestStatus.OPEN,
+        verbose_name=_('Status'),
+    )
 
     component = models.ForeignKey(
         Component,

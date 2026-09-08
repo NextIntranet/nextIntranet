@@ -79,6 +79,7 @@ class PurchaseRequestSerializer(serializers.ModelSerializer):
             'mfpn',
             'matching_supplier_relation_id',
             'created_at',
+            'status',
         ]
         read_only_fields = [
             'id',
@@ -88,6 +89,7 @@ class PurchaseRequestSerializer(serializers.ModelSerializer):
             'mfpn',
             'matching_supplier_relation_id',
             'created_at',
+            'status',
         ]
 
     def get_suppliers(self, obj):
@@ -157,6 +159,7 @@ class PurchaseRequestListAPIView(generics.ListCreateAPIView):
             queryset = queryset.filter(purchase__isnull=True)
         elif assigned.lower() in ('1', 'true'):
             queryset = queryset.filter(purchase__isnull=False)
+        # assigned=all (or any other value) returns both open and ordered requests
 
         if search:
             queryset = queryset.filter(

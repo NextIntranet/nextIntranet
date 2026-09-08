@@ -21,6 +21,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { LocationParentSelect } from "@/components/LocationParentSelect"
 import { ComponentAsyncSelect } from "@/components/ComponentAsyncSelect"
+import { purchaseRequestToItem } from "@/components/purchase-requests/purchaseRequestToItem"
 
 const addComponentSelectStyles = {
   control: (base: Record<string, unknown>) => ({
@@ -658,25 +659,15 @@ export function PurchaseDetailPage() {
       toast.error("Selected request is not available.")
       return
     }
-    if (!request.component_id || !request.matching_supplier_relation_id) {
+    const item = purchaseRequestToItem(request)
+    if (!item) {
       toast.error("Request has no matching supplier relation for this supplier.")
       return
     }
 
     try {
       await patchPurchaseMutation.mutateAsync({
-        items: [
-          {
-            item_type: "component",
-            component_id: request.component_id,
-            supplier_relation_id: request.matching_supplier_relation_id,
-            requested_quantity: request.quantity,
-            quantity: request.quantity,
-            package_size: 1,
-            symbol: request.mfpn || request.component_name || "",
-            description: request.description || "",
-          },
-        ],
+        items: [item],
         purchase_request_ids: [request.id],
       })
       await invalidatePurchaseQueries()
