@@ -27,11 +27,11 @@ Warehouse management, production BOMs, label printing, and hardware integration 
        └───────┤    nginx :9000        ├───────┘
                └───────────┬───────────┘
                            │
-                   ┌───────┴───────┐
-                   │  Postgres 18  │
-                   │  Redis        │
-                   │  MinIO (S3)   │
-                   └───────────────┘
+                    ┌───────┴───────┐
+                    │  Postgres 18  │
+                    │  Redis        │
+                    │  RustFS (S3) │
+                    └───────────────┘
 ```
 
 | Component | Stack | Location |
@@ -54,7 +54,7 @@ docker compose up --build
 # 3. Open http://localhost:9000
 ```
 
-The stack includes Postgres 18, Redis, MinIO (S3-compatible storage), and nginx.
+The stack includes Postgres 18, Redis, RustFS (S3-compatible storage), and nginx.
 All services run inside Docker except the [HW Agent](#hw-agent), which runs locally on the machine with physical printers/scanners.
 
 Build production images with version metadata:

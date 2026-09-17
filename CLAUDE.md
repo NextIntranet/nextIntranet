@@ -18,7 +18,7 @@ Everything runs behind **nginx on port 9000**. The dev URL is `http://localhost:
 - `/api/*` → Django `web` container (port 8000, gunicorn)
 - `/ws/*` → Django `web_asgi` container (port 8001, Daphne/Channels)
 - `/mcp` → Django `web` (SSE, buffering disabled)
-- `/s3/*` → MinIO (S3-compatible object store)
+- `/s3/*` → RustFS (S3-compatible object store)
 - `/*` → Vite dev server (frontend container)
 
 **Django apps**:
