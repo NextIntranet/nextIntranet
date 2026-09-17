@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch, tokenStorage } from '@nextintranet/core';
@@ -65,6 +65,12 @@ function useBrandingMeta() {
     window.addEventListener('branding-updated', handler);
     return () => window.removeEventListener('branding-updated', handler);
   }, []);
+}
+
+/** Keeps old /production/:productId/bom/:bomId links working by dropping the production segment. */
+function LegacyBomRedirect() {
+  const { bomId, tab } = useParams<{ bomId: string; tab: string }>();
+  return <Navigate to={`/production/bom/${bomId}${tab ? `/${tab}` : ''}`} replace />;
 }
 
 export function App() {
@@ -293,12 +299,20 @@ export function App() {
             element={<ProductionPage />}
           />
           <Route
-            path="production/:productId/bom/:bomId"
+            path="production/bom/:bomId"
             element={<ProductionBomPage />}
           />
           <Route
-            path="production/:productId/bom/:bomId/:tab"
+            path="production/bom/:bomId/:tab"
             element={<ProductionBomPage />}
+          />
+          <Route
+            path="production/:productId/bom/:bomId"
+            element={<LegacyBomRedirect />}
+          />
+          <Route
+            path="production/:productId/bom/:bomId/:tab"
+            element={<LegacyBomRedirect />}
           />
           <Route
             path="user"

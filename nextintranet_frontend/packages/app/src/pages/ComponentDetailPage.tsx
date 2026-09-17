@@ -2680,7 +2680,7 @@ export function ComponentDetailPage() {
                       {group.boms.map((row) => (
                         <li key={row.bom_id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5">
                           <Link
-                            to={`/production/${row.product_id}/bom/${row.bom_id}`}
+                            to={`/production/bom/${row.bom_id}`}
                             className="text-sm text-primary hover:underline"
                           >
                             {row.bom_name}

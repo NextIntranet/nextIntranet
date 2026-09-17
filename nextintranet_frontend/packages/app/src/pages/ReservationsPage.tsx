@@ -41,7 +41,7 @@ function ReservationSourcesCell({ sources }: { sources?: ReservationSource[] | n
         if (s.type === "production" && s.bom_id) {
           const path =
             s.product_id != null
-              ? `/production/${s.product_id}/bom/${s.bom_id}`
+              ? `/production/bom/${s.bom_id}`
               : `/production`
           return (
             <Link
