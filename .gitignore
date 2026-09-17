@@ -51,3 +51,4 @@ nextintranet_backend/static/
 data/
 dev/
 nginx_config/nginx.conf
+nginx_config/realip.conf

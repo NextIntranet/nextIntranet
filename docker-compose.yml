@@ -123,6 +123,7 @@ services:
   nginx:
     image: nginx:alpine
     volumes:
+      - ./nginx_config/realip.conf:/etc/nginx/conf.d/00-realip.conf:ro
       - ./nginx_config/nginx.conf:/etc/nginx/conf.d/default.conf
     ports:
       - "9000:80"
@@ -135,6 +136,7 @@ services:
         restart: true
       web_asgi:
         condition: service_started
+        restart: true
     networks:
       - nextintranet_net
 
