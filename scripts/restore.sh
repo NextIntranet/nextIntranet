@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 #
 # NextIntranet restore script
-# Obnoví PostgreSQL databázi, MinIO (S3) data a Redis dump ze zálohy.
+# Obnoví PostgreSQL databázi, RustFS (S3) data a Redis dump ze zálohy.
 #
 # Použití:
 #   ./scripts/restore.sh ./backups/20260520_130000      # obnoví vše ze zálohy
 #   RESTORE_COMPONENTS="db" ./scripts/restore.sh ./backups/20260520_130000  # jen DB
 #
-# Komponenty: db, minio, redis (default: všechny nalezené v záloze)
+# Komponenty: db, rustfs, redis (default: všechny nalezené v záloze; kompatibilní i s "minio")
 #
 
 set -euo pipefail
@@ -52,7 +52,7 @@ MINIO_BUCKET="${MINIO_BUCKET:-nextintranet-dev}"
 # Autodetekce komponent v záloze
 AUTO_COMPONENTS=""
 [ -f "$BACKUP_DIR/db.dump" ] && AUTO_COMPONENTS="$AUTO_COMPONENTS db"
-[ -d "$BACKUP_DIR/minio" ] || [ -f "$BACKUP_DIR/minio.tar.gz" ] && AUTO_COMPONENTS="$AUTO_COMPONENTS minio"
+[ -d "$BACKUP_DIR/minio" ] || [ -f "$BACKUP_DIR/minio.tar.gz" ] && AUTO_COMPONENTS="$AUTO_COMPONENTS rustfs"
 [ -f "$BACKUP_DIR/redis.rdb" ] && AUTO_COMPONENTS="$AUTO_COMPONENTS redis"
 COMPONENTS="${RESTORE_COMPONENTS:-$AUTO_COMPONENTS}"
 
@@ -97,29 +97,36 @@ else
     echo "[1/3] PostgreSQL přeskočeno"
 fi
 
-# --- MinIO / S3 ---
-if echo "$COMPONENTS" | grep -qw "minio"; then
+# --- RustFS / S3 ---
+if echo "$COMPONENTS" | grep -qwE "rustfs|minio"; then
     if [ -d "$BACKUP_DIR/minio" ]; then
-        echo "[2/3] Obnova MinIO bucketu '$MINIO_BUCKET' (mc mirror)..."
-        docker compose -f "$PROJECT_DIR/docker-compose.yml" run --rm --entrypoint "" minio_init \
+        echo "[2/3] Obnova RustFS bucketu '$MINIO_BUCKET' (mc mirror)..."
+        docker compose -f "$PROJECT_DIR/docker-compose.yml" run --rm --entrypoint "" rustfs_init \
             /bin/sh -c "
-                /usr/bin/mc alias set local http://minio:9000 \${MINIO_ROOT_USER:-minioadmin} \${MINIO_ROOT_PASSWORD:-minioadmin} &&
+                /usr/bin/mc alias set local http://rustfs:9000 \${MINIO_ROOT_USER:-minioadmin} \${MINIO_ROOT_PASSWORD:-minioadmin} &&
                 /usr/bin/mc mb --ignore-existing local/$MINIO_BUCKET &&
                 /usr/bin/mc mirror --overwrite --quiet /backup local/$MINIO_BUCKET
             " --volume "$BACKUP_DIR/minio:/backup"
-        echo "      ✓ MinIO bucket obnoven"
+        echo "      ✓ RustFS bucket obnoven"
     elif [ -f "$BACKUP_DIR/minio.tar.gz" ]; then
-        echo "[2/3] Obnova MinIO z tar archivu..."
-        # Zastavíme MinIO, rozbalíme, spustíme
-        docker compose -f "$PROJECT_DIR/docker-compose.yml" stop minio
-        tar -xzf "$BACKUP_DIR/minio.tar.gz" -C "$PROJECT_DIR/.data/"
-        docker compose -f "$PROJECT_DIR/docker-compose.yml" start minio
-        echo "      ✓ MinIO data obnovena"
+        echo "[2/3] Obnova RustFS z tar archivu..."
+        RUSTFS_VOLUME="$(docker volume ls -q | grep -E '(^|_|-)(rustfs_data|minio)$' | head -1)"
+        if [ -z "$RUSTFS_VOLUME" ]; then
+            echo "      ⚠ RustFS volume nenalezena, přeskočeno"
+        else
+            # Zastavíme RustFS, vyčistíme volume, rozbalíme, spustíme
+            docker compose -f "$PROJECT_DIR/docker-compose.yml" stop rustfs
+            docker run --rm -v "$RUSTFS_VOLUME":/data alpine sh -c "rm -rf /data/.* /data/* 2>/dev/null || true"
+            docker run --rm -v "$RUSTFS_VOLUME":/data -v "$BACKUP_DIR":/backup \
+                alpine sh -c "tar -xzf /backup/minio.tar.gz -C /data"
+            docker compose -f "$PROJECT_DIR/docker-compose.yml" start rustfs
+            echo "      ✓ RustFS data obnovena"
+        fi
     else
-        echo "[2/3] ⚠ MinIO záloha nenalezena, přeskočeno"
+        echo "[2/3] ⚠ RustFS záloha nenalezena, přeskočeno"
     fi
 else
-    echo "[2/3] MinIO přeskočeno"
+    echo "[2/3] RustFS přeskočeno"
 fi
 
 # --- Redis ---

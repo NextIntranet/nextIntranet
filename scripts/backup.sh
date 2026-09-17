@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 #
 # NextIntranet backup script
-# Zálohuje PostgreSQL databázi, MinIO (S3) data a Redis dump.
+# Zálohuje PostgreSQL databázi, RustFS (S3) data a Redis dump.
 #
 # Použití:
 #   ./scripts/backup.sh                    # záloha do ./backups/<timestamp>/
 #   ./scripts/backup.sh /cesta/k/adresari  # záloha do zadaného adresáře
-#   BACKUP_COMPONENTS="db minio" ./scripts/backup.sh  # záloha jen vybraných komponent
+#   BACKUP_COMPONENTS="db rustfs" ./scripts/backup.sh  # záloha jen vybraných komponent
 #
-# Komponenty: db, minio, redis (default: všechny)
+# Komponenty: db, rustfs, redis (default: všechny; kompatibilní i s "minio")
 #
 
 set -euo pipefail
@@ -17,7 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 BACKUP_DIR="${1:-$PROJECT_DIR/backups/$TIMESTAMP}"
-COMPONENTS="${BACKUP_COMPONENTS:-db minio redis}"
+COMPONENTS="${BACKUP_COMPONENTS:-db rustfs redis}"
 
 # Načtení proměnných z .env
 if [ -f "$PROJECT_DIR/.env" ]; then
@@ -49,28 +49,31 @@ else
     echo "[1/3] PostgreSQL přeskočeno"
 fi
 
-# --- MinIO / S3 ---
-if echo "$COMPONENTS" | grep -qw "minio"; then
-    echo "[2/3] Záloha MinIO bucketu '$MINIO_BUCKET'..."
-    docker compose -f "$PROJECT_DIR/docker-compose.yml" run --rm --entrypoint "" minio_init \
+# --- RustFS / S3 ---
+if echo "$COMPONENTS" | grep -qwE "rustfs|minio"; then
+    echo "[2/3] Záloha RustFS bucketu '$MINIO_BUCKET'..."
+    docker compose -f "$PROJECT_DIR/docker-compose.yml" run --rm --entrypoint "" rustfs_init \
         /bin/sh -c "
-            /usr/bin/mc alias set local http://minio:9000 \${MINIO_ROOT_USER:-minioadmin} \${MINIO_ROOT_PASSWORD:-minioadmin} &&
+            /usr/bin/mc alias set local http://rustfs:9000 \${MINIO_ROOT_USER:-minioadmin} \${MINIO_ROOT_PASSWORD:-minioadmin} &&
             /usr/bin/mc mirror --quiet local/$MINIO_BUCKET /backup
         " --volume "$BACKUP_DIR/minio:/backup"
     # Fallback: pokud mc mirror selže, zkusíme přímou kopii volume
     if [ $? -ne 0 ] || [ ! -d "$BACKUP_DIR/minio" ] || [ -z "$(ls -A "$BACKUP_DIR/minio" 2>/dev/null)" ]; then
         echo "      mc mirror nedostupný, kopíruji volume přímo..."
-        if [ -d "$PROJECT_DIR/.data/minio" ]; then
-            tar -czf "$BACKUP_DIR/minio.tar.gz" -C "$PROJECT_DIR/.data" minio
+        rmdir "$BACKUP_DIR/minio" 2>/dev/null || true
+        RUSTFS_VOLUME="$(docker volume ls -q | grep -E '(^|_|-)(rustfs_data|minio)$' | head -1)"
+        if [ -n "$RUSTFS_VOLUME" ]; then
+            docker run --rm -v "$RUSTFS_VOLUME":/data:ro -v "$BACKUP_DIR":/backup \
+                alpine sh -c "tar -czf /backup/minio.tar.gz -C /data ."
             echo "      → $BACKUP_DIR/minio.tar.gz ($(du -h "$BACKUP_DIR/minio.tar.gz" | cut -f1))"
         else
-            echo "      ⚠ MinIO data adresář neexistuje, přeskočeno"
+            echo "      ⚠ RustFS volume nenalezena, přeskočeno"
         fi
     else
         echo "      → $BACKUP_DIR/minio/"
     fi
 else
-    echo "[2/3] MinIO přeskočeno"
+    echo "[2/3] RustFS přeskočeno"
 fi
 
 # --- Redis ---
