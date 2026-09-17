@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 const downloadBlob = (blob: Blob, filename: string) => {
   const url = URL.createObjectURL(blob)
@@ -23,6 +24,49 @@ const downloadBlob = (blob: Blob, filename: string) => {
 }
 
 const DEFAULT_MCP_SERVER_NAME = "nextintranet-warehouse"
+const MCP_CONFIG_STORAGE_KEY = "nextintranet.software-settings.mcp-config"
+const SERVER_NAME_PLACEHOLDER = "<SERVER_NAME>"
+const SERVICE_TOKEN_PLACEHOLDER = "<SERVICE_TOKEN>"
+
+type McpClient = "opencode" | "codex" | "generic"
+
+interface StoredMcpConfig {
+  serverName: string
+  url: string
+  token: string
+}
+
+interface McpConfigResponse {
+  config?: {
+    mcpServers?: Record<string, { url?: string; headers?: Record<string, string> }>
+  }
+}
+
+function loadStoredMcpConfig(): StoredMcpConfig | null {
+  try {
+    const raw = localStorage.getItem(MCP_CONFIG_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<StoredMcpConfig> | null
+    if (
+      typeof parsed?.serverName === "string" &&
+      typeof parsed?.url === "string" &&
+      typeof parsed?.token === "string"
+    ) {
+      return parsed as StoredMcpConfig
+    }
+  } catch {
+    // Ignore malformed stored configs.
+  }
+  return null
+}
+
+function storeMcpConfig(config: StoredMcpConfig) {
+  try {
+    localStorage.setItem(MCP_CONFIG_STORAGE_KEY, JSON.stringify(config))
+  } catch {
+    // Local storage unavailable; the config only lives for this session.
+  }
+}
 
 interface UserMe {
   is_superuser: boolean
@@ -60,9 +104,12 @@ export function SoftwareSettingsPage({ embedded = false }: { embedded?: boolean 
   const canMcpWrite = useMemo(() => hasWarehouseWrite(me), [me])
   const [kicadTokenName, setKicadTokenName] = useState("")
   const [mcpTokenName, setMcpTokenName] = useState("")
-  const [mcpServerName, setMcpServerName] = useState(DEFAULT_MCP_SERVER_NAME)
+  const [storedMcpConfig, setStoredMcpConfig] = useState<StoredMcpConfig | null>(() => loadStoredMcpConfig())
+  const [mcpServerName, setMcpServerName] = useState(
+    () => storedMcpConfig?.serverName ?? DEFAULT_MCP_SERVER_NAME,
+  )
   const [mcpScope, setMcpScope] = useState<"read" | "write">("read")
-  const [mcpConfigJson, setMcpConfigJson] = useState("")
+  const [mcpClient, setMcpClient] = useState<McpClient>("opencode")
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
@@ -139,24 +186,81 @@ export function SoftwareSettingsPage({ embedded = false }: { embedded?: boolean 
           payload?.detail || payload?.error || `Failed to generate MCP config (${response.status})`,
         )
       }
-      return response.json()
+      return response.json() as Promise<McpConfigResponse>
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["service-tokens"] })
       setMcpTokenName("")
-      setMcpServerName(DEFAULT_MCP_SERVER_NAME)
-      setMcpConfigJson(JSON.stringify(data.config, null, 2))
+      const servers = data.config?.mcpServers ?? {}
+      const [serverName, entry] = Object.entries(servers)[0] ?? []
+      const token = entry?.headers?.["X-Service-Token"]
+      if (!serverName || !entry?.url || !token) {
+        toast.error("MCP token generated, but the server returned an unexpected response.")
+        return
+      }
+      const nextConfig: StoredMcpConfig = { serverName, url: entry.url, token }
+      setStoredMcpConfig(nextConfig)
+      setMcpServerName(serverName)
+      storeMcpConfig(nextConfig)
       setCopied(false)
-      toast.success("MCP config generated. Copy the JSON below.")
+      toast.success("MCP token generated. The configuration below is ready to copy.")
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to generate MCP config.")
     },
   })
 
+  const mcpConfigValues = useMemo(() => {
+    const serverName = storedMcpConfig
+      ? mcpServerName.trim() || storedMcpConfig.serverName
+      : SERVER_NAME_PLACEHOLDER
+    const url = storedMcpConfig?.url ?? `${window.location.origin}/mcp`
+    const token = storedMcpConfig?.token ?? SERVICE_TOKEN_PLACEHOLDER
+    return { serverName, url, token }
+  }, [storedMcpConfig, mcpServerName])
+
+  const mcpClientConfigs = useMemo(
+    () => ({
+      opencode: JSON.stringify(
+        {
+          $schema: "https://opencode.ai/config.json",
+          mcp: {
+            [mcpConfigValues.serverName]: {
+              type: "remote",
+              url: mcpConfigValues.url,
+              headers: { "X-Service-Token": mcpConfigValues.token },
+            },
+          },
+        },
+        null,
+        2,
+      ),
+      codex: [
+        `[mcp_servers.${mcpConfigValues.serverName}]`,
+        `url = ${JSON.stringify(mcpConfigValues.url)}`,
+        `http_headers = { "X-Service-Token" = ${JSON.stringify(mcpConfigValues.token)} }`,
+        "",
+      ].join("\n"),
+      generic: JSON.stringify(
+        {
+          mcpServers: {
+            [mcpConfigValues.serverName]: {
+              type: "http",
+              url: mcpConfigValues.url,
+              headers: { "X-Service-Token": mcpConfigValues.token },
+            },
+          },
+        },
+        null,
+        2,
+      ),
+    }),
+    [mcpConfigValues],
+  )
+
   const handleCopyMcpConfig = async () => {
     try {
-      await navigator.clipboard.writeText(mcpConfigJson)
+      await navigator.clipboard.writeText(mcpClientConfigs[mcpClient])
       setCopied(true)
       toast.success("MCP config copied to clipboard.")
       setTimeout(() => setCopied(false), 2000)
@@ -214,9 +318,10 @@ export function SoftwareSettingsPage({ embedded = false }: { embedded?: boolean 
             />
           </div>
           <CardDescription>
-            Creates a new service token and generates a JSON configuration
-            for MCP clients (Claude Code, Claude Desktop, Cursor, etc.).
-            Copy the JSON into your client&apos;s MCP settings.{" "}
+            Creates a new service token and shows ready-to-use MCP client
+            configurations (OpenCode, Codex, Claude Code, Cursor, etc.). The
+            configuration stays visible on this page and is kept in this
+            browser.{" "}
             <DocLink page="guide/settings/mcp" hash="claude-code-setup" className="text-primary underline">
               Read the MCP setup guide
             </DocLink>
@@ -246,7 +351,7 @@ export function SoftwareSettingsPage({ embedded = false }: { embedded?: boolean 
                 onChange={(event) => setMcpServerName(event.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                Key under <code className="text-foreground">mcpServers</code> in the generated JSON.
+                Server name used as the key in the client configurations below.
                 Use a unique name if you connect multiple NextIntranet instances.
               </p>
             </div>
@@ -291,10 +396,22 @@ export function SoftwareSettingsPage({ embedded = false }: { embedded?: boolean 
             {generateMcpConfigMutation.isPending ? "Generating..." : "Generate config"}
           </Button>
 
-          {mcpConfigJson && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>MCP configuration JSON</Label>
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Label>MCP client configuration</Label>
+              <p className="text-xs text-muted-foreground">
+                {storedMcpConfig
+                  ? "Values are filled with your generated token."
+                  : "Placeholders are shown until you generate a token."}
+              </p>
+            </div>
+            <Tabs value={mcpClient} onValueChange={(value) => setMcpClient(value as McpClient)}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <TabsList>
+                  <TabsTrigger value="opencode">OpenCode</TabsTrigger>
+                  <TabsTrigger value="codex">Codex</TabsTrigger>
+                  <TabsTrigger value="generic">Other clients</TabsTrigger>
+                </TabsList>
                 <Button variant="outline" size="sm" onClick={handleCopyMcpConfig}>
                   {copied ? (
                     <>
@@ -309,11 +426,35 @@ export function SoftwareSettingsPage({ embedded = false }: { embedded?: boolean 
                   )}
                 </Button>
               </div>
-              <pre className="rounded-md border bg-muted p-4 text-sm overflow-x-auto">
-                <code>{mcpConfigJson}</code>
-              </pre>
-            </div>
-          )}
+              <TabsContent value="opencode" className="mt-3 space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  Merge into <code className="text-foreground">opencode.json</code> in your project root or{" "}
+                  <code className="text-foreground">~/.config/opencode/opencode.json</code>.
+                </p>
+                <pre className="rounded-md border bg-muted p-4 text-sm overflow-x-auto">
+                  <code>{mcpClientConfigs.opencode}</code>
+                </pre>
+              </TabsContent>
+              <TabsContent value="codex" className="mt-3 space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  Add to <code className="text-foreground">~/.codex/config.toml</code> (or{" "}
+                  <code className="text-foreground">.codex/config.toml</code> in a trusted project).
+                </p>
+                <pre className="rounded-md border bg-muted p-4 text-sm overflow-x-auto">
+                  <code>{mcpClientConfigs.codex}</code>
+                </pre>
+              </TabsContent>
+              <TabsContent value="generic" className="mt-3 space-y-2">
+                <p className="text-xs text-muted-foreground">
+                  Claude Code, Claude Desktop, Cursor and other clients that use the{" "}
+                  <code className="text-foreground">mcpServers</code> JSON format.
+                </p>
+                <pre className="rounded-md border bg-muted p-4 text-sm overflow-x-auto">
+                  <code>{mcpClientConfigs.generic}</code>
+                </pre>
+              </TabsContent>
+            </Tabs>
+          </div>
         </CardContent>
       </Card>
     </div>

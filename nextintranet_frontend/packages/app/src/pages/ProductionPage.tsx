@@ -842,7 +842,7 @@ type ProductionPageProps = {
 }
 
 export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
-  const { productId, bomId, tab } = useParams<{ productId: string; bomId: string; tab: string }>()
+  const { productId: routeProductId, bomId, tab } = useParams<{ productId: string; bomId: string; tab: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const isBomView = mode === "bom"
@@ -850,10 +850,10 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
   const activeTab: TabKey = TAB_KEYS.includes(tab as TabKey) ? (tab as TabKey) : "bom"
   const goToTab = useCallback(
     (next: TabKey, options?: { replace?: boolean }) => {
-      if (!productId || !bomId) return
-      navigate(`/production/${productId}/bom/${bomId}/${next}`, { replace: options?.replace })
+      if (!bomId) return
+      navigate(`/production/bom/${bomId}/${next}`, { replace: options?.replace })
     },
-    [bomId, navigate, productId],
+    [bomId, navigate],
   )
   // DNP and BOM-excluded rows are always read together, so one toggle drives both.
   const [showHiddenRows, setShowHiddenRows] = useState(false)
@@ -915,11 +915,20 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
 
   const products = unwrap(productsRaw)
 
+  // The BOM URL no longer carries the production id; it comes from the BOM itself.
+  const { data: bomDetail, isLoading: bomDetailLoading } = useQuery<BomItem>({
+    queryKey: ["production-bom", bomId],
+    queryFn: () => apiFetch<BomItem>(`/api/v1/production/templates/${bomId}/`),
+    enabled: isBomView && !!bomId,
+  })
+
+  const productId = isBomView ? bomDetail?.production : routeProductId
+
   useEffect(() => {
-    if (!productId && products.length > 0) {
+    if (!isBomView && !routeProductId && products.length > 0) {
       navigate(`/production/${products[0].id}`, { replace: true })
     }
-  }, [productId, products, navigate])
+  }, [isBomView, routeProductId, products, navigate])
 
   useEffect(() => {
     if (productId) {
@@ -943,12 +952,6 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     if (!bomId || !productDetail) return null
     return productDetail.templates.find((item) => item.id === bomId) || null
   }, [bomId, productDetail])
-
-  const { data: bomDetail, isLoading: bomDetailLoading } = useQuery<BomItem>({
-    queryKey: ["production-bom", bomId],
-    queryFn: () => apiFetch<BomItem>(`/api/v1/production/templates/${bomId}/`),
-    enabled: isBomView && !!bomId,
-  })
 
   const selectedBom = bomDetail || selectedBomFromProduct
   const isTemplateSeries = selectedBom?.series_kind === "template"
@@ -1162,7 +1165,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
       setNewBomQty("1")
       setNewBomDate("")
       toast.success("BOM created.")
-      navigate(`/production/${variables.productionId}/bom/${created.id}`)
+      navigate(`/production/bom/${created.id}`)
     },
     onError: () => toast.error("Failed to create BOM."),
   })
@@ -1179,7 +1182,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
         sourceBom?.series_kind === "template" ? "Working series created from template." : "BOM duplicated.",
       )
       if (productId) {
-        navigate(`/production/${productId}/bom/${created.id}`)
+        navigate(`/production/bom/${created.id}`)
       }
     },
     onError: () => toast.error("Failed to duplicate BOM."),
@@ -1330,9 +1333,9 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     (response?: { working_copy_id?: string }) => {
       queryClient.invalidateQueries({ queryKey: ["production-bom", bomId] })
       queryClient.invalidateQueries({ queryKey: ["production-product", productId] })
-      if (response?.working_copy_id && productId) {
+      if (response?.working_copy_id) {
         toast.success("Template series created. Opening working series.")
-        navigate(`/production/${productId}/bom/${response.working_copy_id}`)
+        navigate(`/production/bom/${response.working_copy_id}`)
         return
       }
       toast.success("Netlist imported into template series.")
@@ -2555,7 +2558,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
         </TableCell>
         <TableCell className="align-top">
           <div className="flex flex-wrap justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={() => navigate(`/production/${productDetail!.id}/bom/${bom.id}`)}>
+            <Button variant="outline" size="sm" onClick={() => navigate(`/production/bom/${bom.id}`)}>
               Open
             </Button>
             <Button variant="outline" size="sm" onClick={() => duplicateBomMutation.mutate(bom.id)}>
