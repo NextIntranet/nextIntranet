@@ -109,19 +109,15 @@ if echo "$COMPONENTS" | grep -qwE "rustfs|minio"; then
             " --volume "$BACKUP_DIR/minio:/backup"
         echo "      ✓ RustFS bucket obnoven"
     elif [ -f "$BACKUP_DIR/minio.tar.gz" ]; then
-        echo "[2/3] Obnova RustFS z tar archivu..."
-        RUSTFS_VOLUME="$(docker volume ls -q | grep -E '(^|_|-)(rustfs_data|minio)$' | head -1)"
-        if [ -z "$RUSTFS_VOLUME" ]; then
-            echo "      ⚠ RustFS volume nenalezena, přeskočeno"
-        else
-            # Zastavíme RustFS, vyčistíme volume, rozbalíme, spustíme
-            docker compose -f "$PROJECT_DIR/docker-compose.yml" stop rustfs
-            docker run --rm -v "$RUSTFS_VOLUME":/data alpine sh -c "rm -rf /data/.* /data/* 2>/dev/null || true"
-            docker run --rm -v "$RUSTFS_VOLUME":/data -v "$BACKUP_DIR":/backup \
-                alpine sh -c "tar -xzf /backup/minio.tar.gz -C /data"
-            docker compose -f "$PROJECT_DIR/docker-compose.yml" start rustfs
-            echo "      ✓ RustFS data obnovena"
-        fi
+        echo "[2/3] Obnova RustFS z MinIO tar archivu (přes dočasné MinIO + mc mirror)..."
+        # Staré zálohy obsahují MinIO disk formát; ten se do RustFS nepřekopíruje přímo,
+        # ale objektově přes S3 API – k tomu slouží migrační skript.
+        TMP="$(mktemp -d)"
+        tar -xzf "$BACKUP_DIR/minio.tar.gz" -C "$TMP"
+        # Tar obsahuje kořenový adresář 'minio/' (MinIO data + .minio.sys)
+        MINIO_LEGACY_DATA_DIR="$TMP/minio" "$PROJECT_DIR/scripts/migrate_minio_to_rustfs.sh"
+        rm -rf "$TMP"
+        echo "      ✓ RustFS data obnovena"
     else
         echo "[2/3] ⚠ RustFS záloha nenalezena, přeskočeno"
     fi
