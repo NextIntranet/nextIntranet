@@ -1,5 +1,6 @@
 volumes:
   app_node_modules:
+  rustfs_data:
 
 networks:
   nextintranet_net:
@@ -41,12 +42,12 @@ services:
     env_file:
       - .env
     environment:
-      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL:-http://minio:9000}
+      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL:-http://rustfs:9000}
       - S3_PUBLIC_ENDPOINT_URL=${S3_PUBLIC_ENDPOINT_URL:-/s3}
     depends_on:
       - db_nextintranet
       - redis
-      - minio
+      - rustfs
     networks:
       - nextintranet_net
   
@@ -95,7 +96,7 @@ services:
     depends_on:
       - db_nextintranet
       - redis
-      - minio
+      - rustfs
     networks:
       - nextintranet_net
 
@@ -146,30 +147,33 @@ services:
     networks:
       - nextintranet_net
 
-  minio:
-    image: minio/minio:latest
-    command: server /data --console-address ":9001"
+  rustfs:
+    image: rustfs/rustfs:1.0.0-alpha.89
+    container_name: rustfs
     volumes:
-      - ./.data/minio:/data
+      - rustfs_data:/data
 #    ports:
-#      - "${MINIO_PORT:-9003}:9000"
-#      - "${MINIO_CONSOLE_PORT:-9002}:9001"
-    env_file:
-      - .env
+#      - "${RUSTFS_PORT:-9001}:9000"
+#      - "${RUSTFS_CONSOLE_PORT:-9004}:9001"
     environment:
-      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
-      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - RUSTFS_VOLUMES=/data
+      - RUSTFS_ADDRESS=0.0.0.0:9000
+      - RUSTFS_CONSOLE_ENABLE=true
+      - RUSTFS_CONSOLE_ADDRESS=0.0.0.0:9001
+      - RUSTFS_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - RUSTFS_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - RUSTFS_REGION=${S3_REGION_NAME:-us-east-1}
     networks:
       - nextintranet_net
 
-  minio_init:
+  rustfs_init:
     image: minio/mc:latest
     depends_on:
-      - minio
+      - rustfs
     entrypoint: >
       /bin/sh -c "
-      until /usr/bin/mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin}; do
-        echo 'waiting for minio...'; sleep 1;
+      until /usr/bin/mc alias set local http://rustfs:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin}; do
+        echo 'waiting for rustfs...'; sleep 1;
       done &&
       /usr/bin/mc mb --ignore-existing local/${MINIO_BUCKET:-nextintranet-dev} &&
       /usr/bin/mc anonymous set download local/${MINIO_BUCKET:-nextintranet-dev}
