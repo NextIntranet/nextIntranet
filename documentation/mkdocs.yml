@@ -57,13 +57,27 @@ nav:
     - Search: guide/search.md
     - Warehouse:
       - Components: guide/warehouse/components.md
+      - Categories: guide/warehouse/categories.md
+      - Locations: guide/warehouse/locations.md
+      - Packets & stock operations: guide/warehouse/packets.md
       - Pricing: guide/warehouse/pricing.md
       - Put-away check: guide/warehouse/put-away.md
+      - Suppliers: guide/warehouse/suppliers.md
       - Purchases: guide/warehouse/purchases.md
       - Reservations: guide/warehouse/reservations.md
+      - Inventory (stocktaking): guide/warehouse/inventory.md
+    - Production:
+      - BOMs: guide/production/boms.md
+      - Live iBOM viewer: guide/production/ibom.md
+    - Printing:
+      - Print queues: guide/printing/print-queues.md
+      - Label templates: guide/printing/label-templates.md
     - Settings:
       - MCP integration: guide/settings/mcp.md
       - Service tokens: guide/settings/service-tokens.md
+      - Permissions & roles: guide/settings/permissions.md
+      - Hardware: guide/settings/hardware.md
+      - KiCad HTTP library: guide/settings/kicad.md
   - Developer:
     - Plugin system: developer/plugin-system.md
     - Supplier API mapping: developer/supplier-api-mapping.md

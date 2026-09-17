@@ -184,3 +184,8 @@ It also stamps `SupplierRelation.api_applied_at`.
 3. If you need a **new target field**, extend the `target` handling in
    `apply_supplier_mapping` (add the branch and, if it is a scalar component field,
    include it in the allowed set at the `component.<field>` check).
+
+## Related topics
+
+- [Suppliers](../guide/warehouse/suppliers.md) — user-facing supplier and supplier
+  relation management

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-01T16:51:02.876Z",
+  "generatedAt": "2026-09-17T13:49:05.044Z",
   "pages": [
     {
       "path": "",
@@ -126,6 +126,16 @@
           "level": 2,
           "text": "Extracting Later",
           "id": "extracting-later"
+        },
+        {
+          "level": 2,
+          "text": "Current status of the `printer.driver` example",
+          "id": "current-status-of-the-printerdriver-example"
+        },
+        {
+          "level": 2,
+          "text": "Related topics",
+          "id": "related-topics"
         }
       ]
     },
@@ -200,6 +210,11 @@
           "level": 2,
           "text": "Adding a new mapped field",
           "id": "adding-a-new-mapped-field"
+        },
+        {
+          "level": 2,
+          "text": "Related topics",
+          "id": "related-topics"
         }
       ]
     },
@@ -234,6 +249,187 @@
           "level": 2,
           "text": "Configure integrations",
           "id": "configure-integrations"
+        },
+        {
+          "level": 2,
+          "text": "Where to go next",
+          "id": "where-to-go-next"
+        }
+      ]
+    },
+    {
+      "path": "guide/printing/label-templates",
+      "file": "guide/printing/label-templates.md",
+      "title": "Label templates",
+      "description": "Design what a printed label looks like, per target type and paper format.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "Label templates",
+          "id": "label-templates"
+        },
+        {
+          "level": 2,
+          "text": "Definition",
+          "id": "definition"
+        },
+        {
+          "level": 2,
+          "text": "Template fields",
+          "id": "template-fields"
+        },
+        {
+          "level": 2,
+          "text": "Preview",
+          "id": "preview"
+        },
+        {
+          "level": 2,
+          "text": "Related topics",
+          "id": "related-topics"
+        }
+      ]
+    },
+    {
+      "path": "guide/printing/print-queues",
+      "file": "guide/printing/print-queues.md",
+      "title": "Print queues",
+      "description": "Queue labels and documents for printing, and render them as PDFs.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "Print queues",
+          "id": "print-queues"
+        },
+        {
+          "level": 2,
+          "text": "Queues",
+          "id": "queues"
+        },
+        {
+          "level": 2,
+          "text": "Adding items",
+          "id": "adding-items"
+        },
+        {
+          "level": 2,
+          "text": "Rendering",
+          "id": "rendering"
+        },
+        {
+          "level": 3,
+          "text": "Formats",
+          "id": "formats"
+        },
+        {
+          "level": 2,
+          "text": "Automation",
+          "id": "automation"
+        },
+        {
+          "level": 2,
+          "text": "Related topics",
+          "id": "related-topics"
+        }
+      ]
+    },
+    {
+      "path": "guide/production/boms",
+      "file": "guide/production/boms.md",
+      "title": "BOMs (production templates)",
+      "description": "Manage BOM lines, link components, check stock availability, and lock/finalize a production run.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "BOMs (production templates)",
+          "id": "boms-production-templates"
+        },
+        {
+          "level": 2,
+          "text": "BOM lifecycle",
+          "id": "bom-lifecycle"
+        },
+        {
+          "level": 2,
+          "text": "BOM lines",
+          "id": "bom-lines"
+        },
+        {
+          "level": 3,
+          "text": "Linking, splitting, and merging",
+          "id": "linking-splitting-and-merging"
+        },
+        {
+          "level": 2,
+          "text": "Availability",
+          "id": "availability"
+        },
+        {
+          "level": 2,
+          "text": "Sourcing and placing",
+          "id": "sourcing-and-placing"
+        },
+        {
+          "level": 2,
+          "text": "Lock and finalize",
+          "id": "lock-and-finalize"
+        },
+        {
+          "level": 2,
+          "text": "Duplicating and re-importing",
+          "id": "duplicating-and-re-importing"
+        },
+        {
+          "level": 2,
+          "text": "API",
+          "id": "api"
+        },
+        {
+          "level": 2,
+          "text": "Related topics",
+          "id": "related-topics"
+        }
+      ]
+    },
+    {
+      "path": "guide/production/ibom",
+      "file": "guide/production/ibom.md",
+      "title": "Live iBOM viewer",
+      "description": "View a board's InteractiveHtmlBom with live stock and grouping data from the BOM.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "Live iBOM viewer",
+          "id": "live-ibom-viewer"
+        },
+        {
+          "level": 2,
+          "text": "Attaching an iBOM",
+          "id": "attaching-an-ibom"
+        },
+        {
+          "level": 2,
+          "text": "What the overlay adds",
+          "id": "what-the-overlay-adds"
+        },
+        {
+          "level": 2,
+          "text": "Live updates",
+          "id": "live-updates"
+        },
+        {
+          "level": 2,
+          "text": "Opening without a station",
+          "id": "opening-without-a-station"
+        },
+        {
+          "level": 2,
+          "text": "Related topics",
+          "id": "related-topics"
         }
       ]
     },
@@ -293,6 +489,74 @@
           "level": 2,
           "text": "Which search should I use?",
           "id": "which-search-should-i-use"
+        }
+      ]
+    },
+    {
+      "path": "guide/settings/hardware",
+      "file": "guide/settings/hardware.md",
+      "title": "Hardware",
+      "description": "Connect barcode scanners and printers via the local HW agent or the browser's Web Serial API.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "Hardware",
+          "id": "hardware"
+        },
+        {
+          "level": 2,
+          "text": "HW agent",
+          "id": "hw-agent"
+        },
+        {
+          "level": 2,
+          "text": "Station ID",
+          "id": "station-id"
+        },
+        {
+          "level": 2,
+          "text": "Browser scanners (Web Serial)",
+          "id": "browser-scanners-web-serial"
+        },
+        {
+          "level": 2,
+          "text": "Related topics",
+          "id": "related-topics"
+        }
+      ]
+    },
+    {
+      "path": "guide/settings/kicad",
+      "file": "guide/settings/kicad.md",
+      "title": "KiCad HTTP library",
+      "description": "Pull warehouse components into KiCad as a live symbol library.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "KiCad HTTP library",
+          "id": "kicad-http-library"
+        },
+        {
+          "level": 2,
+          "text": "Generate the config file",
+          "id": "generate-the-config-file"
+        },
+        {
+          "level": 2,
+          "text": "What KiCad sees",
+          "id": "what-kicad-sees"
+        },
+        {
+          "level": 2,
+          "text": "Config file contents",
+          "id": "config-file-contents"
+        },
+        {
+          "level": 2,
+          "text": "Related topics",
+          "id": "related-topics"
         }
       ]
     },
@@ -361,6 +625,40 @@
       ]
     },
     {
+      "path": "guide/settings/permissions",
+      "file": "guide/settings/permissions.md",
+      "title": "Permissions & roles",
+      "description": "How area-based access levels control what a user can see and do.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "Permissions & roles",
+          "id": "permissions--roles"
+        },
+        {
+          "level": 2,
+          "text": "Areas and levels",
+          "id": "areas-and-levels"
+        },
+        {
+          "level": 2,
+          "text": "Superuser bypass",
+          "id": "superuser-bypass"
+        },
+        {
+          "level": 2,
+          "text": "Managing permissions",
+          "id": "managing-permissions"
+        },
+        {
+          "level": 2,
+          "text": "Related topics",
+          "id": "related-topics"
+        }
+      ]
+    },
+    {
       "path": "guide/settings/service-tokens",
       "file": "guide/settings/service-tokens.md",
       "title": "Service tokens",
@@ -405,6 +703,45 @@
       ]
     },
     {
+      "path": "guide/warehouse/categories",
+      "file": "guide/warehouse/categories.md",
+      "title": "Categories",
+      "description": "Hierarchical component categories, inherited color/icon, and parameter rules.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "Categories",
+          "id": "categories"
+        },
+        {
+          "level": 2,
+          "text": "Hierarchy",
+          "id": "hierarchy"
+        },
+        {
+          "level": 2,
+          "text": "Color and icon",
+          "id": "color-and-icon"
+        },
+        {
+          "level": 2,
+          "text": "Parameter rules",
+          "id": "parameter-rules"
+        },
+        {
+          "level": 2,
+          "text": "API",
+          "id": "api"
+        },
+        {
+          "level": 2,
+          "text": "Related topics",
+          "id": "related-topics"
+        }
+      ]
+    },
+    {
       "path": "guide/warehouse/components",
       "file": "guide/warehouse/components.md",
       "title": "Components",
@@ -423,8 +760,145 @@
         },
         {
           "level": 2,
-          "text": "Description field",
-          "id": "description-field"
+          "text": "Fields",
+          "id": "fields"
+        },
+        {
+          "level": 2,
+          "text": "Parameters",
+          "id": "parameters"
+        },
+        {
+          "level": 2,
+          "text": "Documents",
+          "id": "documents"
+        },
+        {
+          "level": 2,
+          "text": "KiCad symbol",
+          "id": "kicad-symbol"
+        },
+        {
+          "level": 2,
+          "text": "Related topics",
+          "id": "related-topics"
+        }
+      ]
+    },
+    {
+      "path": "guide/warehouse/inventory",
+      "file": "guide/warehouse/inventory.md",
+      "title": "Inventory (stocktaking)",
+      "description": "Run stocktaking campaigns, count packets, and generate the valuation report.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "Inventory (stocktaking)",
+          "id": "inventory-stocktaking"
+        },
+        {
+          "level": 2,
+          "text": "Creating a campaign",
+          "id": "creating-a-campaign"
+        },
+        {
+          "level": 2,
+          "text": "Counting",
+          "id": "counting"
+        },
+        {
+          "level": 2,
+          "text": "Tracking progress",
+          "id": "tracking-progress"
+        },
+        {
+          "level": 2,
+          "text": "Finishing a campaign",
+          "id": "finishing-a-campaign"
+        },
+        {
+          "level": 2,
+          "text": "Valuation report",
+          "id": "valuation-report"
+        },
+        {
+          "level": 2,
+          "text": "Related topics",
+          "id": "related-topics"
+        }
+      ]
+    },
+    {
+      "path": "guide/warehouse/locations",
+      "file": "guide/warehouse/locations.md",
+      "title": "Locations",
+      "description": "Hierarchical warehouse locations, storage flags, and location maps.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "Locations",
+          "id": "locations"
+        },
+        {
+          "level": 2,
+          "text": "Hierarchy",
+          "id": "hierarchy"
+        },
+        {
+          "level": 2,
+          "text": "Can store items",
+          "id": "can-store-items"
+        },
+        {
+          "level": 2,
+          "text": "Picking a parent location",
+          "id": "picking-a-parent-location"
+        },
+        {
+          "level": 2,
+          "text": "Location map",
+          "id": "location-map"
+        },
+        {
+          "level": 2,
+          "text": "API",
+          "id": "api"
+        },
+        {
+          "level": 2,
+          "text": "Related topics",
+          "id": "related-topics"
+        }
+      ]
+    },
+    {
+      "path": "guide/warehouse/packets",
+      "file": "guide/warehouse/packets.md",
+      "title": "Packets & stock operations",
+      "description": "Physical stock batches, their lifecycle states, and the operations that move quantity.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "Packets & stock operations",
+          "id": "packets--stock-operations"
+        },
+        {
+          "level": 2,
+          "text": "Packet fields",
+          "id": "packet-fields"
+        },
+        {
+          "level": 2,
+          "text": "Packet states",
+          "id": "packet-states"
+        },
+        {
+          "level": 2,
+          "text": "Stock operations",
+          "id": "stock-operations"
         },
         {
           "level": 2,
@@ -484,6 +958,11 @@
           "level": 2,
           "text": "`component.internal_price`",
           "id": "componentinternal_price"
+        },
+        {
+          "level": 2,
+          "text": "Related topics",
+          "id": "related-topics"
         }
       ]
     },
@@ -523,6 +1002,11 @@
           "level": 2,
           "text": "Automation",
           "id": "automation"
+        },
+        {
+          "level": 2,
+          "text": "Related topics",
+          "id": "related-topics"
         }
       ]
     },
@@ -562,6 +1046,11 @@
           "level": 2,
           "text": "Permissions",
           "id": "permissions"
+        },
+        {
+          "level": 2,
+          "text": "Related topics",
+          "id": "related-topics"
         }
       ]
     },
@@ -579,6 +1068,11 @@
         },
         {
           "level": 2,
+          "text": "Fields",
+          "id": "fields"
+        },
+        {
+          "level": 2,
           "text": "Create reservation",
           "id": "create-reservation"
         },
@@ -586,6 +1080,45 @@
           "level": 2,
           "text": "View and update",
           "id": "view-and-update"
+        },
+        {
+          "level": 2,
+          "text": "Interaction with BOM availability",
+          "id": "interaction-with-bom-availability"
+        },
+        {
+          "level": 2,
+          "text": "Permissions",
+          "id": "permissions"
+        }
+      ]
+    },
+    {
+      "path": "guide/warehouse/suppliers",
+      "file": "guide/warehouse/suppliers.md",
+      "title": "Suppliers",
+      "description": "Manage suppliers and link components to their supplier order codes.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "Suppliers",
+          "id": "suppliers"
+        },
+        {
+          "level": 2,
+          "text": "Supplier fields",
+          "id": "supplier-fields"
+        },
+        {
+          "level": 2,
+          "text": "Linking a component to a supplier",
+          "id": "linking-a-component-to-a-supplier"
+        },
+        {
+          "level": 2,
+          "text": "Related topics",
+          "id": "related-topics"
         }
       ]
     },
@@ -623,6 +1156,16 @@
         },
         {
           "level": 2,
+          "text": "Hardware",
+          "id": "hardware"
+        },
+        {
+          "level": 2,
+          "text": "Integrations",
+          "id": "integrations"
+        },
+        {
+          "level": 2,
           "text": "Extensibility",
           "id": "extensibility"
         }
@@ -649,6 +1192,11 @@
           "level": 2,
           "text": "Integrations",
           "id": "integrations"
+        },
+        {
+          "level": 2,
+          "text": "Access model",
+          "id": "access-model"
         }
       ]
     }

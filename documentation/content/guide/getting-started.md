@@ -29,6 +29,15 @@ user account.
 
 ## Configure integrations
 
-- **KiCad** — Settings → Software (KiCad card) or the HTTP library endpoint (`/api/kicad/nextIntranet.kicad_httplib`)
+- **KiCad** — [KiCad HTTP library](settings/kicad.md)
 - **MCP** — [MCP integration](settings/mcp.md)
 - **Service tokens** — [Service tokens](settings/service-tokens.md) for printers and devices
+- **Hardware** — [Hardware](settings/hardware.md) to connect barcode scanners and printers
+
+## Where to go next
+
+- [Product overview](../product/overview.md) — the full list of areas and how they fit together
+- [Components](warehouse/components.md), [Categories](warehouse/categories.md), [Locations](warehouse/locations.md) — the core warehouse catalog
+- [Purchases](warehouse/purchases.md), [Inventory](warehouse/inventory.md) — day-to-day warehouse operations
+- [BOMs](production/boms.md) — production BOM workflows
+- [Print queues](printing/print-queues.md) — printing labels for components, packets, and locations

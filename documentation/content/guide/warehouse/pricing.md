@@ -96,3 +96,11 @@ Non-inventoried packets are valued using their current `itemValue`.
 `internal_price` is a manually maintained field on the component. It represents the agreed internal cost per unit and is used as a fallback when no purchase price history exists.
 
 It can be set via the component edit form or via the MCP tool `update_component`.
+
+---
+
+## Related topics
+
+- [Packets & stock operations](packets.md) — packet states and the full operation type list
+- [Inventory (stocktaking)](inventory.md) — where `counted_price` snapshots come from
+- [Purchases](purchases.md) — where priced `buy` operations originate

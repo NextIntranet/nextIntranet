@@ -12,15 +12,23 @@ integrations behind a single authenticated web application.
 
 | Area | Purpose |
 |------|---------|
-| Warehouse | Components, stock, locations, suppliers, reservations |
-| Production | Products, BOMs, and manufacturing notes |
-| Print | Label queues and render jobs for hardware |
-| Settings | Service tokens, MCP, KiCad, and hardware bridges |
+| Warehouse | Components, categories, stock packets, locations, suppliers, reservations, stocktaking |
+| Production | Products, BOMs, sourcing/placement scanning, live iBOM board views |
+| Print | Label templates, print queues, and async render jobs for hardware |
+| Settings | Permissions, service tokens, MCP, KiCad, and hardware bridges |
 
 ## Integrations
 
-- **KiCad HTTP library** — pull symbols and footprints from your warehouse
-- **MCP server** — let AI agents search and update warehouse data securely
+- **KiCad HTTP library** — pull symbols from your warehouse's own component catalog
+- **MCP server** — let AI agents search and update warehouse and production data securely
 - **Service tokens** — authenticate printers and other services without user login
+- **HW agent / Web Serial** — bridge barcode scanners and label printers, either via a
+  small local service or directly from the browser
+
+## Access model
+
+Access is granted per user, per functional area (`warehouse`, `warehouse-operations`,
+`user`), at one of five levels (`hidden` → `admin`). There is no separate roles
+table — see [Permissions & roles](../guide/settings/permissions.md).
 
 See [Features](features.md) for a capability checklist.

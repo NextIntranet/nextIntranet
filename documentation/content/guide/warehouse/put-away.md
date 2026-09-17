@@ -58,3 +58,9 @@ Both current and older label formats are recognised, for bags as well as shelves
 ## Permissions
 
 Requires at least **read** access to the *warehouse* area.
+
+## Related topics
+
+- [Locations](locations.md) — the **Can store items** flag checked by this page
+- [Packets & stock operations](packets.md) — packet states, including the amber
+  "no location assigned" and non-stocked-state warnings

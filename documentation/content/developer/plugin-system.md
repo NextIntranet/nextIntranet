@@ -159,3 +159,19 @@ To extract, keep contracts stable:
 - Extension point names
 
 When extracting, move backend plugin code to a pip package and frontend plugin code to an npm package; keep the same interfaces.
+
+## Current status of the `printer.driver` example
+
+The `printer.driver` plugin described above exists in the codebase today as exactly
+that: a console-only example. Its `execute` handler validates `supported_types` /
+`supported_formats` and returns the target label list; the frontend action logs that
+list to the console. It does not talk to a physical printer or the [HW agent](../guide/settings/hardware.md) —
+actual label printing today goes through the [print queue render pipeline](../guide/printing/print-queues.md),
+which a person downloads/prints or a service token fetches. Wiring a printer driver
+plugin instance to dispatch a render job (or to the HW agent's own print endpoint)
+is the natural next step, not yet implemented.
+
+## Related topics
+
+- [Print queues](../guide/printing/print-queues.md) — the actual rendering pipeline today
+- [Label templates](../guide/printing/label-templates.md) — what gets rendered

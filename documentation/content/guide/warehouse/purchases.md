@@ -59,3 +59,9 @@ delivery.
 ## Automation
 
 The whole flow is available over MCP — see [MCP integration](../settings/mcp.md).
+
+## Related topics
+
+- [Suppliers](suppliers.md) — the vendor and order-code side of an order
+- [Packets & stock operations](packets.md) — the `expected`/`stocked` lifecycle in detail
+- [Packet pricing](pricing.md) — how a `buy` operation's unit price feeds FIFO valuation
