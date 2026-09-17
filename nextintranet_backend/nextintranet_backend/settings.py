@@ -283,7 +283,13 @@ CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [("redis", 6379)],
+            "hosts": [
+                {
+                    "address": "redis://redis:6379",
+                    "socket_timeout": None,        # vypíná klientský read timeout
+                    "socket_connect_timeout": 5,   # timeout jen na navázání spojení
+                }
+            ],
         },
     },
 }
