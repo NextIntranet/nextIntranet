@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-17T13:49:05.044Z",
+  "generatedAt": "2026-09-17T14:23:02.832Z",
   "pages": [
     {
       "path": "",
@@ -15,13 +15,33 @@
         },
         {
           "level": 2,
-          "text": "What you can do",
-          "id": "what-you-can-do"
+          "text": "Warehouse",
+          "id": "warehouse"
         },
         {
           "level": 2,
-          "text": "Where to go next",
-          "id": "where-to-go-next"
+          "text": "Production",
+          "id": "production"
+        },
+        {
+          "level": 2,
+          "text": "Printing",
+          "id": "printing"
+        },
+        {
+          "level": 2,
+          "text": "Settings & integrations",
+          "id": "settings--integrations"
+        },
+        {
+          "level": 2,
+          "text": "About NextIntranet",
+          "id": "about-nextintranet"
+        },
+        {
+          "level": 2,
+          "text": "For developers",
+          "id": "for-developers"
         }
       ]
     },
