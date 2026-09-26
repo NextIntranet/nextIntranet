@@ -25,6 +25,7 @@ from nextintranet_warehouse.models.purchase import (
     PurchaseItem,
     PurchaseItemType,
     PurchaseRequest,
+    PurchaseRequestStatus,
     PurchaseStatus,
 )
 from nextintranet_warehouse.models.warehouse import Warehouse
@@ -132,7 +133,10 @@ def transition_purchase(purchase: Purchase, target_status: str) -> Purchase:
 def assign_requests_to_purchase(purchase: Purchase, request_ids) -> int:
     if not request_ids:
         return 0
-    return PurchaseRequest.objects.filter(id__in=list(request_ids)).update(purchase=purchase)
+    return PurchaseRequest.objects.filter(id__in=list(request_ids)).update(
+        purchase=purchase,
+        status=PurchaseRequestStatus.ORDERED,
+    )
 
 
 def purchase_ready_for_completion(purchase: Purchase) -> bool:
