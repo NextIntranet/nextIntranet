@@ -112,6 +112,10 @@ export function UserDetailPage() {
     new_password: "",
     new_password_confirm: "",
   })
+  const [adminPasswordForm, setAdminPasswordForm] = useState({
+    new_password: "",
+    new_password_confirm: "",
+  })
 
   const { data: user, isLoading, error } = useQuery<UserAdmin>({
     queryKey: ["user", id],
@@ -183,7 +187,7 @@ export function UserDetailPage() {
   }, [user])
 
   const updateMutation = useMutation({
-    mutationFn: (payload: Partial<UserAdmin>) =>
+    mutationFn: (payload: Partial<UserAdmin> & { password?: string }) =>
       apiFetch(`/api/v1/core/users/${id}/`, {
         method: "PATCH",
         body: JSON.stringify(payload),
@@ -191,11 +195,12 @@ export function UserDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["user", id] })
       queryClient.invalidateQueries({ queryKey: ["users"] })
+      setAdminPasswordForm({ new_password: "", new_password_confirm: "" })
       setEditOpen(false)
       toast.success("User updated.")
     },
-    onError: () => {
-      toast.error("Failed to update user.")
+    onError: (error) => {
+      toast.error(formatApiError(error, "Failed to update user."))
     },
   })
 
@@ -249,6 +254,17 @@ export function UserDetailPage() {
       return
     }
 
+    if (adminPasswordForm.new_password || adminPasswordForm.new_password_confirm) {
+      if (adminPasswordForm.new_password.length < MIN_PASSWORD_LENGTH) {
+        toast.error(`New password must be at least ${MIN_PASSWORD_LENGTH} characters.`)
+        return
+      }
+      if (adminPasswordForm.new_password !== adminPasswordForm.new_password_confirm) {
+        toast.error("New passwords do not match.")
+        return
+      }
+    }
+
     const cleanedPermissions = formState.access_permissions
       .map((permission) => ({
         area: permission.area.trim(),
@@ -265,6 +281,9 @@ export function UserDetailPage() {
       is_staff: formState.is_staff,
       is_superuser: formState.is_superuser,
       access_permissions: cleanedPermissions as UserAccessPermission[],
+      ...(adminPasswordForm.new_password
+        ? { password: adminPasswordForm.new_password }
+        : {}),
     })
   }
 
@@ -317,7 +336,13 @@ export function UserDetailPage() {
           <p className="text-sm text-muted-foreground">User details and permissions.</p>
         </div>
         {canEditProfile && (
-          <Button onClick={() => setEditOpen(true)} className="w-full sm:w-auto">
+          <Button
+            onClick={() => {
+              setAdminPasswordForm({ new_password: "", new_password_confirm: "" })
+              setEditOpen(true)
+            }}
+            className="w-full sm:w-auto"
+          >
             Edit profile
           </Button>
         )}
@@ -592,6 +617,39 @@ export function UserDetailPage() {
                     Superuser
                   </Button>
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Set new password</label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Input
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder="New password"
+                    value={adminPasswordForm.new_password}
+                    onChange={(e) =>
+                      setAdminPasswordForm({
+                        ...adminPasswordForm,
+                        new_password: e.target.value,
+                      })
+                    }
+                  />
+                  <Input
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder="Confirm new password"
+                    value={adminPasswordForm.new_password_confirm}
+                    onChange={(e) =>
+                      setAdminPasswordForm({
+                        ...adminPasswordForm,
+                        new_password_confirm: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Leave blank to keep the current password. At least {MIN_PASSWORD_LENGTH} characters.
+                </p>
               </div>
 
               <div className="space-y-2">

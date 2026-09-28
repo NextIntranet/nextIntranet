@@ -1,4 +1,5 @@
 from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from nextintranet_backend.models.user import User
@@ -135,6 +136,10 @@ class UserAdminSerializer(serializers.ModelSerializer):
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         if password:
+            try:
+                validate_password(password, instance)
+            except DjangoValidationError as exc:
+                raise serializers.ValidationError({'password': exc.messages})
             instance.set_password(password)
         instance.save()
         self._sync_access_permissions(instance, permissions)
