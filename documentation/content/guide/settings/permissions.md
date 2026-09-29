@@ -42,8 +42,11 @@ scoped to any particular area.
 
 Open **Users** (`/user`) and a specific user's detail page (`/user/<id>`) to add,
 change, or remove their area/level rows. A user editing their own profile can only
-change their own name and email — permission and password changes on your own
-account are silently ignored by the API, even if submitted.
+change their own name and email — permission changes on your own account submitted
+through that form are silently ignored by the API. To change your own password, use
+the separate **Change password** card on your profile page instead. A superuser (or a
+user with `admin`/`write` access to the `user` area) can also set another user's
+password directly from that user's **Edit user** form.
 
 ## Related topics
 
