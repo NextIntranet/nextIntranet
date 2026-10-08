@@ -1,3 +1,4 @@
+import datetime
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
@@ -7,6 +8,8 @@ from rest_framework.exceptions import PermissionDenied
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import Q, Sum
+from django.utils import timezone
+from django.utils.dateparse import parse_date, parse_datetime
 
 from nextintranet_backend.models.serviceToken import ServiceToken
 from nextintranet_backend.models.printList import PrintList, PrintItem
@@ -152,6 +155,34 @@ def _validate_reservation_sources(sources):
         if "type" not in item:
             raise ValueError(f"sources[{i}] must have a 'type' key.")
     return sources
+
+
+def _reservation_warehouse(warehouse_id, request):
+    """A warehouse for a reservation: the given one (must be flagged) or the default one."""
+    from .services.availability import default_warehouse_for_user
+
+    if not warehouse_id:
+        warehouse_id = default_warehouse_for_user(getattr(request, "user", None))
+        if warehouse_id is None:
+            raise ValueError("warehouse_id is required: there is more than one warehouse.")
+    warehouse = Warehouse.objects.get(id=warehouse_id)
+    if not warehouse.is_warehouse:
+        raise ValueError(f"Location '{warehouse.full_path}' is not a warehouse.")
+    return warehouse
+
+
+def _parse_expiration(value: str):
+    if not value:
+        return None
+    parsed = parse_datetime(value)
+    if parsed is None:
+        parsed_date = parse_date(value)
+        if parsed_date is None:
+            raise ValueError("expiration_date must be an ISO date or datetime.")
+        parsed = datetime.datetime.combine(parsed_date, datetime.time.max)
+    if timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed)
+    return parsed
 
 
 def _get_parent(model, parent_id: str):
@@ -637,20 +668,29 @@ class WarehouseReadToolset(MCPToolset):
         self,
         component_id: str = "",
         search: str = "",
+        warehouse_id: str = "",
+        active_only: bool = False,
         limit: int = 50,
     ) -> list[dict]:
-        """List component reservations.
+        """List manual component reservations (production BOMs hold stock without reservation rows;
+        see get_bom_availability).
 
         Args:
             component_id: Optional UUID to filter by component.
             search: Optional text search across component name, reserved_by, and description.
+            warehouse_id: Optional warehouse (location UUID with is_warehouse) to filter by.
+            active_only: If true, skip expired reservations.
             limit: Maximum number of results (default 50, max 200).
         """
         _require_read(self.request)
 
-        qs = Reservation.objects.select_related("component").order_by("-reservation_date")
+        qs = Reservation.objects.select_related("component", "warehouse").order_by("-reservation_date")
         if component_id:
             qs = qs.filter(component_id=component_id)
+        if warehouse_id:
+            qs = qs.filter(warehouse_id=warehouse_id)
+        if active_only:
+            qs = qs.active()
         if search:
             qs = qs.filter(
                 Q(component__name__icontains=search)
@@ -1531,6 +1571,7 @@ class WarehouseWriteToolset(MCPToolset):
         location: str = "",
         description: str = "",
         can_store_items: bool = False,
+        is_warehouse: bool = False,
     ) -> dict:
         """Create a warehouse location node.
 
@@ -1540,6 +1581,8 @@ class WarehouseWriteToolset(MCPToolset):
             location: Optional address or location label.
             description: Optional description.
             can_store_items: Whether components can be stored at this node.
+            is_warehouse: Mark the node as a warehouse; stock and reservations are scoped to
+                the nearest warehouse above a location.
         """
         _require_write(self.request)
 
@@ -1549,6 +1592,7 @@ class WarehouseWriteToolset(MCPToolset):
             location=location or None,
             description=description or None,
             can_store_items=can_store_items,
+            is_warehouse=is_warehouse,
         )
         return MCPLocationSerializer(node).data
 
@@ -1561,6 +1605,7 @@ class WarehouseWriteToolset(MCPToolset):
         location: str = "",
         description: str = "",
         can_store_items: bool | None = None,
+        is_warehouse: bool | None = None,
     ) -> dict:
         """Update a warehouse location.
 
@@ -1572,6 +1617,7 @@ class WarehouseWriteToolset(MCPToolset):
             location: New address/label (leave empty to keep current).
             description: New description (leave empty to keep current).
             can_store_items: Set storage flag (leave None to keep current).
+            is_warehouse: Set the warehouse flag (leave None to keep current).
         """
         _require_write(self.request)
 
@@ -1588,6 +1634,8 @@ class WarehouseWriteToolset(MCPToolset):
             node.description = description
         if can_store_items is not None:
             node.can_store_items = can_store_items
+        if is_warehouse is not None:
+            node.is_warehouse = is_warehouse
         node.save()
         return MCPLocationSerializer(node).data
 
@@ -1763,8 +1811,10 @@ class WarehouseWriteToolset(MCPToolset):
         priority: int = 3,
         description: str = "",
         sources: list[dict] | None = None,
+        warehouse_id: str = "",
+        expiration_date: str = "",
     ) -> dict:
-        """Create a component reservation.
+        """Create a manual component reservation. It holds stock only in its warehouse.
 
         Args:
             component_id: UUID of the component.
@@ -1772,6 +1822,9 @@ class WarehouseWriteToolset(MCPToolset):
             priority: Priority from 1 (highest) to 5 (lowest). Default 3.
             description: Optional description.
             sources: Optional list of source objects, each with a 'type' key.
+            warehouse_id: Warehouse location UUID (must have is_warehouse). Optional only when there is
+                a single warehouse.
+            expiration_date: Optional ISO date/datetime after which the reservation stops holding stock.
         """
         _require_write(self.request)
 
@@ -1785,6 +1838,8 @@ class WarehouseWriteToolset(MCPToolset):
             description=description,
             sources=_validate_reservation_sources(sources or []),
             reserved_by=_mcp_actor_name(self.request),
+            warehouse=_reservation_warehouse(warehouse_id, self.request),
+            expiration_date=_parse_expiration(expiration_date),
         )
         return MCPReservationSerializer(reservation).data
 
@@ -1795,6 +1850,8 @@ class WarehouseWriteToolset(MCPToolset):
         priority: int | None = None,
         description: str = "",
         sources: list[dict] | None = None,
+        warehouse_id: str = "",
+        expiration_date: str | None = None,
     ) -> dict:
         """Update a component reservation.
 
@@ -1804,6 +1861,8 @@ class WarehouseWriteToolset(MCPToolset):
             priority: New priority 1–5 (leave None to keep current).
             description: New description (leave empty to keep current).
             sources: New sources list (leave None to keep current).
+            warehouse_id: New warehouse location UUID (leave empty to keep current).
+            expiration_date: New ISO expiration (leave None to keep, empty string to clear).
         """
         _require_write(self.request)
 
@@ -1818,6 +1877,10 @@ class WarehouseWriteToolset(MCPToolset):
             reservation.description = description
         if sources is not None:
             reservation.sources = _validate_reservation_sources(sources)
+        if warehouse_id:
+            reservation.warehouse = _reservation_warehouse(warehouse_id, self.request)
+        if expiration_date is not None:
+            reservation.expiration_date = _parse_expiration(expiration_date)
         reservation.save()
         return MCPReservationSerializer(reservation).data
 

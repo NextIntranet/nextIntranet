@@ -123,7 +123,9 @@ class MCPInventoryItemSerializer(serializers.ModelSerializer):
         fields = ["id", "name", "category_name", "quantity", "reserved", "locations", "internal_price"]
 
     def get_reserved(self, obj):
-        return sum(r.quantity for r in obj.reservations.all())
+        from .services.availability import component_totals
+
+        return component_totals([obj.pk])[obj.pk]["reserved"]
 
     def get_locations(self, obj):
         return [
@@ -157,13 +159,18 @@ class MCPSupplierRelationSerializer(serializers.ModelSerializer):
 class MCPReservationSerializer(serializers.ModelSerializer):
     component_id = serializers.UUIDField(source="component.id", read_only=True)
     component_name = serializers.CharField(source="component.name", read_only=True)
+    warehouse_id = serializers.UUIDField(read_only=True, allow_null=True)
+    warehouse_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Reservation
         fields = [
-            "id", "component_id", "component_name", "quantity", "priority",
-            "description", "sources", "reserved_by", "reservation_date", "expiration_date",
+            "id", "component_id", "component_name", "quantity", "warehouse_id", "warehouse_name",
+            "priority", "description", "sources", "reserved_by", "reservation_date", "expiration_date",
         ]
+
+    def get_warehouse_name(self, obj):
+        return obj.warehouse.full_path if obj.warehouse_id else None
 
 
 class MCPCategoryFlatSerializer(serializers.ModelSerializer):
@@ -196,7 +203,7 @@ class MCPLocationFlatSerializer(serializers.ModelSerializer):
         model = Warehouse
         fields = [
             "id", "uuid", "name", "location", "description", "parent_id",
-            "full_path", "can_store_items",
+            "full_path", "can_store_items", "is_warehouse",
         ]
 
 

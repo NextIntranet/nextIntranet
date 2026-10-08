@@ -9,7 +9,7 @@ from typing import Any
 from django.db.models import Sum
 from django.utils import timezone
 
-from nextintranet_warehouse.models.component import Component, Packet, Reservation, StockOperation
+from nextintranet_warehouse.models.component import Component, Packet, StockOperation
 from nextintranet_warehouse.services.activity import log_activity
 
 from ..models.production import TemplateComponent, TemplateComponentScan
@@ -38,6 +38,7 @@ def line_needed_total(line: TemplateComponent, qty_planned: int) -> Decimal:
 def line_locations(
     component: Component | None,
     home_location_ids: set | None = None,
+    resolver=None,
 ) -> list[dict[str, Any]]:
     if not component:
         return []
@@ -59,6 +60,9 @@ def line_locations(
                 "in_home": bool(home_location_ids and packet.location_id in home_location_ids),
             }
         )
+        if resolver is not None:
+            warehouse_id = resolver.resolve(packet.location.tree_id, packet.location.lft) if packet.location else None
+            rows[-1]["warehouse_id"] = str(warehouse_id) if warehouse_id else None
     return rows
 
 
@@ -183,36 +187,86 @@ def revert_placed_scan_stock(scan, user) -> StockOperation | None:
     return operation
 
 
-def bom_availability_rows(template, home_location_ids: set | None = None) -> list[dict[str, Any]]:
-    """Per-line needed/in-stock/shortage rows for a BOM (Template).
+def bom_availability_rows(
+    template,
+    home_location_ids: set | None = None,
+    warehouse_id=None,
+) -> list[dict[str, Any]]:
+    """Per-line availability for a BOM (Template) in its warehouse.
 
-    Shared by the availability API view and the MCP read tool so shortage math
-    (self-reservation aware) lives in exactly one place.
+    Shared by the availability API view and the MCP read tool so the shortage math lives in
+    exactly one place. Stock is scoped to `template.stock_warehouse` (falling back to
+    `warehouse_id`); reservations held by anything else — other BOMs, other lines of this BOM,
+    manual reservations — count against it, the line's own reservation does not. Stock in other
+    warehouses is reported separately and never counted.
+
+    Legacy keys (`in_stock`, `total_quantity`, `locations`, `shortage`) are kept for existing
+    clients; `in_stock` is what this line can use in the BOM's warehouse.
     """
-    rows = []
-    lines_qs = (
+    from nextintranet_warehouse.services.availability import WarehouseResolver, component_availability
+
+    lines = list(
         template.components.select_related("component")
-        .prefetch_related("component__packets__location", "component__reservations")
+        .prefetch_related("component__packets__location")
         .order_by("position", "id")
     )
-    template_id_str = str(template.id)
-    for line in lines_qs:
+    here_id = template.stock_warehouse_id or warehouse_id
+    resolver = WarehouseResolver()
+    availability = component_availability(
+        {line.component_id for line in lines if line.component_id}, resolver=resolver
+    )
+
+    rows = []
+    for line in lines:
         needed_total = line_needed_total(line, template.qty_planned)
-        locations = line_locations(line.component, home_location_ids)
-        total_quantity = sum(safe_float(loc.get("quantity") or 0) for loc in locations)
-        if line.component:
-            total_reserved = sum(
-                safe_float(r.quantity) for r in line.component.reservations.all()
-            )
-            reserved_for_this_bom = sum(
-                safe_float(r.quantity)
-                for r in line.component.reservations.all()
-                if any(s.get("bom_id") == template_id_str for s in (r.sources or []))
-            )
-            other_reserved = total_reserved - reserved_for_this_bom
-            inventory_total = max(0.0, total_quantity - other_reserved)
-        else:
-            inventory_total = 0.0
+        placed_total = safe_float(line.placed_total)
+        remaining = 0.0 if line.dnp else max(0.0, float(needed_total) - placed_total)
+        locations = line_locations(line.component, home_location_ids, resolver)
+
+        here = None
+        elsewhere = []
+        status = "unlinked"
+        total_quantity = 0.0
+        in_stock = 0.0
+        if line.component_id:
+            component_availability_row = availability[line.component_id]
+            total_quantity = component_availability_row.on_hand
+            if here_id is not None:
+                stock = component_availability_row.in_warehouse(here_id)
+                on_hand, reserved = stock.on_hand, stock.reservations
+            else:
+                # No warehouse known: fall back to everything, everywhere.
+                on_hand = component_availability_row.on_hand
+                reserved = [
+                    entry
+                    for bucket in component_availability_row.stock.values()
+                    for entry in bucket.reservations
+                ] + component_availability_row.unscoped
+            own = sum(e.quantity for e in reserved if e.source == "production" and e.ref_id == str(line.id))
+            reserved_by_others = sum(e.quantity for e in reserved) - own
+            free = on_hand - reserved_by_others
+            in_stock = max(0.0, free)
+            here = {
+                "warehouse_id": str(here_id) if here_id else None,
+                "on_hand": on_hand,
+                "reserved_by_others": reserved_by_others,
+                "reserved_by_this_line": own,
+                "free": free,
+            }
+            if here_id is not None:
+                for other_id in component_availability_row.warehouse_ids():
+                    if other_id == here_id:
+                        continue
+                    other_free = component_availability_row.in_warehouse(other_id).free
+                    if other_free > 0:
+                        elsewhere.append({"warehouse_id": str(other_id), "free": other_free})
+            if line.dnp or remaining <= in_stock:
+                status = "ok"
+            elif in_stock + sum(item["free"] for item in elsewhere) >= remaining:
+                status = "elsewhere"
+            else:
+                status = "missing"
+
         total_in_home = None
         if home_location_ids and line.component:
             total_in_home = sum(
@@ -220,7 +274,6 @@ def bom_availability_rows(template, home_location_ids: set | None = None) -> lis
                 for p in line.component.packets.all()
                 if p.location_id in home_location_ids
             )
-        shortage = not line.dnp and (float(needed_total) > inventory_total)
         row = {
             "id": str(line.id),
             "ref_group": line.ref_group,
@@ -231,10 +284,15 @@ def bom_availability_rows(template, home_location_ids: set | None = None) -> lis
             "linked_component": str(line.component_id) if line.component_id else None,
             "linked_component_name": line.component.name if line.component else None,
             "needed_total": float(needed_total),
-            "in_stock": inventory_total,
+            "placed_total": placed_total,
+            "remaining": remaining,
+            "in_stock": in_stock,
             "total_quantity": total_quantity,
             "locations": locations,
-            "shortage": shortage,
+            "here": here,
+            "elsewhere": elsewhere,
+            "status": status,
+            "shortage": not line.dnp and remaining > in_stock,
             "unlinked": line.component_id is None,
         }
         if total_in_home is not None:
@@ -253,43 +311,13 @@ def merge_lines(target: TemplateComponent, source: TemplateComponent) -> Templat
     return target
 
 
-def _release_line_reservations(line: TemplateComponent) -> None:
-    """Release stock reservations held specifically for this BOM line.
-
-    Reservations created via "Reserve BOM" tag their `sources` entry with the owning
-    `bom_id`/`line_id` (see Reservation.sources help text) precisely so they can be
-    cleaned up if the line's component changes later — this is that cleanup.
-    """
-    bom_id = str(line.template_id)
-    line_id = str(line.id)
-    for reservation in Reservation.objects.filter(component_id=line.component_id):
-        sources = reservation.sources or []
-        matches = [
-            s
-            for s in sources
-            if isinstance(s, dict)
-            and s.get("type") == "production"
-            and s.get("bom_id") == bom_id
-            and s.get("line_id") == line_id
-        ]
-        if not matches:
-            continue
-        # Only delete when this line is the *sole* reason for the reservation.
-        # Stripping just the matching source while leaving others would keep the
-        # stock held but drop it out of "Unreserve BOM"'s bom_id-based lookup —
-        # an invisible hold, worse than leaving it as-is.
-        if len(matches) == len(sources):
-            reservation.delete()
-
-
 def unlink_component(line: TemplateComponent) -> TemplateComponent:
     """Clear the linked component from a BOM line, leaving it unlinked.
 
     Used when a wrong component was picked and no correct replacement is known yet —
     an empty line is safer than one pointing at the wrong component (availability,
-    scanning and finalize all key off `component`). Also releases any stock
-    reservation held specifically for this line, so the wrong component doesn't stay
-    reserved with no line pointing at it.
+    scanning and finalize all key off `component`). A reserved BOM's hold follows the
+    line, so the wrong component is released automatically.
 
     KNOWN LIMITATION: this does not touch sourced_total/placed_total or the line's
     TemplateComponentScan rows. A line can end up unlinked (no component) while still
@@ -298,7 +326,6 @@ def unlink_component(line: TemplateComponent) -> TemplateComponent:
     it's clear what should happen to that scan history on unlink.
     """
     if line.component_id is not None:
-        _release_line_reservations(line)
         line.component = None
         line.save(update_fields=["component"])
     return line

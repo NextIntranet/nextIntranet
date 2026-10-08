@@ -5,39 +5,44 @@ description: Reserve stock for projects and orders.
 
 # Reservations
 
-Reservations let you allocate component stock for a purpose without removing
-packets from the warehouse immediately. A reservation does not move or lock any
-specific packet — it only records that some quantity of a component is spoken for.
+A reservation marks part of a component's stock as spoken for, so it is no longer
+counted as available. It does not move or lock any specific packet.
+
+Stock is reserved in a **warehouse** — a [location flagged as warehouse](locations.md#warehouse).
+A reservation holds stock only in its own warehouse; stock in other warehouses is
+unaffected.
+
+Two things hold stock:
+
+- **Manual reservations** — rows on the Reservations page, described below.
+- **Reserved production BOMs** — a BOM that has been reserved holds what its lines still
+  need, computed live from the BOM. See [BOM availability](../production/boms.md#availability).
+
+Both count the same way. Everywhere stock is shown there is a single *reserved* figure,
+and each reservation in the breakdown carries a label saying where it comes from.
 
 ## Fields
 
 - `component` — the reserved component.
 - `quantity` — how much is reserved (float, so continuous units like meters work too).
-- `reserved_by` — free-text name of who made the reservation.
+- `warehouse` — where the stock is held. When omitted, the warehouse of your home
+  location is used, or the only warehouse if there is just one. Reservations created
+  before warehouses existed may have no warehouse; those hold stock in every warehouse
+  until one is assigned.
+- `reserved_by` — who made the reservation.
 - `priority` — 1 (highest) to 5 (lowest), default 3.
-- `expiration_date` — optional; reservations don't expire automatically, this is
-  informational for now.
-- `sources` — a structured JSON list recording *why* the reservation exists, e.g.
-  `[{"type": "production", "bom_id": "...", "line_id": "..."}]`. This is how a
-  production BOM's own reservations are tagged.
+- `expiration_date` — optional; after this date the reservation no longer holds stock.
+- `sources` — a structured JSON list recording *why* the reservation exists.
 
 ## Create reservation
 
-1. Open **Warehouse → Reservations** (`/store/reservations`).
-2. Create a new reservation and link the target component.
-3. Set quantity, priority, and notes as required by your process.
+Manual reservations can currently be created through the API
+(`POST /api/v1/store/reservations/`) and the [MCP server](../settings/mcp.md).
 
 ## View and update
 
-Open a reservation from the list (`/store/reservations/<id>`) to adjust quantity,
-priority, or metadata.
-
-## Interaction with BOM availability
-
-A production [BOM's availability check](../production/boms.md#availability) treats
-its own reservations differently from everyone else's: stock reserved by *other*
-BOMs reduces what's available, but a BOM's own reservations for itself do not — so
-locking in a reservation for a BOM doesn't make that same BOM appear short on stock.
+Open a reservation from the list (`/store/reservations/<id>`) to see its warehouse and
+expiry and to adjust quantity, priority, or metadata.
 
 ## Permissions
 

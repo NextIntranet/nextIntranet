@@ -198,6 +198,10 @@ type BomItem = {
   ibom_updated_at?: string | null
   components_count?: number
   components?: BomRow[]
+  stock_warehouse?: string | null
+  stock_warehouse_name?: string | null
+  reserved?: boolean
+  reserved_at?: string | null
   created_at: string
 }
 
@@ -227,7 +231,19 @@ type AvailabilityRow = {
     location: string
     quantity: number
     in_home?: boolean
+    warehouse_id?: string | null
   }>
+  placed_total?: number
+  remaining?: number
+  here?: {
+    warehouse_id: string | null
+    on_hand: number
+    reserved_by_others: number
+    reserved_by_this_line: number
+    free: number
+  } | null
+  elsewhere?: Array<{ warehouse_id: string; free: number }>
+  status?: "ok" | "elsewhere" | "missing" | "unlinked"
   shortage: boolean
   unlinked: boolean
 }
@@ -236,6 +252,9 @@ type AvailabilityResponse = {
   bom_id: string
   qty_planned: number
   home_location_full_path?: string | null
+  warehouse_id?: string | null
+  warehouses?: Array<{ id: string; name: string; full_path: string }>
+  reserved?: boolean
   rows: AvailabilityRow[]
 }
 
@@ -287,26 +306,6 @@ type PendingNotInBomConfirmation = {
   barcode: string
   componentName?: string | null
   componentId?: string | null
-}
-
-type ReservationSource = {
-  type: string
-  bom_id?: string
-  line_id?: string
-  product_id?: string
-}
-
-type Reservation = {
-  id: string
-  component_id: string
-  component_name: string
-  quantity: number
-  priority?: number | null
-  description?: string | null
-  sources?: ReservationSource[] | null
-  reserved_by?: string | null
-  reservation_date: string
-  created_at: string
 }
 
 const unwrap = <T,>(data: T[] | Paginated<T> | undefined): T[] => {
@@ -1025,29 +1024,6 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     staleTime: 5 * 60 * 1000,
   })
 
-  const { data: reservationsData } = useQuery<Reservation[] | { results: Reservation[] }>({
-    queryKey: ["reservations", "bom", bomId],
-    queryFn: () =>
-      apiFetch<Reservation[] | { results: Reservation[] }>(
-        `/api/v1/store/reservations/?page_size=500&source_type=production&bom_id=${bomId}`,
-      ),
-    enabled: isBomView && !!bomId,
-  })
-
-  const allReservations = useMemo(() => {
-    const raw = reservationsData
-    if (!raw) return []
-    return Array.isArray(raw) ? raw : raw.results || []
-  }, [reservationsData])
-
-  const reservationsForBom = useMemo(() => {
-    if (!bomId) return []
-    return allReservations.filter((r) =>
-      (r.sources || []).some(
-        (s) => s && s.type === "production" && s.bom_id === bomId,
-      ),
-    )
-  }, [bomId, allReservations])
 
 
   useEffect(() => {
@@ -1255,54 +1231,39 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     onError: () => toast.error("Failed to remove BOM line."),
   })
 
-  const invalidateReservations = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ["reservations"] })
-    queryClient.invalidateQueries({ queryKey: ["reservations", "bom", bomId] })
-  }, [queryClient, bomId])
+  const invalidateReservation = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["production-bom", bomId] })
+    queryClient.invalidateQueries({ queryKey: ["production-availability", bomId] })
+    queryClient.invalidateQueries({ queryKey: ["production-product", productId] })
+  }, [queryClient, bomId, productId])
+
+  const reservationErrorMessage = (err: unknown, fallback: string) =>
+    (err as { data?: { error?: string } } | null)?.data?.error || fallback
 
   const reserveBomMutation = useMutation({
-    mutationFn: async (items: Array<{ component_id: string; quantity: number; lineId: string }>) => {
-      await Promise.all(
-        items.map(({ component_id, quantity, lineId }) =>
-          apiFetch<Reservation>("/api/v1/store/reservations/", {
-            method: "POST",
-            body: JSON.stringify({
-              component_id,
-              quantity,
-              priority: 3,
-              sources: [
-                {
-                  type: "production",
-                  bom_id: bomId,
-                  line_id: lineId,
-                  product_id: productId || undefined,
-                },
-              ],
-            }),
-          }),
-        ),
-      )
+    mutationFn: () =>
+      apiFetch<BomItem>(`/api/v1/production/templates/${bomId}/reserve/`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
+    onSuccess: (bom) => {
+      invalidateReservation()
+      toast.success(`BOM reserved in ${bom.stock_warehouse_name || "its warehouse"}.`)
     },
-    onSuccess: (_, items) => {
-      invalidateReservations()
-      toast.success(`BOM reserved (${items.length} item${items.length === 1 ? "" : "s"}).`)
-    },
-    onError: () => toast.error("Failed to reserve BOM."),
+    onError: (err) => toast.error(reservationErrorMessage(err, "Failed to reserve BOM.")),
   })
 
   const unreserveBomMutation = useMutation({
-    mutationFn: async (ids: string[]) => {
-      await Promise.all(
-        ids.map((id) =>
-          apiFetch(`/api/v1/store/reservation/${id}/`, { method: "DELETE" }),
-        ),
-      )
+    mutationFn: () =>
+      apiFetch<BomItem>(`/api/v1/production/templates/${bomId}/unreserve/`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
+    onSuccess: () => {
+      invalidateReservation()
+      toast.success("BOM unreserved.")
     },
-    onSuccess: (_, ids) => {
-      invalidateReservations()
-      toast.success(`BOM unreserved (${ids.length} item${ids.length === 1 ? "" : "s"} removed).`)
-    },
-    onError: () => toast.error("Failed to unreserve BOM."),
+    onError: (err) => toast.error(reservationErrorMessage(err, "Failed to unreserve BOM.")),
   })
 
   const addLineMutation = useMutation({
@@ -3141,59 +3102,32 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                 <option value="component">By component</option>
                               </select>
                               <span className="mx-1 h-6 w-px bg-border" />
-                              {(() => {
-                                const linkedLines = selectedBomComponents.filter(
-                                  (line) => line.component && !line.dnp,
-                                )
-                                const reserveItems = linkedLines.map((line) => {
-                                  const neededTotal =
-                                    line.qty_override_total != null
-                                      ? toNumber(line.qty_override_total)
-                                      : toNumber(line.qty_per_board) * toNumber(selectedBom.qty_planned)
-                                  return {
-                                    component_id: line.component!,
-                                    quantity: neededTotal,
-                                    lineId: line.id,
+                              {selectedBom.reserved ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => unreserveBomMutation.mutate()}
+                                  disabled={unreserveBomMutation.isPending}
+                                  title="Release the parts this BOM holds"
+                                >
+                                  Unreserve BOM
+                                  {selectedBom.stock_warehouse_name ? ` (${selectedBom.stock_warehouse_name})` : ""}
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => reserveBomMutation.mutate()}
+                                  disabled={
+                                    reserveBomMutation.isPending ||
+                                    isBomClosed(selectedBom.status) ||
+                                    selectedBom.series_kind === "template"
                                   }
-                                })
-                                const isBomReserved = reservationsForBom.length > 0
-                                return isBomReserved ? (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() =>
-                                      unreserveBomMutation.mutate(
-                                        reservationsForBom.map((r) => r.id),
-                                      )
-                                    }
-                                    disabled={
-                                      unreserveBomMutation.isPending ||
-                                      isBomClosed(selectedBom.status)
-                                    }
-                                  >
-                                    Unreserve BOM ({reservationsForBom.length} item
-                                    {reservationsForBom.length === 1 ? "" : "s"})
-                                  </Button>
-                                ) : (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() =>
-                                      reserveBomMutation.mutate(reserveItems)
-                                    }
-                                    disabled={
-                                      reserveBomMutation.isPending ||
-                                      isBomClosed(selectedBom.status) ||
-                                      reserveItems.length === 0
-                                    }
-                                  >
-                                    Reserve BOM
-                                    {reserveItems.length > 0
-                                      ? ` (${reserveItems.length} item${reserveItems.length === 1 ? "" : "s"})`
-                                      : ""}
-                                  </Button>
-                                )
-                              })()}
+                                  title="Hold the parts this BOM still needs in its warehouse"
+                                >
+                                  Reserve BOM
+                                </Button>
+                              )}
                             </div>
 
                             <div className="grid gap-2 rounded-md border border-border/60 p-3 sm:grid-cols-[1fr_1fr_120px_auto]">

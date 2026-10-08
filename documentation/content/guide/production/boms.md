@@ -42,19 +42,40 @@ Each BOM line (`TemplateComponent`) groups one or more physical designators (e.g
 - Assigning a component that's already linked to another line in the same BOM
   **merges** the refs (and their scan history) into that existing line instead of
   creating a duplicate.
-- Unlinking a line clears its component and releases any BOM-specific stock
-  reservations for it, but does not reset its sourced/placed progress.
+- Unlinking a line clears its component, so a reserved BOM stops holding that
+  component for the line. Its sourced/placed progress is not reset.
+
+## Reserving a BOM
+
+A BOM can be planned without holding any stock. **Reserve BOM** makes it hold, in its
+warehouse, what each line still needs:
+
+`remaining = needed_total − placed_total` (zero for `dnp` lines).
+
+Nothing is copied when you reserve. The held quantity is recalculated from the BOM every
+time, so it follows changes to `qty_planned`, added or unlinked lines, and placed parts.
+A finished BOM holds nothing. **Unreserve BOM** releases the hold.
+
+- The BOM's warehouse (`stock_warehouse`) is taken from your home location, or the
+  only warehouse if there is just one. If neither applies, set it first.
+- Only working series can be reserved; closed BOMs cannot be reserved.
 
 ## Availability
 
-Each line's stock availability is computed from:
+Each line's availability is computed for the BOM's warehouse:
 
 - `needed_total` — `qty_per_board × qty_planned` (or a manual `qty_override_total`
-  when set), unless the line is marked `dnp` (do-not-populate).
-- `in_stock` — total active stock across locations, minus stock
-  [reserved](../warehouse/reservations.md) by *other* BOMs (this BOM's own
-  reservations for itself don't count against its own availability).
-- `shortage` — true when `needed_total` exceeds `in_stock`.
+  when set). `remaining` is what is still to be placed.
+- `here` — in the BOM's warehouse: `on_hand` (stocked packets), `reserved_by_others`
+  (manual reservations, other BOMs, and other lines of this BOM) and `free`.
+  The line's own hold is not counted against it.
+- `in_stock` — what the line can use there (`free`, never below zero).
+- `elsewhere` — other warehouses with free stock. This is shown for information
+  only and never counted.
+- `status` — `ok` when the warehouse covers `remaining`, `elsewhere` when other warehouses
+  could cover the shortage, `missing` when no warehouse can, `unlinked` for lines
+  without a component.
+- `shortage` — true when `remaining` exceeds `in_stock`.
 
 The same computation can include `total_in_home`, stock scoped to the signed-in
 user's home location subtree, useful for "do I personally have enough on my bench"
@@ -106,5 +127,5 @@ The same read/write surface is available over MCP: `list_productions`,
 ## Related topics
 
 - [Live iBOM viewer](ibom.md) — an interactive board view with live stock overlay
-- [Reservations](../warehouse/reservations.md) — how a BOM's own stock holds work
+- [Reservations](../warehouse/reservations.md) — manual reservations and how stock holds are counted
 - [Packet pricing](../warehouse/pricing.md) — how placed-scan stock deductions are valued

@@ -8,3 +8,8 @@ class NextintranetProductionConfig(AppConfig):
 
     def ready(self) -> None:
         from . import mcp  # noqa: F401 — ensure MCP toolsets load before mcp_server.init()
+        from nextintranet_warehouse.services.availability import register_reservation_provider
+
+        from .services.reservations import ProductionReservationProvider
+
+        register_reservation_provider(ProductionReservationProvider())

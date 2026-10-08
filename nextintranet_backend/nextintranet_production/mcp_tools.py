@@ -13,6 +13,11 @@ from nextintranet_production.mcp_serializers import (
     MCPBomDetailSerializer,
     MCPBomLineSerializer,
 )
+from nextintranet_warehouse.services.availability import (
+    default_warehouse_for_user,
+    warehouses as availability_warehouses,
+)
+from nextintranet_production.services.reservations import reserve_bom, unreserve_bom
 from nextintranet_production.services.bom import (
     bom_availability_rows,
     assign_component_to_refs,
@@ -120,10 +125,13 @@ class ProductionReadToolset(MCPToolset):
         return MCPBomDetailSerializer(template).data
 
     def get_bom_availability(self, bom_id: str) -> dict:
-        """Get stock availability per BOM line: needed quantity, in-stock quantity, and shortages.
+        """Get stock availability per BOM line in the BOM's warehouse.
 
-        Shortage accounts for reservations held by other BOMs (self-reservations for this
-        BOM do not count against its own availability).
+        Per line: needed_total, placed_total, remaining (still to place), in_stock (what this
+        line can use in the BOM's warehouse), `here` (on_hand / reserved_by_others / free),
+        `elsewhere` (other warehouses with free stock, informational only) and status
+        ok / elsewhere / missing / unlinked. Reservations held by anything else — other BOMs,
+        other lines, manual reservations — count against the line; its own hold does not.
 
         Args:
             bom_id: UUID of the BOM (Template).
@@ -131,16 +139,52 @@ class ProductionReadToolset(MCPToolset):
         _require_read(self.request)
 
         template = Template.objects.get(id=bom_id)
-        rows = bom_availability_rows(template)
+        warehouse_id = template.stock_warehouse_id or default_warehouse_for_user(_mcp_actor_user(self.request))
+        rows = bom_availability_rows(template, warehouse_id=warehouse_id)
         return {
             "bom_id": str(template.id),
             "qty_planned": template.qty_planned,
+            "warehouse_id": str(warehouse_id) if warehouse_id else None,
+            "warehouses": list(availability_warehouses().values()),
+            "reserved": template.holds_stock,
             "rows": rows,
         }
 
 
 class ProductionWriteToolset(MCPToolset):
     """Write tools for controlling a production BOM."""
+
+    def reserve_bom(self, bom_id: str, warehouse_id: str = "") -> dict:
+        """Reserve a BOM: it then holds its remaining parts (needed − placed per line) in its
+        warehouse until it is finished or unreserved. Nothing is copied — the hold follows the BOM.
+
+        Args:
+            bom_id: UUID of the BOM (Template).
+            warehouse_id: Warehouse to draw parts from (location UUID with is_warehouse). Optional
+                when the BOM already has one or there is a single warehouse.
+        """
+        _require_write(self.request)
+
+        template = Template.objects.get(id=bom_id)
+        reserve_bom(template, _mcp_actor_user(self.request), warehouse_id or None)
+        return {
+            "bom_id": str(template.id),
+            "reserved": template.holds_stock,
+            "reserved_at": template.reserved_at.isoformat() if template.reserved_at else None,
+            "stock_warehouse_id": str(template.stock_warehouse_id) if template.stock_warehouse_id else None,
+        }
+
+    def unreserve_bom(self, bom_id: str) -> dict:
+        """Release a BOM's hold on stock.
+
+        Args:
+            bom_id: UUID of the BOM (Template).
+        """
+        _require_write(self.request)
+
+        template = Template.objects.get(id=bom_id)
+        unreserve_bom(template)
+        return {"bom_id": str(template.id), "reserved": False}
 
     def update_bom(
         self,

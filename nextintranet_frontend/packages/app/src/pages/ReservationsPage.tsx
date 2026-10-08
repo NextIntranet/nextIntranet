@@ -25,11 +25,15 @@ interface Reservation {
   component_id: string
   component_name: string
   quantity: number
+  warehouse?: string | null
+  warehouse_name?: string | null
   priority?: string | null
   description?: string | null
   sources?: ReservationSource[] | null
   reserved_by?: string | null
   reservation_date: string
+  expiration_date?: string | null
+  is_active?: boolean
   created_at: string
 }
 
@@ -475,6 +479,27 @@ export function ReservationsPage() {
                         </p>
                         <p className="text-sm text-foreground">
                           {reservationDetail.priority || "-"}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">
+                          Warehouse
+                        </p>
+                        <p className="text-sm text-foreground">
+                          {reservationDetail.warehouse_name || "All warehouses (not assigned)"}
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">
+                          Expires
+                        </p>
+                        <p className="text-sm text-foreground">
+                          {reservationDetail.expiration_date
+                            ? new Date(reservationDetail.expiration_date).toLocaleDateString()
+                            : "Never"}
+                          {reservationDetail.is_active === false ? " (expired)" : ""}
                         </p>
                       </div>
                     </div>

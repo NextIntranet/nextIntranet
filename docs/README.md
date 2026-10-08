@@ -8,6 +8,7 @@ This folder keeps internal plans and specs that are not part of the public nav:
 
 - `hw-access-plan.md` — hardware integration specification
 - `ibom-external-grouping.md` — iBOM bridge: external BOM regrouping, contracts, offline testing
+- `parts-reservation-plan.md` — per-warehouse reservations, computed production demand, request component
 - `plugin-system-plan.md` — plugin system implementation plan
 - `supplier-api-mapping.md` — supplier API mapping notes
 

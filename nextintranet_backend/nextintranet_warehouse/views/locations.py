@@ -88,7 +88,7 @@ class LocationAPIView(viewsets.ModelViewSet):
         marker = Warehouse.objects.aggregate(last_created=Max('created_at'), total=Count('id'))
         last_created = marker['last_created']
         ts = last_created.isoformat() if last_created else '0'
-        return f"warehouse:locations:tree:{suffix}:{marker['total']}:{ts}"
+        return f"warehouse:locations:tree:v2:{suffix}:{marker['total']}:{ts}"
 
     def _base_tree_values_queryset(self):
         return Warehouse.objects.order_by('tree_id', 'lft').values(
@@ -98,6 +98,7 @@ class LocationAPIView(viewsets.ModelViewSet):
             'location',
             'description',
             'can_store_items',
+            'is_warehouse',
             'parent_id',
             'map',
         )
@@ -129,6 +130,7 @@ class LocationAPIView(viewsets.ModelViewSet):
                 'description': row['description'],
                 'full_path': full_path,
                 'can_store_items': row['can_store_items'],
+                'is_warehouse': row['is_warehouse'],
                 'parent': parent_id,
                 'map': map_url,
                 'children': [],
@@ -187,6 +189,7 @@ class LocationAPIView(viewsets.ModelViewSet):
                 'location',
                 'description',
                 'can_store_items',
+                'is_warehouse',
                 'parent_id',
                 'map',
             )

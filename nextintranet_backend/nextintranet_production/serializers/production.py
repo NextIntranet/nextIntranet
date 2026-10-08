@@ -111,7 +111,22 @@ class TemplateComponentSerializer(serializers.ModelSerializer):
         return fallback_value
 
 
-class TemplateSerializer(serializers.ModelSerializer):
+class StockWarehouseMixin(serializers.Serializer):
+    stock_warehouse_name = serializers.SerializerMethodField()
+    reserved = serializers.BooleanField(source='holds_stock', read_only=True)
+
+    def get_stock_warehouse_name(self, obj):
+        return obj.stock_warehouse.full_path if obj.stock_warehouse_id else None
+
+    def validate_stock_warehouse(self, value):
+        if value is not None and not value.is_warehouse:
+            raise serializers.ValidationError(f"Location '{value.full_path}' is not a warehouse.")
+        if value is None and self.instance is not None and self.instance.reserved_at is not None:
+            raise serializers.ValidationError("A reserved BOM needs a warehouse. Unreserve it first.")
+        return value
+
+
+class TemplateSerializer(StockWarehouseMixin, serializers.ModelSerializer):
     """Serializer pro Template"""
     components = TemplateComponentSerializer(many=True, read_only=True)
     production_name = serializers.CharField(source='production.name', read_only=True)
@@ -129,8 +144,10 @@ class TemplateSerializer(serializers.ModelSerializer):
             'source_url', 'source_hash', 'source_file', 'source_file_url', 'source_imported_at',
             'ibom_url', 'ibom_file', 'ibom_file_url', 'ibom_updated_at',
             'production_checkpoint', 'locked_at', 'locked_by',
+            'stock_warehouse', 'stock_warehouse_name', 'reserved', 'reserved_at', 'reserved_by',
             'components', 'components_count', 'created_at'
         ]
+        read_only_fields = ['reserved_at', 'reserved_by']
     
     def get_components_count(self, obj):
         return obj.components.count()
@@ -149,6 +166,7 @@ class TemplateSerializer(serializers.ModelSerializer):
 class TemplateListSerializer(serializers.ModelSerializer):
     """Jednoduchý serializer pro seznam šablon"""
     production_name = serializers.CharField(source='production.name', read_only=True)
+    reserved = serializers.BooleanField(source='holds_stock', read_only=True)
     components_count = serializers.SerializerMethodField()
     source_file_url = serializers.SerializerMethodField()
     ibom_file_url = serializers.SerializerMethodField()
@@ -162,9 +180,10 @@ class TemplateListSerializer(serializers.ModelSerializer):
             'status', 'qty_planned', 'planned_date',
             'source_url', 'source_hash', 'source_file_url', 'source_imported_at',
             'ibom_url', 'ibom_file_url', 'ibom_updated_at',
-            'locked_at',
+            'locked_at', 'stock_warehouse', 'reserved', 'reserved_at',
             'components_count', 'created_at'
         ]
+        read_only_fields = ['stock_warehouse', 'reserved_at']
     
     def get_components_count(self, obj):
         return obj.components.count()

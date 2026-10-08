@@ -15,7 +15,8 @@ paths it is always called a **location** (`/store/location`).
   by MPTT for efficient subtree queries).
 - `full_path` joins the ancestor chain with `/`, e.g. `Building A / Room 2 / Shelf 4`.
 - There is no separate "location type" field — a location is either a structural node
-  (building, room) or a storage node, distinguished only by **Can store items**.
+  (building, room) or a storage node, distinguished only by **Can store items**. A node
+  can additionally be flagged as a **Warehouse**.
 
 ## Can store items
 
@@ -35,6 +36,19 @@ shows the whole tree as a single searchable dropdown, indented by depth, with a
 synthetic **No parent** option for roots. It excludes the location currently being
 edited so a location can't become its own ancestor. The same picker is reused
 wherever a location needs to be chosen (purchases, packets, reservations).
+
+## Warehouse
+
+A boolean flag marking a location as a warehouse. Stock and
+[reservations](reservations.md) are counted per warehouse:
+
+- A location belongs to the nearest warehouse above it (or itself). Stock in locations
+  under no warehouse is shown as unassigned.
+- A reservation or a reserved BOM holds stock only in its own warehouse. Stock in another
+  warehouse is shown separately and never counted as available.
+- Warehouses can be nested. The inner warehouse owns its subtree.
+
+When warehouses were introduced, all root locations were flagged automatically.
 
 ## Location map
 

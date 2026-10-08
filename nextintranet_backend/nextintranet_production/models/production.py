@@ -225,11 +225,40 @@ class Template(NIModel):
         related_name='locked_boms',
         verbose_name=_('Locked by'),
     )
+    stock_warehouse = models.ForeignKey(
+        'nextintranet_warehouse.Warehouse',
+        on_delete=models.PROTECT,
+        blank=True,
+        null=True,
+        related_name='production_boms',
+        limit_choices_to={'is_warehouse': True},
+        verbose_name=_('Stock warehouse'),
+        help_text=_('Warehouse the BOM draws its parts from; its reservation holds stock there.'),
+    )
+    reserved_at = models.DateTimeField(
+        blank=True,
+        null=True,
+        verbose_name=_('Reserved at'),
+        help_text=_('Set while the BOM holds stock. The held quantity is computed from the BOM lines.'),
+    )
+    reserved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name='reserved_boms',
+        verbose_name=_('Reserved by'),
+    )
 
     class Meta:
         verbose_name = _('Template')
         verbose_name_plural = _('Templates')
         ordering = ['production', 'name']
+
+    @property
+    def holds_stock(self) -> bool:
+        """Reserved and not finished: its remaining line demand blocks stock."""
+        return self.reserved_at is not None and self.status != 'finished'
 
     def __str__(self):
         return f"{self.production.name} - {self.name}"

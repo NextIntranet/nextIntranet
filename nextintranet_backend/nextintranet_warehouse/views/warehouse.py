@@ -86,6 +86,7 @@ class WarehouseListSerializer(serializers.Serializer):
     name = serializers.CharField()
     parent = serializers.IntegerField(allow_null=True)
     can_store_items = serializers.BooleanField()
+    is_warehouse = serializers.BooleanField()
     full_path = serializers.CharField()
 
 class WarehousePositionsListAPIView(generics.ListAPIView):
@@ -97,7 +98,7 @@ class WarehousePositionsListAPIView(generics.ListAPIView):
         marker = Warehouse.objects.aggregate(last_created=Max('created_at'), total=Count('id'))
         last_created = marker['last_created']
         ts = last_created.isoformat() if last_created else '0'
-        return f"warehouse:locations:list:v2:{marker['total']}:{ts}"
+        return f"warehouse:locations:list:v3:{marker['total']}:{ts}"
 
     def list(self, request, *args, **kwargs):
         cache_key = self._cache_key()
@@ -112,6 +113,7 @@ class WarehousePositionsListAPIView(generics.ListAPIView):
                 'name',
                 'parent_id',
                 'can_store_items',
+                'is_warehouse',
             )
         )
 
@@ -128,6 +130,7 @@ class WarehousePositionsListAPIView(generics.ListAPIView):
                     'name': row['name'],
                     'parent': row['parent_id'],
                     'can_store_items': row['can_store_items'],
+                    'is_warehouse': row['is_warehouse'],
                     'full_path': full_path,
                 }
             )
@@ -152,7 +155,7 @@ class WarehouseTreeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Warehouse
-        fields = ('id','uuid','name','location','can_store_items','description','full_path','children')
+        fields = ('id','uuid','name','location','can_store_items','is_warehouse','description','full_path','children')
 
     def get_children(self, obj):
         qs = obj.sub_units.all().order_by('name')
