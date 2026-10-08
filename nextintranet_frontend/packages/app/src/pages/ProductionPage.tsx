@@ -24,6 +24,10 @@ import {
   Pencil,
   RefreshCw,
   ScanLine,
+  ArrowRightLeft,
+  BookmarkCheck,
+  Home,
+  Truck,
   ShoppingCart,
   Trash2,
   Upload,
@@ -819,6 +823,18 @@ function ImportSourceRow({
 }
 
 /** One icon button inside a BOM row's action group. */
+/** Small value with an explanatory tooltip, used in the BOM stock cell. */
+function StockTip({ tip, children }: { tip: ReactNode; children: ReactNode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="cursor-help">{children}</span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs text-xs">{tip}</TooltipContent>
+    </Tooltip>
+  )
+}
+
 function BomLineAction({
   title,
   onClick,
@@ -3525,127 +3541,146 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                           )}
                                         >
                                           <div className="space-y-1.5 text-[12px]">
-                                            <div className="flex items-center gap-1.5">
-                                              <Package className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                                              <span
-                                                className={cn(
-                                                  "font-semibold",
-                                                  line.dnp
-                                                    ? "text-muted-foreground"
-                                                    : coveredElsewhere
-                                                      ? "text-orange-800"
-                                                      : shortage
-                                                        ? "text-rose-700"
-                                                        : isExact
-                                                          ? "text-amber-800"
-                                                          : "text-emerald-800",
-                                                )}
-                                              >
-                                                {inStock} / {remaining}
-                                              </span>
-                                              <span className="text-muted-foreground">
+                                            <div className="flex items-baseline gap-1.5">
+                                              <StockTip tip={`Usable by this line in ${hereName}: on hand minus everything reserved by others`}>
+                                                <span
+                                                  className={cn(
+                                                    "text-lg font-bold leading-none",
+                                                    line.dnp
+                                                      ? "text-muted-foreground"
+                                                      : coveredElsewhere
+                                                        ? "text-orange-800"
+                                                        : shortage
+                                                          ? "text-rose-700"
+                                                          : isExact
+                                                            ? "text-amber-800"
+                                                            : "text-emerald-800",
+                                                  )}
+                                                >
+                                                  {inStock}
+                                                </span>
+                                              </StockTip>
+                                              <StockTip tip={placedTotal > 0 ? `Still to place (${placedTotal} of ${neededTotal} already placed)` : "Needed for this line"}>
+                                                <span className="text-muted-foreground">/ {remaining}</span>
+                                              </StockTip>
+                                              <span className="ml-auto text-[11px] text-muted-foreground">
                                                 {line.dnp
                                                   ? "DNP"
                                                   : coveredElsewhere
-                                                    ? "In another warehouse"
+                                                    ? "Other warehouse"
                                                     : shortage
                                                       ? "Missing"
                                                       : isExact
                                                         ? "Exact"
-                                                        : "Available"}
+                                                        : "OK"}
                                               </span>
                                             </div>
-                                            {placedTotal > 0 && !line.dnp ? (
-                                              <p className="text-muted-foreground">
-                                                {placedTotal} of {neededTotal} already placed
-                                              </p>
-                                            ) : null}
                                             {here ? (
-                                              <div className="flex items-start gap-1.5" title="Stock in the BOM's warehouse">
-                                                <Warehouse className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />
-                                                <span className="text-muted-foreground">
-                                                  <strong className="text-foreground">{hereName}</strong>: {here.on_hand} on hand
-                                                  {here.reserved_by_others > 0 ? (
-                                                    <>
-                                                      , <strong className="text-foreground">{here.reserved_by_others}</strong> reserved by others
-                                                    </>
-                                                  ) : null}
-                                                  {here.reserved_by_this_line > 0 ? (
-                                                    <>
-                                                      , <strong className="text-foreground">{here.reserved_by_this_line}</strong> held by this BOM
-                                                    </>
-                                                  ) : null}
-                                                </span>
-                                              </div>
-                                            ) : null}
-                                            {elsewhere.length > 0 ? (
-                                              <div className="flex items-start gap-1.5" title="Free stock in other warehouses — not counted, needs a transfer">
-                                                <Warehouse className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground/60" />
-                                                <span className="text-muted-foreground">
-                                                  {elsewhere.map((other) => (
-                                                    <span key={other.warehouse_id} className="block">
-                                                      {warehouseNameById.get(other.warehouse_id) || "Other warehouse"}:{" "}
-                                                      <strong className="text-foreground">{other.free}</strong> free
+                                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground">
+                                                <StockTip tip="Warehouse this BOM draws from">
+                                                  <span className="inline-flex items-center gap-0.5 font-medium text-foreground">
+                                                    <Warehouse className="h-3 w-3" />
+                                                    {hereName}
+                                                  </span>
+                                                </StockTip>
+                                                <StockTip tip={`On hand in ${hereName}`}>
+                                                  <span className="inline-flex items-center gap-0.5">
+                                                    <Package className="h-3 w-3" />
+                                                    {here.on_hand}
+                                                  </span>
+                                                </StockTip>
+                                                {here.reserved_by_others > 0 ? (
+                                                  <StockTip tip="Reserved by other BOMs, other lines of this BOM and manual reservations">
+                                                    <span className="inline-flex items-center gap-0.5">
+                                                      <Lock className="h-3 w-3" />
+                                                      {here.reserved_by_others}
                                                     </span>
-                                                  ))}
-                                                </span>
-                                              </div>
-                                            ) : null}
-                                            {availabilityData?.home_location_full_path != null && availabilityRow && availabilityRow.total_in_home != null ? (
-                                              <div className="flex items-start gap-1.5">
-                                                <MapPin className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />
-                                                <span className="text-muted-foreground">
-                                                  In <strong className="text-foreground">{availabilityData.home_location_full_path}</strong>: <strong className="text-foreground">{availabilityRow.total_in_home}</strong> total
-                                                </span>
-                                              </div>
-                                            ) : null}
-                                            {locations.length > 0 ? (
-                                              <div className="flex items-start gap-1.5">
-                                                <MapPin className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />
-                                                <span className="text-muted-foreground">
-                                                  {locations.map((loc) => (
-                                                    <span
-                                                      key={loc.packet_id}
-                                                      className={cn(
-                                                        "block",
-                                                        here?.warehouse_id && loc.warehouse_id !== here.warehouse_id && "opacity-60",
-                                                      )}
-                                                    >
-                                                      {loc.location}: <strong className="text-foreground">{loc.quantity}</strong>
+                                                  </StockTip>
+                                                ) : null}
+                                                {here.reserved_by_this_line > 0 ? (
+                                                  <StockTip tip="Held by this BOM (its reservation)">
+                                                    <span className="inline-flex items-center gap-0.5 text-sky-800">
+                                                      <BookmarkCheck className="h-3 w-3" />
+                                                      {here.reserved_by_this_line}
                                                     </span>
-                                                  ))}
-                                                </span>
+                                                  </StockTip>
+                                                ) : null}
+                                                {locations.length > 0 ? (
+                                                  <StockTip
+                                                    tip={
+                                                      <span className="block space-y-0.5">
+                                                        {locations.map((loc) => (
+                                                          <span key={loc.packet_id} className="block">
+                                                            {loc.location}: {loc.quantity}
+                                                          </span>
+                                                        ))}
+                                                      </span>
+                                                    }
+                                                  >
+                                                    <span className="inline-flex items-center gap-0.5">
+                                                      <MapPin className="h-3 w-3" />
+                                                      {locations.length}
+                                                    </span>
+                                                  </StockTip>
+                                                ) : null}
                                               </div>
                                             ) : line.component ? (
                                               <p className="text-muted-foreground">No stock</p>
                                             ) : null}
+                                            {elsewhere.length > 0 ? (
+                                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground">
+                                                {elsewhere.map((other) => (
+                                                  <StockTip
+                                                    key={other.warehouse_id}
+                                                    tip="Free in another warehouse. Not counted here, needs a transfer."
+                                                  >
+                                                    <span className="inline-flex items-center gap-0.5">
+                                                      <ArrowRightLeft className="h-3 w-3" />
+                                                      {warehouseNameById.get(other.warehouse_id) || "Other"} {other.free}
+                                                    </span>
+                                                  </StockTip>
+                                                ))}
+                                              </div>
+                                            ) : null}
                                             {availabilityRow?.requested &&
                                             (availabilityRow.requested.open_quantity > 0 ||
                                               availabilityRow.requested.ordered_quantity > 0) ? (
-                                              <div className="flex items-start gap-1.5 text-sky-800">
-                                                <ShoppingCart className="mt-0.5 h-3 w-3 shrink-0" />
-                                                <span>
-                                                  {availabilityRow.requested.open_quantity > 0 ? (
-                                                    <>
-                                                      <strong>{availabilityRow.requested.open_quantity}</strong> requested
-                                                      {availabilityRow.requested.target_location_name
-                                                        ? ` → ${availabilityRow.requested.target_location_name}`
-                                                        : ""}
-                                                    </>
-                                                  ) : null}
-                                                  {availabilityRow.requested.open_quantity > 0 &&
-                                                  availabilityRow.requested.ordered_quantity > 0
-                                                    ? ", "
-                                                    : null}
-                                                  {availabilityRow.requested.ordered_quantity > 0 ? (
-                                                    <>
-                                                      <strong>{availabilityRow.requested.ordered_quantity}</strong> ordered
-                                                    </>
-                                                  ) : null}
-                                                </span>
+                                              <div className="flex flex-wrap items-center gap-x-2 text-sky-800">
+                                                {availabilityRow.requested.open_quantity > 0 ? (
+                                                  <StockTip
+                                                    tip={`Requested for purchase${
+                                                      availabilityRow.requested.target_location_name
+                                                        ? `, to ${availabilityRow.requested.target_location_name}`
+                                                        : ""
+                                                    }`}
+                                                  >
+                                                    <span className="inline-flex items-center gap-0.5">
+                                                      <ShoppingCart className="h-3 w-3" />
+                                                      {availabilityRow.requested.open_quantity}
+                                                    </span>
+                                                  </StockTip>
+                                                ) : null}
+                                                {availabilityRow.requested.ordered_quantity > 0 ? (
+                                                  <StockTip tip="Already on a purchase order">
+                                                    <span className="inline-flex items-center gap-0.5">
+                                                      <Truck className="h-3 w-3" />
+                                                      {availabilityRow.requested.ordered_quantity}
+                                                    </span>
+                                                  </StockTip>
+                                                ) : null}
                                               </div>
                                             ) : null}
-                                            {quantityToRequest(availabilityRow) > 0 &&
+                                            {availabilityData?.home_location_full_path != null &&
+                                            availabilityRow?.total_in_home != null ? (
+                                              <StockTip tip={`In your home location ${availabilityData.home_location_full_path}`}>
+                                                <span className="inline-flex items-center gap-0.5 text-muted-foreground">
+                                                  <Home className="h-3 w-3" />
+                                                  {availabilityRow.total_in_home}
+                                                </span>
+                                              </StockTip>
+                                            ) : null}
+                                            {quantityToRequest(availabilityRow) >
+                                              toNumber(availabilityRow?.requested?.open_quantity ?? 0) &&
                                             line.component &&
                                             !isBomClosed(selectedBom.status) &&
                                             selectedBom.series_kind !== "template" ? (
