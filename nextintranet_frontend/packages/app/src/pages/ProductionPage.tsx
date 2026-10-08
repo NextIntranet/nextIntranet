@@ -24,8 +24,9 @@ import {
   Pencil,
   RefreshCw,
   ScanLine,
+  Crosshair,
+  PackageCheck,
   ArrowRightLeft,
-  BookmarkCheck,
   Home,
   Truck,
   ShoppingCart,
@@ -259,9 +260,10 @@ type AvailabilityRow = {
     reserved_by_others: number
     reserved_by_this_line: number
     free: number
+    incoming?: number
   } | null
   elsewhere?: Array<{ warehouse_id: string; free: number }>
-  status?: "ok" | "elsewhere" | "missing" | "unlinked"
+  status?: "ok" | "incoming" | "elsewhere" | "missing" | "unlinked"
   requested?: {
     open_id: string | null
     open_quantity: number
@@ -3316,6 +3318,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                     const shortageFromApi = availabilityRow ? availabilityRow.shortage : inStock < remaining
                                     const shortage = line.dnp ? false : shortageFromApi
                                     const coveredElsewhere = shortage && availabilityRow?.status === "elsewhere"
+                                    const coveredIncoming = shortage && availabilityRow?.status === "incoming"
                                     const isExact = !line.dnp && remaining > 0 && Math.abs(inStock - remaining) < 0.000001
                                     const hereName = here?.warehouse_id
                                       ? warehouseNameById.get(here.warehouse_id) || "This warehouse"
@@ -3531,7 +3534,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                             "px-3 py-2 align-top",
                                             line.dnp
                                               ? "bg-muted/40"
-                                              : coveredElsewhere
+                                              : coveredElsewhere || coveredIncoming
                                                 ? "bg-orange-100/70"
                                                 : shortage
                                                   ? "bg-rose-100/70"
@@ -3541,14 +3544,14 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                           )}
                                         >
                                           <div className="space-y-1.5 text-[12px]">
-                                            <div className="flex items-baseline gap-1.5">
-                                              <StockTip tip={`Usable by this line in ${hereName}: on hand minus everything reserved by others`}>
+                                            <div className="flex items-center gap-3">
+                                              <StockTip tip={`Available for this line in ${hereName}: on hand minus what others reserve`}>
                                                 <span
                                                   className={cn(
-                                                    "text-lg font-bold leading-none",
+                                                    "inline-flex items-center gap-1 text-lg font-bold leading-none",
                                                     line.dnp
                                                       ? "text-muted-foreground"
-                                                      : coveredElsewhere
+                                                      : coveredElsewhere || coveredIncoming
                                                         ? "text-orange-800"
                                                         : shortage
                                                           ? "text-rose-700"
@@ -3557,22 +3560,34 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                                             : "text-emerald-800",
                                                   )}
                                                 >
+                                                  <PackageCheck className="h-4 w-4" />
                                                   {inStock}
                                                 </span>
                                               </StockTip>
-                                              <StockTip tip={placedTotal > 0 ? `Still to place (${placedTotal} of ${neededTotal} already placed)` : "Needed for this line"}>
-                                                <span className="text-muted-foreground">/ {remaining}</span>
+                                              <StockTip
+                                                tip={
+                                                  placedTotal > 0
+                                                    ? `Still needed (${placedTotal} of ${neededTotal} already placed)`
+                                                    : "Needed for this line"
+                                                }
+                                              >
+                                                <span className="inline-flex items-center gap-1 text-sm font-semibold text-foreground">
+                                                  <Crosshair className="h-3.5 w-3.5 text-muted-foreground" />
+                                                  {remaining}
+                                                </span>
                                               </StockTip>
                                               <span className="ml-auto text-[11px] text-muted-foreground">
                                                 {line.dnp
                                                   ? "DNP"
-                                                  : coveredElsewhere
-                                                    ? "Other warehouse"
-                                                    : shortage
-                                                      ? "Missing"
-                                                      : isExact
-                                                        ? "Exact"
-                                                        : "OK"}
+                                                  : coveredIncoming
+                                                    ? "Incoming"
+                                                    : coveredElsewhere
+                                                      ? "Other warehouse"
+                                                      : shortage
+                                                        ? "Missing"
+                                                        : isExact
+                                                          ? "Exact"
+                                                          : "OK"}
                                               </span>
                                             </div>
                                             {here ? (
@@ -3589,19 +3604,23 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                                     {here.on_hand}
                                                   </span>
                                                 </StockTip>
-                                                {here.reserved_by_others > 0 ? (
-                                                  <StockTip tip="Reserved by other BOMs, other lines of this BOM and manual reservations">
+                                                {here.reserved_by_others + here.reserved_by_this_line > 0 ? (
+                                                  <StockTip
+                                                    tip={`Reserved in ${hereName} in total: ${here.reserved_by_others} by others (BOMs, manual reservations, transfers)${
+                                                      here.reserved_by_this_line > 0 ? `, ${here.reserved_by_this_line} by this BOM` : ""
+                                                    }`}
+                                                  >
                                                     <span className="inline-flex items-center gap-0.5">
                                                       <Lock className="h-3 w-3" />
-                                                      {here.reserved_by_others}
+                                                      {here.reserved_by_others + here.reserved_by_this_line}
                                                     </span>
                                                   </StockTip>
                                                 ) : null}
-                                                {here.reserved_by_this_line > 0 ? (
-                                                  <StockTip tip="Held by this BOM (its reservation)">
+                                                {(here.incoming ?? 0) > 0 ? (
+                                                  <StockTip tip={`On its way to ${hereName}: ordered purchases and open transfers`}>
                                                     <span className="inline-flex items-center gap-0.5 text-sky-800">
-                                                      <BookmarkCheck className="h-3 w-3" />
-                                                      {here.reserved_by_this_line}
+                                                      <Truck className="h-3 w-3" />
+                                                      {here.incoming}
                                                     </span>
                                                   </StockTip>
                                                 ) : null}
