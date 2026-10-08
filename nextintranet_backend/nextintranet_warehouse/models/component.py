@@ -697,6 +697,11 @@ class WarehouseActivity(NIModel):
         ("component_updated", _("Component updated")),
         ("identifier_added", _("Identifier added")),
         ("identifier_removed", _("Identifier removed")),
+        ("reservation_created", _("Reservation created")),
+        ("reservation_updated", _("Reservation updated")),
+        ("reservation_deleted", _("Reservation deleted")),
+        ("bom_reserved", _("BOM reserved")),
+        ("bom_unreserved", _("BOM unreserved")),
     )
 
     SOURCE_CHOICES = (

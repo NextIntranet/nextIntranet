@@ -97,6 +97,7 @@ import { PacketOperationSheet } from "@/components/PacketOperationSheet"
 import { ActivityLogTable, type PaginatedActivities } from "@/components/ActivityLogTable"
 import { MarkdownView } from "@/components/MarkdownView"
 import { RequestComponentSheet } from "@/components/RequestComponentSheet"
+import { ReservationSheet } from "@/components/ReservationSheet"
 import { packetStateLabel } from "@/lib/packetState"
 
 interface Category {
@@ -347,6 +348,7 @@ export function ComponentDetailPage() {
   const [activityPageSize, setActivityPageSize] = useState(25)
   const [packetSheetOpen, setPacketSheetOpen] = useState(false)
   const [requestSheetOpen, setRequestSheetOpen] = useState(false)
+  const [reservationSheetOpen, setReservationSheetOpen] = useState(false)
   const [operationSheetOpen, setOperationSheetOpen] = useState(false)
   const [operationPacketId, setOperationPacketId] = useState<string | null>(null)
   const [supplierSheetOpen, setSupplierSheetOpen] = useState(false)
@@ -2246,6 +2248,10 @@ export function ComponentDetailPage() {
                         <ShoppingCart className="h-4 w-4" />
                         Request component
                       </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => setReservationSheetOpen(true)} className="gap-2">
+                        <Lock className="h-4 w-4" />
+                        Reserve
+                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </>
@@ -3709,6 +3715,12 @@ export function ComponentDetailPage() {
         </SheetContent>
       </Sheet>
 
+      <ReservationSheet
+        open={reservationSheetOpen}
+        onOpenChange={setReservationSheetOpen}
+        componentId={component?.id}
+        componentName={component?.name}
+      />
       <RequestComponentSheet
         open={requestSheetOpen}
         onOpenChange={setRequestSheetOpen}

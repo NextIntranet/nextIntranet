@@ -24,6 +24,8 @@ from nextintranet_warehouse.models.purchase import (
 )
 from nextintranet_warehouse.models.warehouse import Warehouse
 from nextintranet_warehouse.services import purchase as purchase_service
+from nextintranet_warehouse.services.activity import log_reservation, reservation_snapshot
+from nextintranet_warehouse.services.availability import component_totals
 from nextintranet_warehouse.mcp_serializers import (
     MCPComponentListSerializer,
     MCPComponentDetailSerializer,
@@ -529,9 +531,7 @@ class WarehouseReadToolset(MCPToolset):
         """
         _require_read(self.request)
 
-        qs = Component.objects.select_related("category").prefetch_related(
-            "packets__location", "reservations",
-        ).all()
+        qs = Component.objects.select_related("category").prefetch_related("packets__location").all()
 
         if category:
             qs = qs.filter(category__abbreviation=category)
@@ -540,7 +540,9 @@ class WarehouseReadToolset(MCPToolset):
 
         row_limit = _clamp_list_limit(limit, default=200, maximum=500)
         offset = max(offset, 0)
-        results = MCPInventoryItemSerializer(qs[offset:offset + row_limit], many=True).data
+        page = list(qs[offset:offset + row_limit])
+        totals = component_totals([component.pk for component in page])
+        results = MCPInventoryItemSerializer(page, many=True, context={"totals": totals}).data
 
         if low_stock_only:
             results = [r for r in results if r["quantity"] <= 0]
@@ -1850,6 +1852,7 @@ class WarehouseWriteToolset(MCPToolset):
             warehouse=_reservation_warehouse(warehouse_id, self.request),
             expiration_date=_parse_expiration(expiration_date),
         )
+        log_reservation("reservation_created", reservation, _mcp_actor_user(self.request), source="api")
         return MCPReservationSerializer(reservation).data
 
     def update_reservation(
@@ -1876,6 +1879,7 @@ class WarehouseWriteToolset(MCPToolset):
         _require_write(self.request)
 
         reservation = Reservation.objects.select_related("component").get(id=reservation_id)
+        before = reservation_snapshot(reservation)
         if quantity is not None:
             reservation.quantity = quantity
         if priority is not None:
@@ -1891,6 +1895,7 @@ class WarehouseWriteToolset(MCPToolset):
         if expiration_date is not None:
             reservation.expiration_date = _parse_expiration(expiration_date)
         reservation.save()
+        log_reservation("reservation_updated", reservation, _mcp_actor_user(self.request), before=before)
         return MCPReservationSerializer(reservation).data
 
     def delete_reservation(self, reservation_id: str) -> dict:
@@ -1903,6 +1908,7 @@ class WarehouseWriteToolset(MCPToolset):
 
         reservation = Reservation.objects.select_related("component").get(id=reservation_id)
         payload = MCPReservationSerializer(reservation).data
+        log_reservation("reservation_deleted", reservation, _mcp_actor_user(self.request))
         reservation.delete()
         return {"deleted": True, "reservation": payload}
 

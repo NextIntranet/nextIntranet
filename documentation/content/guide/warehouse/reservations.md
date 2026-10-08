@@ -36,13 +36,21 @@ and each reservation in the breakdown carries a label saying where it comes from
 
 ## Create reservation
 
-Manual reservations can currently be created through the API
-(`POST /api/v1/store/reservations/`) and the [MCP server](../settings/mcp.md).
+- **Warehouse → Reservations** (`/store/reservations`) → **New reservation**: pick the
+  component, quantity, warehouse, priority, optional expiry date and a note.
+- On a component page, **⋯ → Reserve** opens the same form with the component filled in.
+- Over the API (`POST /api/v1/store/reservations/`) or the [MCP server](../settings/mcp.md).
+
+If no warehouse is chosen, the warehouse of your home location is used (or the only
+warehouse, if there is just one).
 
 ## View and update
 
-Open a reservation from the list (`/store/reservations/<id>`) to see its warehouse and
-expiry and to adjust quantity, priority, or metadata.
+The list shows each reservation's warehouse and marks expired ones. Open a reservation
+(`/store/reservations/<id>`) to change its quantity, warehouse, priority, expiry or note.
+
+Creating, changing and deleting a reservation, as well as reserving and unreserving a BOM,
+is recorded in the component's activity log.
 
 ## Permissions
 

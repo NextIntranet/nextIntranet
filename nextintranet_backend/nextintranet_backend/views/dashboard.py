@@ -8,6 +8,7 @@ from django.db.models.functions import TruncDate
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 
+from nextintranet_production.models import Template
 from nextintranet_warehouse.models import (
     Component,
     Packet,
@@ -88,10 +89,10 @@ class DashboardMetricsAPIView(APIView):
             total=Sum('count')
         )['total'] or 0
 
-        # Active reservations count
-        active_reservations = Reservation.objects.filter(
-            Q(expiration_date__isnull=True) | Q(expiration_date__gte=now)
-        ).count()
+        # Active reservations: unexpired manual ones plus BOMs currently holding stock
+        active_reservations = Reservation.objects.active(now).count() + (
+            Template.objects.filter(reserved_at__isnull=False).exclude(status='finished').count()
+        )
 
         # Pending purchase requests
         pending_purchase_requests = PurchaseRequest.objects.filter(

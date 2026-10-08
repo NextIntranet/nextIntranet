@@ -180,7 +180,11 @@ is only a label on each entry, not a separate bucket.
    `request_bom_line` / `request_missing_bom_parts`), `requested` on availability rows,
    Request / Update request / Request missing buttons, Target column + edit on the request list,
    `?target_location=` and `?bom_id=` filters.
-5. **Later** — transfer requests between warehouses, incoming supply (expected packets + ordered
+5. **Follow-ups** — *done.* Manual reservations in the UI (New reservation on the Reservations page,
+   ⋯ → Reserve on the component page, warehouse/expiry in the list and edit form), dashboard count
+   includes reserved BOMs, MCP inventory summary computes availability once per page, reservation
+   and BOM reserve/unreserve changes logged to `WarehouseActivity`.
+6. **Later** — transfer requests between warehouses, incoming supply (expected packets + ordered
    purchase requests) in availability, priority ordering by `planned_date` when free < 0.
 
 ## Tests

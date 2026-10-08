@@ -338,3 +338,59 @@ class RequestComponentTests(TestCase):
 
         response = client.post(f"/api/v1/production/templates/{self.bom.id}/request-missing/", {}, format="json")
         self.assertEqual(response.data["requested"], 1)
+
+
+class ReservationActivityAndSummaryTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_superuser("admin", "admin@example.com", "pw")
+        self.client = APIClient()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(self.user).access_token}")
+        self.praha = Warehouse.objects.create(name="Praha", is_warehouse=True)
+        self.shelf = Warehouse.objects.create(name="Shelf", parent=self.praha, can_store_items=True)
+        self.part = Component.objects.create(name="A")
+        Packet.objects.create(component=self.part, location=self.shelf, count=Decimal("100"))
+        folder = ProductionFolder.objects.create(name="Folder")
+        product = Production.objects.create(name="Board", folder=folder)
+        self.bom = Template.objects.create(production=product, name="B", qty_planned=2)
+        TemplateComponent.objects.create(template=self.bom, component=self.part, qty_per_board=10)
+
+    def _activity_types(self):
+        from nextintranet_warehouse.models.component import WarehouseActivity
+
+        return list(
+            WarehouseActivity.objects.filter(component=self.part).order_by("occurred_at").values_list("activity_type", flat=True)
+        )
+
+    def test_reservation_changes_are_logged(self):
+        created = self.client.post(
+            "/api/v1/store/reservations/",
+            {"component_id": str(self.part.id), "quantity": 5, "warehouse": str(self.praha.id)},
+            format="json",
+        ).data
+        self.client.patch(f"/api/v1/store/reservation/{created['id']}/", {"quantity": 7}, format="json")
+        self.client.delete(f"/api/v1/store/reservation/{created['id']}/")
+        reserve_bom(self.bom, self.user, self.praha.id)
+        unreserve_bom(self.bom, self.user)
+
+        self.assertEqual(
+            self._activity_types(),
+            ["reservation_created", "reservation_updated", "reservation_deleted", "bom_reserved", "bom_unreserved"],
+        )
+
+    def test_dashboard_counts_manual_and_bom_holds(self):
+        Reservation.objects.create(component=self.part, quantity=1, reserved_by="t", warehouse=self.praha)
+        reserve_bom(self.bom, warehouse_id=self.praha.id)
+        response = self.client.get("/api/v1/dashboard/")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.data["active_reservations"], 2)
+
+    def test_mcp_inventory_summary_uses_service_totals(self):
+        from nextintranet_warehouse.mcp_serializers import MCPInventoryItemSerializer
+        from nextintranet_warehouse.services.availability import component_totals
+
+        reserve_bom(self.bom, warehouse_id=self.praha.id)
+        data = MCPInventoryItemSerializer(
+            [self.part], many=True, context={"totals": component_totals([self.part.id])}
+        ).data[0]
+        self.assertEqual(data["reserved"], 20)
+        self.assertEqual(data["quantity"], 80)

@@ -221,7 +221,7 @@ class ProductionWriteToolset(MCPToolset):
         _require_write(self.request)
 
         template = Template.objects.get(id=bom_id)
-        unreserve_bom(template)
+        unreserve_bom(template, _mcp_actor_user(self.request))
         return {"bom_id": str(template.id), "reserved": False}
 
     def update_bom(

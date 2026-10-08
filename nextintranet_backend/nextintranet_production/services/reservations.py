@@ -143,18 +143,45 @@ def reserve_bom(template, user=None, warehouse_id=None):
             raise ReservationError("Choose the warehouse the BOM draws its parts from.")
         template.stock_warehouse_id = default_id
 
-    if template.reserved_at is None:
+    newly_reserved = template.reserved_at is None
+    if newly_reserved:
         template.reserved_at = timezone.now()
         template.reserved_by = user if user is not None and getattr(user, "is_authenticated", False) else None
     template.save(update_fields=["stock_warehouse", "reserved_at", "reserved_by"])
+    if newly_reserved:
+        _log_bom_hold(template, "bom_reserved", user)
     return template
 
 
-def unreserve_bom(template):
+def unreserve_bom(template, user=None):
+    was_reserved = template.reserved_at is not None
     template.reserved_at = None
     template.reserved_by = None
     template.save(update_fields=["reserved_at", "reserved_by"])
+    if was_reserved:
+        _log_bom_hold(template, "bom_unreserved", user)
     return template
+
+
+def _log_bom_hold(template, activity_type, user):
+    """One activity entry per component the BOM uses, so it shows up in each component's log."""
+    from nextintranet_warehouse.services.activity import log_activity
+
+    warehouse = template.stock_warehouse.full_path if template.stock_warehouse_id else "no warehouse"
+    verb = "holds parts in" if activity_type == "bom_reserved" else "released its hold in"
+    seen = set()
+    for line in template.components.filter(component__isnull=False, dnp=False).select_related("component"):
+        if line.component_id in seen:
+            continue
+        seen.add(line.component_id)
+        log_activity(
+            activity_type=activity_type,
+            source="production",
+            component=line.component,
+            user=user if user is not None and getattr(user, "is_authenticated", False) else None,
+            description=f"BOM {template.production.name} / {template.name} {verb} {warehouse}",
+            metadata={"bom_id": str(template.id)},
+        )
 
 
 def bom_reserved_quantities(template_ids, component_id) -> dict[str, float]:

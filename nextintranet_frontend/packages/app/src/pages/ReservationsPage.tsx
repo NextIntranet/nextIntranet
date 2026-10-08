@@ -2,10 +2,16 @@ import { useEffect, useState } from "react"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { apiFetch } from "@nextintranet/core"
-import { Pencil } from "lucide-react"
+import { Pencil, Plus } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import {
+  ReservationSheet,
+  dateInputFromExpiry,
+  expiryFromDateInput,
+  useWarehouseOptions,
+} from "@/components/ReservationSheet"
 import { Input } from "@/components/ui/input"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -27,7 +33,7 @@ interface Reservation {
   quantity: number
   warehouse?: string | null
   warehouse_name?: string | null
-  priority?: string | null
+  priority?: number | string | null
   description?: string | null
   sources?: ReservationSource[] | null
   reserved_by?: string | null
@@ -146,7 +152,11 @@ export function ReservationsPage() {
     quantity: "",
     priority: "",
     description: "",
+    warehouse: "",
+    expiration: "",
   })
+  const [createOpen, setCreateOpen] = useState(false)
+  const warehouseOptions = useWarehouseOptions(!!id)
 
   useEffect(() => {
     if (!reservationDetail) {
@@ -154,8 +164,10 @@ export function ReservationsPage() {
     }
     setFormState({
       quantity: reservationDetail.quantity ? String(reservationDetail.quantity) : "",
-      priority: reservationDetail.priority || "",
+      priority: reservationDetail.priority ? String(reservationDetail.priority) : "3",
       description: reservationDetail.description || "",
+      warehouse: reservationDetail.warehouse || "",
+      expiration: dateInputFromExpiry(reservationDetail.expiration_date),
     })
   }, [reservationDetail?.id])
 
@@ -218,8 +230,10 @@ export function ReservationsPage() {
     const quantityValue = formState.quantity.trim()
     updateMutation.mutate({
       quantity: quantityValue ? Number(quantityValue) : 0,
-      priority: formState.priority.trim() || null,
-      description: formState.description.trim() || null,
+      priority: Number(formState.priority) || 3,
+      description: formState.description.trim(),
+      warehouse: formState.warehouse || null,
+      expiration_date: expiryFromDateInput(formState.expiration),
     })
   }
 
@@ -256,29 +270,39 @@ export function ReservationsPage() {
           <div>
             <h1 className="text-2xl font-semibold text-foreground">Reservations</h1>
             <p className="text-sm text-muted-foreground">
-              Track reserved stock for warehouse components.
+              Manual reservations hold stock in a warehouse. Production BOMs hold their parts without rows here.
             </p>
           </div>
+          {canEdit ? (
+            <Button className="gap-2" onClick={() => setCreateOpen(true)}>
+              <Plus className="h-4 w-4" />
+              New reservation
+            </Button>
+          ) : null}
         </div>
+        <ReservationSheet open={createOpen} onOpenChange={setCreateOpen} />
 
         <div className="mt-4">
           <div className="overflow-hidden rounded-lg border border-border/70">
             <Table className="w-full table-fixed">
               <TableHeader className="bg-muted/40">
                 <TableRow className="border-border/50">
-                  <TableHead className="h-9 w-[32%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableHead className="h-9 w-[26%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Component
                   </TableHead>
-                  <TableHead className="h-9 w-[16%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableHead className="h-9 w-[10%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Quantity
                   </TableHead>
-                  <TableHead className="h-9 w-[20%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableHead className="h-9 w-[16%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Warehouse
+                  </TableHead>
+                  <TableHead className="h-9 w-[14%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Reserved by
                   </TableHead>
-                  <TableHead className="h-9 w-[20%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableHead className="h-9 w-[18%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Source(s)
                   </TableHead>
-                  <TableHead className="h-9 w-[24%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <TableHead className="h-9 w-[16%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                     Description
                   </TableHead>
                 </TableRow>
@@ -286,7 +310,7 @@ export function ReservationsPage() {
               <TableBody>
                 {isReservationsLoading ? (
                   <TableRow className="border-border/40">
-                    <TableCell colSpan={5} className="py-8">
+                    <TableCell colSpan={6} className="py-8">
                       <div className="space-y-2">
                         <Skeleton className="h-5 w-1/2" />
                         <Skeleton className="h-5 w-3/4" />
@@ -296,7 +320,10 @@ export function ReservationsPage() {
                   </TableRow>
                 ) : reservations.length ? (
                   reservations.map((reservation) => (
-                    <TableRow key={reservation.id} className="border-border/40">
+                    <TableRow
+                      key={reservation.id}
+                      className={cn("border-border/40", reservation.is_active === false && "opacity-60")}
+                    >
                       <TableCell className="h-9 px-3">
                         <div className="flex min-w-0 flex-col">
                           <Button
@@ -317,6 +344,12 @@ export function ReservationsPage() {
                       </TableCell>
                       <TableCell className="h-9 px-3 text-sm text-foreground">
                         {reservation.quantity}
+                        {reservation.is_active === false ? (
+                          <span className="ml-1.5 text-xs text-muted-foreground">expired</span>
+                        ) : null}
+                      </TableCell>
+                      <TableCell className="h-9 truncate px-3 text-sm text-muted-foreground">
+                        {reservation.warehouse_name || "All warehouses"}
                       </TableCell>
                       <TableCell className="h-9 px-3 text-sm text-muted-foreground">
                         {reservation.reserved_by || "-"}
@@ -346,7 +379,7 @@ export function ReservationsPage() {
                 ) : (
                   <TableRow className="border-border/40">
                     <TableCell
-                      colSpan={5}
+                      colSpan={6}
                       className="py-8 text-center text-sm text-muted-foreground"
                     >
                       No reservations found.
@@ -554,12 +587,39 @@ export function ReservationsPage() {
                     </div>
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-foreground">Priority</label>
-                      <Input
+                      <select
                         value={formState.priority}
-                        onChange={(e) =>
-                          setFormState({ ...formState, priority: e.target.value })
-                        }
-                        placeholder="Optional priority"
+                        onChange={(e) => setFormState({ ...formState, priority: e.target.value })}
+                        className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                      >
+                        <option value="1">1 — highest</option>
+                        <option value="2">2</option>
+                        <option value="3">3 — normal</option>
+                        <option value="4">4</option>
+                        <option value="5">5 — lowest</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">Warehouse</label>
+                      <select
+                        value={formState.warehouse}
+                        onChange={(e) => setFormState({ ...formState, warehouse: e.target.value })}
+                        className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm"
+                      >
+                        <option value="">All warehouses (not assigned)</option>
+                        {warehouseOptions.map((warehouse) => (
+                          <option key={warehouse.id} value={warehouse.id}>
+                            {warehouse.full_path}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">Expires</label>
+                      <Input
+                        type="date"
+                        value={formState.expiration}
+                        onChange={(e) => setFormState({ ...formState, expiration: e.target.value })}
                       />
                     </div>
                     <div className="space-y-2">

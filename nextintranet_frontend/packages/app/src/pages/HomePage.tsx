@@ -250,7 +250,7 @@ export function HomePage() {
     {
       label: 'Active Reservations',
       value: (metrics.active_reservations ?? 0).toLocaleString(),
-      hint: 'Reservations without expiration or still valid',
+      hint: 'Unexpired manual reservations and reserved BOMs',
       icon: ClipboardList,
     },
     {

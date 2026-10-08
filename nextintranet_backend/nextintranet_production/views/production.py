@@ -1254,7 +1254,7 @@ class TemplateViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="unreserve")
     def unreserve(self, request, pk=None):
         template = self.get_object()
-        unreserve_bom(template)
+        unreserve_bom(template, request.user)
         return Response(self.get_serializer(template).data)
 
     @action(detail=True, methods=["post"], url_path="scan")

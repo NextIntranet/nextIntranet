@@ -7,6 +7,7 @@ from rest_framework.permissions import IsAuthenticated
 from nextintranet_backend.permissions import AreaAccessPermission
 from nextintranet_warehouse.models.component import Component, Reservation
 from nextintranet_warehouse.models.warehouse import Warehouse
+from nextintranet_warehouse.services.activity import log_reservation, reservation_snapshot
 from nextintranet_warehouse.services.availability import default_warehouse_for_user
 
 
@@ -83,7 +84,16 @@ class ReservationSerializer(serializers.ModelSerializer):
             validated_data['reserved_by'] = request.user.get_full_name() or request.user.username
         else:
             validated_data['reserved_by'] = 'Unknown'
-        return super().create(validated_data)
+        reservation = super().create(validated_data)
+        log_reservation('reservation_created', reservation, getattr(request, 'user', None))
+        return reservation
+
+    def update(self, instance, validated_data):
+        before = reservation_snapshot(instance)
+        reservation = super().update(instance, validated_data)
+        request = self.context.get('request')
+        log_reservation('reservation_updated', reservation, getattr(request, 'user', None), before=before)
+        return reservation
 
 
 class ReservationPagination(PageNumberPagination):
@@ -143,3 +153,8 @@ class ReservationDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAuthenticated, AreaAccessPermission]
     required_permission_area = 'warehouse'
     required_level = 'read'
+
+    def perform_destroy(self, instance):
+        log_reservation('reservation_deleted', instance, self.request.user)
+        instance.delete()
+

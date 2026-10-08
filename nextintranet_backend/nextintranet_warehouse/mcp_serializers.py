@@ -114,7 +114,7 @@ class MCPComponentDetailSerializer(serializers.ModelSerializer):
 
 class MCPInventoryItemSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source="category.name", read_only=True, default=None)
-    quantity = serializers.FloatField(source="count", read_only=True)
+    quantity = serializers.SerializerMethodField()
     reserved = serializers.SerializerMethodField()
     locations = serializers.SerializerMethodField()
 
@@ -122,15 +122,28 @@ class MCPInventoryItemSerializer(serializers.ModelSerializer):
         model = Component
         fields = ["id", "name", "category_name", "quantity", "reserved", "locations", "internal_price"]
 
-    def get_reserved(self, obj):
-        from .services.availability import component_totals
+    def _totals(self, obj):
+        # Callers listing many components pass {"totals": component_totals(ids)} to avoid per-row queries.
+        totals = self.context.get("totals")
+        if totals is None or obj.pk not in totals:
+            from .services.availability import component_totals
 
-        return component_totals([obj.pk])[obj.pk]["reserved"]
+            totals = component_totals([obj.pk])
+        return totals[obj.pk]
+
+    def get_quantity(self, obj):
+        """Available: stocked quantity minus everything reserved."""
+        totals = self._totals(obj)
+        return totals["on_hand"] - totals["reserved"]
+
+    def get_reserved(self, obj):
+        return self._totals(obj)["reserved"]
 
     def get_locations(self, obj):
         return [
             {"name": p.location.full_path if p.location else None, "count": float(p.count)}
-            for p in obj.packets.filter(is_active=True)
+            for p in obj.packets.all()
+            if p.is_active
         ]
 
 
