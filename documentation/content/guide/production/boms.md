@@ -56,8 +56,10 @@ Nothing is copied when you reserve. The held quantity is recalculated from the B
 time, so it follows changes to `qty_planned`, added or unlinked lines, and placed parts.
 A finished BOM holds nothing. **Unreserve BOM** releases the hold.
 
-- The BOM's warehouse (`stock_warehouse`) is taken from your home location, or the
-  only warehouse if there is just one. If neither applies, set it first.
+- The BOM's warehouse (`stock_warehouse`) is chosen in the picker next to the button.
+  When it is not set, your home location's warehouse is used, or the only warehouse
+  if there is just one. Changing it moves the hold to the new warehouse.
+- Reserved BOMs carry a **Reserved** badge in the product's BOM list.
 - Only working series can be reserved; closed BOMs cannot be reserved.
 
 ## Availability
@@ -76,6 +78,11 @@ Each line's availability is computed for the BOM's warehouse:
   could cover the shortage, `missing` when no warehouse can, `unlinked` for lines
   without a component.
 - `shortage` — true when `remaining` exceeds `in_stock`.
+
+In the BOM table the **Warehouse** column shows `in_stock / remaining`, the BOM's
+warehouse with what others reserve and what this BOM holds, free stock in other
+warehouses, and the packets. Colours: green available, amber exact, orange only in
+another warehouse, red missing.
 
 The same computation can include `total_in_home`, stock scoped to the signed-in
 user's home location subtree, useful for "do I personally have enough on my bench"

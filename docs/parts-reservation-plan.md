@@ -164,7 +164,10 @@ is only a label on each entry, not a separate bucket.
    the new endpoints, warehouse checkbox on locations, warehouse/expiry in reservation detail,
    per-warehouse `inventory_summary.warehouses` and `used-in` reserved quantity in the API.
    Tests: `nextintranet_production/test_reservations.py`.
-2. **BOM UI** — warehouse picker, reserve/unreserve via new endpoints, per-warehouse availability cell.
+2. **BOM UI** — *done.* Warehouse picker next to Reserve/Unreserve (PATCH `stock_warehouse`),
+   availability cell with remaining vs. usable here, reserved by others / held by this BOM, other
+   warehouses' free stock, status colours (green ok, amber exact, orange elsewhere, red missing),
+   "Reserved" badge in the product's BOM list.
 3. **Component pages** — per-warehouse inventory, used-in with reserved quantity, store list tooltip.
 4. **Request component** — `PurchaseRequest.target_location` + `template_component`, line/bulk
    request endpoints and buttons, request list column/filter.

@@ -26,6 +26,7 @@ import {
   ScanLine,
   Trash2,
   Upload,
+  Warehouse,
 } from "lucide-react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { toast } from "sonner"
@@ -1237,6 +1238,19 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     queryClient.invalidateQueries({ queryKey: ["production-product", productId] })
   }, [queryClient, bomId, productId])
 
+  const setStockWarehouseMutation = useMutation({
+    mutationFn: (stockWarehouse: string) =>
+      apiFetch<BomItem>(`/api/v1/production/templates/${bomId}/`, {
+        method: "PATCH",
+        body: JSON.stringify({ stock_warehouse: stockWarehouse }),
+      }),
+    onSuccess: (bom) => {
+      invalidateReservation()
+      toast.success(`BOM draws parts from ${bom.stock_warehouse_name || "the selected warehouse"}.`)
+    },
+    onError: () => toast.error("Failed to change the BOM warehouse."),
+  })
+
   const reservationErrorMessage = (err: unknown, fallback: string) =>
     (err as { data?: { error?: string } } | null)?.data?.error || fallback
 
@@ -1808,6 +1822,12 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     })
     return map
   }, [availabilityData?.rows])
+
+  const warehouseNameById = useMemo(() => {
+    const map = new Map<string, string>()
+    ;(availabilityData?.warehouses || []).forEach((warehouse) => map.set(warehouse.id, warehouse.full_path))
+    return map
+  }, [availabilityData?.warehouses])
 
 
   /**
@@ -2510,6 +2530,14 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
           <span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold", statusBadgeClass(bom.status))}>
             {bom.status}
           </span>
+          {bom.reserved ? (
+            <span
+              className="ml-1 rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-800"
+              title="This BOM holds the parts it still needs"
+            >
+              Reserved
+            </span>
+          ) : null}
         </TableCell>
         <TableCell className="align-top">
           <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">{bom.qty_planned}x</span>
@@ -3102,6 +3130,29 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                 <option value="component">By component</option>
                               </select>
                               <span className="mx-1 h-6 w-px bg-border" />
+                              {(availabilityData?.warehouses?.length ?? 0) > 0 ? (
+                                <label className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+                                  <Warehouse className="h-4 w-4" />
+                                  <select
+                                    value={selectedBom.stock_warehouse || availabilityData?.warehouse_id || ""}
+                                    onChange={(e) => {
+                                      if (e.target.value) setStockWarehouseMutation.mutate(e.target.value)
+                                    }}
+                                    disabled={isBomClosed(selectedBom.status) || setStockWarehouseMutation.isPending}
+                                    className="h-8 rounded-md border border-input bg-background px-2 text-sm text-foreground"
+                                    title="Warehouse this BOM draws its parts from"
+                                  >
+                                    {!selectedBom.stock_warehouse && !availabilityData?.warehouse_id ? (
+                                      <option value="">Choose warehouse…</option>
+                                    ) : null}
+                                    {(availabilityData?.warehouses || []).map((warehouse) => (
+                                      <option key={warehouse.id} value={warehouse.id}>
+                                        {warehouse.full_path}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              ) : null}
                               {selectedBom.reserved ? (
                                 <Button
                                   variant="outline"
@@ -3148,7 +3199,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                     <TableHead className="h-10 w-[220px] px-3 py-2 align-top">Ref</TableHead>
                                     <TableHead className="h-10 w-[400px] px-3 py-2 align-top">BOM</TableHead>
                                     <TableHead className="h-10 w-[320px] px-3 py-2 align-top">Component</TableHead>
-                                    <TableHead className="h-10 px-3 py-2 align-top">Warehouse</TableHead>
+                                    <TableHead className="h-10 min-w-[220px] px-3 py-2 align-top">Warehouse</TableHead>
                                     <TableHead className="h-10 w-[180px] px-3 py-2 align-top">Actions</TableHead>
                                   </TableRow>
                                 </TableHeader>
@@ -3167,10 +3218,17 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                         : toNumber(line.qty_per_board) * toNumber(selectedBom.qty_planned)
                                     const availabilityRow = availabilityByLineId.get(lineId)
                                     const inStock = availabilityRow ? toNumber(availabilityRow.in_stock) : 0
-                                    const totalQty = availabilityRow ? toNumber(availabilityRow.total_quantity ?? 0) : 0
-                                    const shortageFromApi = availabilityRow ? availabilityRow.shortage : inStock < neededTotal
+                                    const remaining = availabilityRow?.remaining != null ? toNumber(availabilityRow.remaining) : neededTotal
+                                    const placedTotal = toNumber(availabilityRow?.placed_total ?? 0)
+                                    const here = availabilityRow?.here ?? null
+                                    const elsewhere = availabilityRow?.elsewhere ?? []
+                                    const shortageFromApi = availabilityRow ? availabilityRow.shortage : inStock < remaining
                                     const shortage = line.dnp ? false : shortageFromApi
-                                    const isExact = !line.dnp && Math.abs(inStock - neededTotal) < 0.000001
+                                    const coveredElsewhere = shortage && availabilityRow?.status === "elsewhere"
+                                    const isExact = !line.dnp && remaining > 0 && Math.abs(inStock - remaining) < 0.000001
+                                    const hereName = here?.warehouse_id
+                                      ? warehouseNameById.get(here.warehouse_id) || "This warehouse"
+                                      : "All warehouses"
                                     const locations = availabilityRow?.locations || []
                                     return (
                                       <TableRow
@@ -3382,23 +3440,82 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                             "px-3 py-2 align-top",
                                             line.dnp
                                               ? "bg-muted/40"
-                                              : shortage
-                                                ? "bg-rose-100/70"
-                                                : isExact
-                                                  ? "bg-amber-100/70"
-                                                  : "bg-emerald-100/70",
+                                              : coveredElsewhere
+                                                ? "bg-orange-100/70"
+                                                : shortage
+                                                  ? "bg-rose-100/70"
+                                                  : isExact
+                                                    ? "bg-amber-100/70"
+                                                    : "bg-emerald-100/70",
                                           )}
                                         >
                                           <div className="space-y-1.5 text-[12px]">
                                             <div className="flex items-center gap-1.5">
                                               <Package className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                                              <span className={cn("font-semibold", line.dnp ? "text-muted-foreground" : shortage ? "text-rose-700" : isExact ? "text-amber-800" : "text-emerald-800")}>
-                                                {inStock} / {neededTotal}
+                                              <span
+                                                className={cn(
+                                                  "font-semibold",
+                                                  line.dnp
+                                                    ? "text-muted-foreground"
+                                                    : coveredElsewhere
+                                                      ? "text-orange-800"
+                                                      : shortage
+                                                        ? "text-rose-700"
+                                                        : isExact
+                                                          ? "text-amber-800"
+                                                          : "text-emerald-800",
+                                                )}
+                                              >
+                                                {inStock} / {remaining}
                                               </span>
                                               <span className="text-muted-foreground">
-                                                {line.dnp ? "DNP" : shortage ? "Shortage" : isExact ? "Exact" : "In stock"}
+                                                {line.dnp
+                                                  ? "DNP"
+                                                  : coveredElsewhere
+                                                    ? "In another warehouse"
+                                                    : shortage
+                                                      ? "Missing"
+                                                      : isExact
+                                                        ? "Exact"
+                                                        : "Available"}
                                               </span>
                                             </div>
+                                            {placedTotal > 0 && !line.dnp ? (
+                                              <p className="text-muted-foreground">
+                                                {placedTotal} of {neededTotal} already placed
+                                              </p>
+                                            ) : null}
+                                            {here ? (
+                                              <div className="flex items-start gap-1.5" title="Stock in the BOM's warehouse">
+                                                <Warehouse className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />
+                                                <span className="text-muted-foreground">
+                                                  <strong className="text-foreground">{hereName}</strong>: {here.on_hand} on hand
+                                                  {here.reserved_by_others > 0 ? (
+                                                    <>
+                                                      , <strong className="text-foreground">{here.reserved_by_others}</strong> reserved by others
+                                                    </>
+                                                  ) : null}
+                                                  {here.reserved_by_this_line > 0 ? (
+                                                    <>
+                                                      , <strong className="text-foreground">{here.reserved_by_this_line}</strong> held by this BOM
+                                                    </>
+                                                  ) : null}
+                                                </span>
+                                              </div>
+                                            ) : null}
+                                            {elsewhere.length > 0 ? (
+                                              <div className="flex items-start gap-1.5" title="Free stock in other warehouses — not counted, needs a transfer">
+                                                <Warehouse className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground/60" />
+                                                <span className="text-muted-foreground">
+                                                  {elsewhere.map((other) => (
+                                                    <span key={other.warehouse_id} className="block">
+                                                      {warehouseNameById.get(other.warehouse_id) || "Other warehouse"}:{" "}
+                                                      <strong className="text-foreground">{other.free}</strong> free
+                                                    </span>
+                                                  ))}
+                                                </span>
+                                              </div>
+                                            ) : null}
                                             {availabilityData?.home_location_full_path != null && availabilityRow && availabilityRow.total_in_home != null ? (
                                               <div className="flex items-start gap-1.5">
                                                 <MapPin className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />
@@ -3407,27 +3524,25 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                                 </span>
                                               </div>
                                             ) : null}
-                                            <div className="flex items-start gap-1.5">
-                                              <Package className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />
-                                              <span className="text-muted-foreground">
-                                                {totalQty > 0 ? (
-                                                  <>All: <strong className="text-foreground">{totalQty}</strong> total, <strong className="text-foreground">{inStock}</strong> available</>
-                                                ) : (
-                                                  "No stock"
-                                                )}
-                                              </span>
-                                            </div>
                                             {locations.length > 0 ? (
                                               <div className="flex items-start gap-1.5">
                                                 <MapPin className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />
                                                 <span className="text-muted-foreground">
                                                   {locations.map((loc) => (
-                                                    <span key={loc.packet_id} className="block">
+                                                    <span
+                                                      key={loc.packet_id}
+                                                      className={cn(
+                                                        "block",
+                                                        here?.warehouse_id && loc.warehouse_id !== here.warehouse_id && "opacity-60",
+                                                      )}
+                                                    >
                                                       {loc.location}: <strong className="text-foreground">{loc.quantity}</strong>
                                                     </span>
                                                   ))}
                                                 </span>
                                               </div>
+                                            ) : line.component ? (
+                                              <p className="text-muted-foreground">No stock</p>
                                             ) : null}
                                           </div>
                                         </TableCell>
