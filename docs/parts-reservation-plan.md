@@ -168,7 +168,10 @@ is only a label on each entry, not a separate bucket.
    availability cell with remaining vs. usable here, reserved by others / held by this BOM, other
    warehouses' free stock, status colours (green ok, amber exact, orange elsewhere, red missing),
    "Reserved" badge in the product's BOM list.
-3. **Component pages** — per-warehouse inventory, used-in with reserved quantity, store list tooltip.
+3. **Component pages** — *done.* "By warehouse" card (on hand / reserved / free + per-source
+   reservation list with links), used-in rows highlighted with held quantity and warehouse,
+   manual reservations with warehouse and expiry, store list tooltips. A per-warehouse breakdown in
+   the store list itself was skipped: it would need per-row warehouse data in the list API.
 4. **Request component** — `PurchaseRequest.target_location` + `template_component`, line/bulk
    request endpoints and buttons, request list column/filter.
 5. **Later** — transfer requests between warehouses, incoming supply (expected packets + ordered

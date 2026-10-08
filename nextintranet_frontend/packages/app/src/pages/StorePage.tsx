@@ -601,10 +601,10 @@ export function StorePage() {
               <span className="flex items-center gap-1">
                 🏠 {homeQuantity ?? "—"}
               </span>
-              <span className="flex items-center gap-1">
+              <span className="flex items-center gap-1" title="Stocked in all warehouses">
                 🌐 {inv.total_quantity}
               </span>
-              <span className="flex items-center gap-1">
+              <span className="flex items-center gap-1" title="Reserved in all warehouses (manual reservations and reserved BOMs)">
                 🔒 {inv.reserved_quantity}
               </span>
               <span className="flex items-center gap-1">
@@ -841,10 +841,10 @@ export function StorePage() {
                                 <span className="flex items-center gap-1">
                                   🏠 {component.inventory_summary?.home_quantity ?? "—"}
                                 </span>
-                                <span className="flex items-center gap-1">
+                                <span className="flex items-center gap-1" title="Stocked in all warehouses">
                                   🌐 {component.inventory_summary?.total_quantity ?? 0}
                                 </span>
-                                <span className="flex items-center gap-1">
+                                <span className="flex items-center gap-1" title="Reserved in all warehouses (manual reservations and reserved BOMs)">
                                   🔒 {component.inventory_summary?.reserved_quantity ?? 0}
                                 </span>
                                 <span className="flex items-center gap-1">
@@ -944,10 +944,10 @@ export function StorePage() {
                                   <span className="flex items-center gap-1">
                                     🏠 {component.inventory_summary?.home_quantity ?? "—"}
                                   </span>
-                                  <span className="flex items-center gap-1">
+                                  <span className="flex items-center gap-1" title="Stocked in all warehouses">
                                     🌐 {component.inventory_summary?.total_quantity ?? 0}
                                   </span>
-                                  <span className="flex items-center gap-1">
+                                  <span className="flex items-center gap-1" title="Reserved in all warehouses (manual reservations and reserved BOMs)">
                                     🔒 {component.inventory_summary?.reserved_quantity ?? 0}
                                   </span>
                                   <span className="flex items-center gap-1">
