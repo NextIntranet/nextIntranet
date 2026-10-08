@@ -15,6 +15,7 @@ import { Folder, FolderPlus, Package, Pencil, Plus } from "lucide-react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { ComponentAsyncSelect } from "@/components/ComponentAsyncSelect"
 import { LocationParentSelect } from "@/components/LocationParentSelect"
 import { type TargetLocationNode, targetLocationTree } from "@/components/RequestComponentSheet"
@@ -142,6 +143,60 @@ export function PurchaseRequestsPage() {
     [folderTree, ungroupedRequests, expandedIds],
   )
 
+  // Multi-select: click selects one, Ctrl/Cmd+click toggles, Shift+click selects a range.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const selectionAnchorRef = useRef<string | null>(null)
+  const visibleRequestIds = useMemo(
+    () => visibleRows.flatMap((row) => (row.kind === "request" ? [row.request.id] : [])),
+    [visibleRows],
+  )
+
+  useEffect(() => {
+    // Drop ids that are gone (deleted, assigned to a purchase).
+    setSelectedIds((prev) => {
+      const existing = new Set(requests.map((request) => request.id))
+      const next = new Set([...prev].filter((requestId) => existing.has(requestId)))
+      return next.size === prev.size ? prev : next
+    })
+  }, [requests])
+
+  const handleSelectRequest = (requestId: string, event: React.MouseEvent) => {
+    const anchor = selectionAnchorRef.current
+    if (event.shiftKey && anchor) {
+      const from = visibleRequestIds.indexOf(anchor)
+      const to = visibleRequestIds.indexOf(requestId)
+      if (from !== -1 && to !== -1) {
+        const range = visibleRequestIds.slice(Math.min(from, to), Math.max(from, to) + 1)
+        setSelectedIds((prev) => new Set([...(event.ctrlKey || event.metaKey ? prev : []), ...range]))
+        return
+      }
+    }
+    selectionAnchorRef.current = requestId
+    if (event.ctrlKey || event.metaKey) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev)
+        if (next.has(requestId)) next.delete(requestId)
+        else next.add(requestId)
+        return next
+      })
+      return
+    }
+    setSelectedIds((prev) => (prev.size === 1 && prev.has(requestId) ? new Set() : new Set([requestId])))
+  }
+
+  const clearSelection = () => {
+    setSelectedIds(new Set())
+    selectionAnchorRef.current = null
+  }
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") clearSelection()
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [])
+
   const { data: requestDetail, isLoading: isDetailLoading } = useQuery<PurchaseRequest>({
     queryKey: ["purchase-request", id],
     queryFn: () => apiFetch<PurchaseRequest>(`/api/v1/store/purchase-request/${id}/`),
@@ -250,6 +305,28 @@ export function PurchaseRequestsPage() {
     },
   })
 
+  const moveManyMutation = useMutation({
+    mutationFn: ({ requestIds, folderId }: { requestIds: string[]; folderId: string | null }) =>
+      Promise.all(
+        requestIds.map((requestId) =>
+          apiFetch(`/api/v1/store/purchase-request/${requestId}/`, {
+            method: "PATCH",
+            body: JSON.stringify({ folder_id: folderId }),
+          }),
+        ),
+      ),
+    onSuccess: (_, { requestIds, folderId }) => {
+      queryClient.invalidateQueries({ queryKey: ["purchase-requests"] })
+      const folderName = folderId ? folders.find((folder) => folder.id === folderId)?.name : "Ungrouped"
+      toast.success(`Moved ${requestIds.length} request${requestIds.length === 1 ? "" : "s"} to ${folderName}.`)
+      clearSelection()
+    },
+    onError: () => {
+      queryClient.invalidateQueries({ queryKey: ["purchase-requests"] })
+      toast.error("Failed to move requests.")
+    },
+  })
+
   const createFolderMutation = useMutation({
     mutationFn: (payload: { name: string; parent: string | null }) =>
       apiFetch("/api/v1/store/purchase-request-folder/", {
@@ -344,15 +421,24 @@ export function PurchaseRequestsPage() {
     const overId = String(over.id)
 
     if (activeId.startsWith(REQUEST_DRAG_PREFIX)) {
-      const requestId = activeId.slice(REQUEST_DRAG_PREFIX.length)
-      const targetFolderId =
-        overId === ROOT_DROP_ID ? null : overId.startsWith(FOLDER_DRAG_PREFIX) ? overId.slice(FOLDER_DRAG_PREFIX.length) : null
-      const currentRequest = requests.find((request) => request.id === requestId)
-      if (!currentRequest || currentRequest.folder_id === targetFolderId) {
+      if (overId !== ROOT_DROP_ID && !overId.startsWith(FOLDER_DRAG_PREFIX)) {
         return
       }
-      if (overId === ROOT_DROP_ID || overId.startsWith(FOLDER_DRAG_PREFIX)) {
-        moveRequestMutation.mutate({ requestId, folderId: targetFolderId })
+      const requestId = activeId.slice(REQUEST_DRAG_PREFIX.length)
+      const dropFolderId = overId === ROOT_DROP_ID ? null : overId.slice(FOLDER_DRAG_PREFIX.length)
+      const targetFolderId = dropFolderId === UNGROUPED_ID ? null : dropFolderId
+      // Dragging a selected row moves the whole selection.
+      const draggedIds = selectedIds.has(requestId) ? [...selectedIds] : [requestId]
+      const toMove = draggedIds.filter(
+        (draggedId) => (requests.find((request) => request.id === draggedId)?.folder_id ?? null) !== targetFolderId,
+      )
+      if (toMove.length === 0) {
+        return
+      }
+      if (toMove.length === 1 && draggedIds.length === 1) {
+        moveRequestMutation.mutate({ requestId: toMove[0], folderId: targetFolderId })
+      } else {
+        moveManyMutation.mutate({ requestIds: toMove, folderId: targetFolderId })
       }
       return
     }
@@ -385,7 +471,11 @@ export function PurchaseRequestsPage() {
       return null
     }
     if (activeDragId.startsWith(REQUEST_DRAG_PREFIX)) {
-      const request = requests.find((r) => r.id === activeDragId.slice(REQUEST_DRAG_PREFIX.length))
+      const requestId = activeDragId.slice(REQUEST_DRAG_PREFIX.length)
+      if (selectedIds.has(requestId) && selectedIds.size > 1) {
+        return { type: "request" as const, label: `${selectedIds.size} requests` }
+      }
+      const request = requests.find((r) => r.id === requestId)
       if (!request) {
         return null
       }
@@ -399,7 +489,13 @@ export function PurchaseRequestsPage() {
       return { type: "folder" as const, label: folder.name }
     }
     return null
-  }, [activeDragId, requests, folders])
+  }, [activeDragId, requests, folders, selectedIds])
+
+  const draggingIds = useMemo(() => {
+    if (!activeDragId?.startsWith(REQUEST_DRAG_PREFIX)) return new Set<string>()
+    const requestId = activeDragId.slice(REQUEST_DRAG_PREFIX.length)
+    return selectedIds.has(requestId) ? selectedIds : new Set([requestId])
+  }, [activeDragId, selectedIds])
 
   const handleOpen = (requestId: string) => {
     navigate(`/store/purchase-requests/${requestId}`)
@@ -504,7 +600,8 @@ export function PurchaseRequestsPage() {
           <div>
             <h1 className="text-2xl font-semibold text-foreground">Purchase requests</h1>
             <p className="text-sm text-muted-foreground">
-              Review open requests for purchasing components. Drag a request onto a folder to file it.
+              Review open requests for purchasing components. Drag a request onto a folder to file it; Ctrl/Shift+click
+              selects several.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -521,6 +618,60 @@ export function PurchaseRequestsPage() {
               </Button>
             )}
           </div>
+        </div>
+
+        <div
+          className={cn(
+            "sticky top-0 z-20 mt-4 flex min-h-11 flex-wrap items-center gap-2 rounded-lg border px-3 py-1.5 text-sm",
+            selectedIds.size > 0
+              ? "border-sky-300 bg-sky-50 shadow-sm dark:border-sky-800 dark:bg-sky-950/60"
+              : "border-dashed border-border/70 text-muted-foreground",
+          )}
+        >
+          {selectedIds.size > 0 ? (
+            <>
+              <span className="font-medium text-foreground">{selectedIds.size} selected</span>
+              <span className="text-muted-foreground">·</span>
+              {canEdit ? (
+                <label className="inline-flex items-center gap-2 text-muted-foreground">
+                  Move to
+                  <select
+                    value=""
+                    disabled={moveManyMutation.isPending}
+                    onChange={(event) => {
+                      const value = event.target.value
+                      if (!value) return
+                      moveManyMutation.mutate({
+                        requestIds: [...selectedIds],
+                        folderId: value === UNGROUPED_ID ? null : value,
+                      })
+                    }}
+                    className="h-8 rounded-md border border-input bg-background px-2 text-sm text-foreground"
+                  >
+                    <option value="">Choose folder…</option>
+                    <option value={UNGROUPED_ID}>Ungrouped</option>
+                    {[...folders]
+                      .sort((a, b) => a.full_path.localeCompare(b.full_path))
+                      .map((folder) => (
+                        <option key={folder.id} value={folder.id}>
+                          {folder.full_path}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              ) : null}
+              <span className="hidden text-xs text-muted-foreground sm:inline">
+                or drag one of the selected rows onto a folder
+              </span>
+              <Button variant="ghost" size="sm" className="ml-auto h-8" onClick={clearSelection}>
+                Clear selection
+              </Button>
+            </>
+          ) : (
+            <span className="text-xs">
+              Click a row to select it · Ctrl/Cmd+click adds or removes · Shift+click selects a range · Esc clears
+            </span>
+          )}
         </div>
 
         <div className="mt-4">
@@ -549,6 +700,9 @@ export function PurchaseRequestsPage() {
                 onRenameFolder={handleRenameFolder}
                 onDeleteFolder={handleDeleteFolder}
                 blockedDropFolderIds={blockedDropFolderIds}
+                selectedIds={selectedIds}
+                draggingIds={draggingIds}
+                onSelectRequest={handleSelectRequest}
               />
 
               <DragOverlay>

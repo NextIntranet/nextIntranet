@@ -41,9 +41,45 @@ export const REQUEST_DRAG_PREFIX = 'request:'
 export const ROOT_DROP_ID = 'root'
 export const UNGROUPED_ID = '__ungrouped__'
 
+/** Position of a request inside a run of requests for the same item within one folder. */
+export interface DuplicateInfo {
+  index: number
+  size: number
+  totalQuantity: number
+}
+
 export type TreeRow =
   | { kind: 'folder'; node: FolderNode; depth: number }
-  | { kind: 'request'; request: PurchaseRequest; depth: number }
+  | { kind: 'request'; request: PurchaseRequest; depth: number; duplicate?: DuplicateInfo }
+
+const itemKey = (request: PurchaseRequest) =>
+  request.component_id ? `c:${request.component_id}` : `n:${(request.item_name || '').trim().toLowerCase()}`
+
+/** Keeps the incoming order, but pulls requests for the same item next to the first one of them. */
+function groupDuplicates(requests: PurchaseRequest[]): Array<{ request: PurchaseRequest; duplicate?: DuplicateInfo }> {
+  const groups = new Map<string, PurchaseRequest[]>()
+  for (const request of requests) {
+    const key = itemKey(request)
+    const group = groups.get(key)
+    if (group) {
+      group.push(request)
+    } else {
+      groups.set(key, [request])
+    }
+  }
+  const result: Array<{ request: PurchaseRequest; duplicate?: DuplicateInfo }> = []
+  for (const group of groups.values()) {
+    if (group.length === 1) {
+      result.push({ request: group[0] })
+      continue
+    }
+    const totalQuantity = group.reduce((sum, request) => sum + (Number(request.quantity) || 0), 0)
+    group.forEach((request, index) => {
+      result.push({ request, duplicate: { index, size: group.length, totalQuantity } })
+    })
+  }
+  return result
+}
 
 /** Flattens folders (+ an "Ungrouped" pseudo-folder for root-level requests) into one
  * ordered list of visible rows, respecting which folder ids are currently expanded. */
@@ -59,8 +95,8 @@ export function buildVisibleRows(
       rows.push({ kind: 'folder', node, depth })
       if (expandedIds.has(node.id)) {
         visit(node.children, depth + 1)
-        for (const request of node.requests) {
-          rows.push({ kind: 'request', request, depth: depth + 1 })
+        for (const { request, duplicate } of groupDuplicates(node.requests)) {
+          rows.push({ kind: 'request', request, depth: depth + 1, duplicate })
         }
       }
     }
@@ -78,8 +114,8 @@ export function buildVisibleRows(
   }
   rows.push({ kind: 'folder', node: ungroupedNode, depth: 0 })
   if (expandedIds.has(UNGROUPED_ID)) {
-    for (const request of ungroupedRequests) {
-      rows.push({ kind: 'request', request, depth: 1 })
+    for (const { request, duplicate } of groupDuplicates(ungroupedRequests)) {
+      rows.push({ kind: 'request', request, depth: 1, duplicate })
     }
   }
 

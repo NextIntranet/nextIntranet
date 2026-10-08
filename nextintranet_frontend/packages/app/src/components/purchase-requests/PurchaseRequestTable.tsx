@@ -18,6 +18,9 @@ interface Props {
   onDeleteFolder: (id: string) => void
   blockedDropFolderIds: Set<string>
   isLoading?: boolean
+  selectedIds: Set<string>
+  draggingIds: Set<string>
+  onSelectRequest: (id: string, event: React.MouseEvent) => void
 }
 
 export function PurchaseRequestTable({
@@ -33,6 +36,9 @@ export function PurchaseRequestTable({
   onDeleteFolder,
   blockedDropFolderIds,
   isLoading,
+  selectedIds,
+  draggingIds,
+  onSelectRequest,
 }: Props) {
   return (
     <div className="overflow-hidden rounded-lg border border-border/70">
@@ -93,6 +99,10 @@ export function PurchaseRequestTable({
                   deletePending={deletePending}
                   onOpen={onOpenRequest}
                   onDelete={onDeleteRequest}
+                  selected={selectedIds.has(row.request.id)}
+                  dragging={draggingIds.has(row.request.id)}
+                  onSelect={onSelectRequest}
+                  duplicate={row.duplicate}
                 />
               ),
             )

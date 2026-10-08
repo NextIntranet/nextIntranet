@@ -7,7 +7,7 @@ import { TableCell, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 
-import { PurchaseRequest, REQUEST_DRAG_PREFIX, suppliersTooltip } from "./types"
+import { DuplicateInfo, PurchaseRequest, REQUEST_DRAG_PREFIX, suppliersTooltip } from "./types"
 
 interface Props {
   request: PurchaseRequest
@@ -16,18 +16,54 @@ interface Props {
   deletePending: boolean
   onOpen: (id: string) => void
   onDelete: (id: string) => void
+  selected: boolean
+  /** Part of the current drag (the dragged row, or any selected row while a selection is dragged). */
+  dragging: boolean
+  onSelect: (id: string, event: React.MouseEvent) => void
+  duplicate?: DuplicateInfo
 }
 
-export function PurchaseRequestRow({ request, depth, canEdit, deletePending, onOpen, onDelete }: Props) {
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+export function PurchaseRequestRow({
+  request,
+  depth,
+  canEdit,
+  deletePending,
+  onOpen,
+  onDelete,
+  selected,
+  dragging,
+  onSelect,
+  duplicate,
+}: Props) {
+  const { attributes, listeners, setNodeRef } = useDraggable({
     id: `${REQUEST_DRAG_PREFIX}${request.id}`,
   })
 
   const suppliersText = suppliersTooltip(request.suppliers)
+  const isFirstDuplicate = duplicate?.index === 0
+  const isLastDuplicate = duplicate ? duplicate.index === duplicate.size - 1 : false
 
   return (
-    <TableRow ref={setNodeRef} className={cn("border-border/40", isDragging && "opacity-30")}>
-      <TableCell className="h-9 w-8 px-1">
+    <TableRow
+      ref={setNodeRef}
+      onClick={(event) => {
+        // Links, buttons and inputs keep their own behaviour; the rest of the row selects.
+        if ((event.target as HTMLElement).closest("a, button, input, textarea, select")) return
+        onSelect(request.id, event)
+      }}
+      className={cn(
+        "cursor-default select-none border-border/40",
+        selected && "bg-sky-100 hover:bg-sky-100 dark:bg-sky-950/60 dark:hover:bg-sky-950/60",
+        dragging && "opacity-30",
+        duplicate && !isLastDuplicate && "border-b-0",
+        duplicate && isFirstDuplicate && "border-t-2 border-t-amber-300/70",
+      )}
+      aria-selected={selected}
+    >
+      <TableCell
+        className={cn("h-9 w-8 px-1", duplicate && "border-l-4 border-l-amber-400")}
+        title={duplicate ? `Same item requested ${duplicate.size}× in this folder` : undefined}
+      >
         <button
           {...attributes}
           {...listeners}
@@ -52,12 +88,22 @@ export function PurchaseRequestRow({ request, depth, canEdit, deletePending, onO
               {request.item_name || "Unknown item"}
             </button>
           )}
-          <button
-            onClick={() => onOpen(request.id)}
-            className="px-0 text-left text-xs text-muted-foreground hover:underline underline-offset-2"
-          >
-            Details →
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => onOpen(request.id)}
+              className="px-0 text-left text-xs text-muted-foreground hover:underline underline-offset-2"
+            >
+              Details →
+            </button>
+            {duplicate && isFirstDuplicate ? (
+              <span
+                className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800"
+                title="Several requests for the same item in this folder — consider merging them"
+              >
+                {duplicate.size}× same item · {duplicate.totalQuantity} pcs total
+              </span>
+            ) : null}
+          </div>
         </div>
       </TableCell>
       <TableCell className="h-9 px-3 text-sm text-foreground">{request.quantity}</TableCell>
