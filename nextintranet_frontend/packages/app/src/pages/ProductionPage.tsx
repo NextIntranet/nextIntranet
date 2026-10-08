@@ -24,6 +24,7 @@ import {
   Pencil,
   RefreshCw,
   ScanLine,
+  ShoppingCart,
   Trash2,
   Upload,
   Warehouse,
@@ -48,6 +49,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { PacketRef } from "@/components/PacketRef"
+import { RequestComponentSheet } from "@/components/RequestComponentSheet"
 import { PacketSelectSheet, type PacketLineProgress, type PacketSelectItem } from "@/components/PacketSelectSheet"
 import { ScanActionDialog, type ScanActionTarget } from "@/components/ScanActionDialog"
 import { Input } from "@/components/ui/input"
@@ -256,6 +258,13 @@ type AvailabilityRow = {
   } | null
   elsewhere?: Array<{ warehouse_id: string; free: number }>
   status?: "ok" | "elsewhere" | "missing" | "unlinked"
+  requested?: {
+    open_id: string | null
+    open_quantity: number
+    ordered_quantity: number
+    target_location_id: string | null
+    target_location_name: string | null
+  } | null
   shortage: boolean
   unlinked: boolean
 }
@@ -893,6 +902,13 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
   const [newLineValue, setNewLineValue] = useState("")
   const [newLineFootprint, setNewLineFootprint] = useState("")
   const [newLineQty, setNewLineQty] = useState("1")
+  const [requestTarget, setRequestTarget] = useState<{
+    lineId: string
+    componentId: string
+    componentName: string
+    quantity: number
+    targetLocation: string | null
+  } | null>(null)
   const [linkSheetOpen, setLinkSheetOpen] = useState(false)
   const [linkSheetTarget, setLinkSheetTarget] = useState<LinkSheetTarget | null>(null)
   const [refAssignTarget, setRefAssignTarget] = useState<RefAssignTarget | null>(null)
@@ -1833,6 +1849,42 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     })
     return map
   }, [availabilityData?.rows])
+
+  /** Pieces a line still has to request: short in the BOM's warehouse and not yet ordered. */
+  const quantityToRequest = (row: AvailabilityRow | undefined) => {
+    if (!row || row.dnp || !row.linked_component || !row.shortage) return 0
+    const remaining = toNumber(row.remaining ?? row.needed_total)
+    const ordered = toNumber(row.requested?.ordered_quantity ?? 0)
+    return Math.max(0, Math.ceil(remaining - toNumber(row.in_stock) - ordered - 1e-9))
+  }
+
+  const linesToRequest = useMemo(
+    () =>
+      (availabilityData?.rows || []).filter(
+        (row) => quantityToRequest(row) > toNumber(row.requested?.open_quantity ?? 0),
+      ).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [availabilityData?.rows],
+  )
+
+  const requestMissingMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<{ requested: number }>(`/api/v1/production/templates/${bomId}/request-missing/`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["production-availability", bomId] })
+      queryClient.invalidateQueries({ queryKey: ["purchase-requests"] })
+      toast.success(
+        result.requested
+          ? `Requested ${result.requested} component${result.requested === 1 ? "" : "s"}.`
+          : "Nothing left to request.",
+      )
+    },
+    onError: (err) =>
+      toast.error((err as { data?: { error?: string } } | null)?.data?.error || "Failed to request components."),
+  })
 
   const warehouseNameById = useMemo(() => {
     const map = new Map<string, string>()
@@ -3190,6 +3242,18 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                   Reserve BOM
                                 </Button>
                               )}
+                              {linesToRequest > 0 && !isBomClosed(selectedBom.status) && selectedBom.series_kind !== "template" ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => requestMissingMutation.mutate()}
+                                  disabled={requestMissingMutation.isPending}
+                                  title="File purchase requests for every line short in the BOM's warehouse"
+                                >
+                                  <ShoppingCart className="mr-1.5 h-3.5 w-3.5" />
+                                  Request missing ({linesToRequest})
+                                </Button>
+                              ) : null}
                             </div>
 
                             <div className="grid gap-2 rounded-md border border-border/60 p-3 sm:grid-cols-[1fr_1fr_120px_auto]">
@@ -3554,6 +3618,61 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                               </div>
                                             ) : line.component ? (
                                               <p className="text-muted-foreground">No stock</p>
+                                            ) : null}
+                                            {availabilityRow?.requested &&
+                                            (availabilityRow.requested.open_quantity > 0 ||
+                                              availabilityRow.requested.ordered_quantity > 0) ? (
+                                              <div className="flex items-start gap-1.5 text-sky-800">
+                                                <ShoppingCart className="mt-0.5 h-3 w-3 shrink-0" />
+                                                <span>
+                                                  {availabilityRow.requested.open_quantity > 0 ? (
+                                                    <>
+                                                      <strong>{availabilityRow.requested.open_quantity}</strong> requested
+                                                      {availabilityRow.requested.target_location_name
+                                                        ? ` → ${availabilityRow.requested.target_location_name}`
+                                                        : ""}
+                                                    </>
+                                                  ) : null}
+                                                  {availabilityRow.requested.open_quantity > 0 &&
+                                                  availabilityRow.requested.ordered_quantity > 0
+                                                    ? ", "
+                                                    : null}
+                                                  {availabilityRow.requested.ordered_quantity > 0 ? (
+                                                    <>
+                                                      <strong>{availabilityRow.requested.ordered_quantity}</strong> ordered
+                                                    </>
+                                                  ) : null}
+                                                </span>
+                                              </div>
+                                            ) : null}
+                                            {quantityToRequest(availabilityRow) > 0 &&
+                                            line.component &&
+                                            !isBomClosed(selectedBom.status) &&
+                                            selectedBom.series_kind !== "template" ? (
+                                              <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-7 bg-background px-2 text-xs"
+                                                onClick={() =>
+                                                  setRequestTarget({
+                                                    lineId,
+                                                    componentId: line.component!,
+                                                    componentName:
+                                                      line.component_detail?.name || line.component_name || "Component",
+                                                    quantity: quantityToRequest(availabilityRow),
+                                                    targetLocation:
+                                                      availabilityRow?.requested?.target_location_id ||
+                                                      selectedBom.stock_warehouse ||
+                                                      availabilityData?.warehouse_id ||
+                                                      null,
+                                                  })
+                                                }
+                                              >
+                                                <ShoppingCart className="mr-1 h-3 w-3" />
+                                                {availabilityRow?.requested?.open_id
+                                                  ? "Update request"
+                                                  : `Request ${quantityToRequest(availabilityRow)}`}
+                                              </Button>
                                             ) : null}
                                           </div>
                                         </TableCell>
@@ -4265,6 +4384,19 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
           )}
         </div>
       </div>
+
+      <RequestComponentSheet
+        open={requestTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setRequestTarget(null)
+        }}
+        bomLineId={requestTarget?.lineId}
+        componentId={requestTarget?.componentId}
+        componentName={requestTarget?.componentName}
+        defaultQuantity={requestTarget?.quantity}
+        defaultTargetLocation={requestTarget?.targetLocation}
+        context={selectedBom ? `Missing parts for ${selectedBom.name}. Requesting again updates the open request.` : null}
+      />
 
       <ComponentSearchSheet
         open={linkSheetOpen}

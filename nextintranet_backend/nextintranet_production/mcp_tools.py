@@ -17,6 +17,7 @@ from nextintranet_warehouse.services.availability import (
     default_warehouse_for_user,
     warehouses as availability_warehouses,
 )
+from nextintranet_production.services.requests import request_line, request_missing
 from nextintranet_production.services.reservations import reserve_bom, unreserve_bom
 from nextintranet_production.services.bom import (
     bom_availability_rows,
@@ -173,6 +174,43 @@ class ProductionWriteToolset(MCPToolset):
             "reserved_at": template.reserved_at.isoformat() if template.reserved_at else None,
             "stock_warehouse_id": str(template.stock_warehouse_id) if template.stock_warehouse_id else None,
         }
+
+    def request_bom_line(
+        self,
+        line_id: str,
+        quantity: int | None = None,
+        target_location_id: str = "",
+    ) -> dict:
+        """Create or update the open purchase request for parts a BOM line is missing.
+
+        Args:
+            line_id: UUID of the BOM line (TemplateComponent).
+            quantity: Quantity to request. Defaults to the shortage in the BOM's warehouse minus
+                what is already ordered for the line.
+            target_location_id: Warehouse or storage position (location UUID) the parts should end
+                up in. Defaults to the BOM's warehouse.
+        """
+        _require_write(self.request)
+
+        line = TemplateComponent.objects.select_related("template__production").get(id=line_id)
+        request = request_line(line, _mcp_actor_user(self.request), quantity, target_location_id or None)
+        return {
+            "request_id": str(request.id),
+            "quantity": request.quantity,
+            "target_location_id": str(request.target_location_id) if request.target_location_id else None,
+        }
+
+    def request_missing_bom_parts(self, bom_id: str) -> dict:
+        """Create or update purchase requests for every BOM line short in the BOM's warehouse.
+
+        Args:
+            bom_id: UUID of the BOM (Template).
+        """
+        _require_write(self.request)
+
+        template = Template.objects.select_related("production").get(id=bom_id)
+        created = request_missing(template, _mcp_actor_user(self.request))
+        return {"bom_id": str(template.id), "requested": len(created), "request_ids": [str(r.id) for r in created]}
 
     def unreserve_bom(self, bom_id: str) -> dict:
         """Release a BOM's hold on stock.

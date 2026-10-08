@@ -278,12 +278,14 @@ class MCPPrintQueueItemSerializer(serializers.ModelSerializer):
 class MCPPurchaseRequestSerializer(serializers.ModelSerializer):
     component_name = serializers.CharField(source="component.name", read_only=True, default=None)
     requested_by_name = serializers.SerializerMethodField()
+    target_location_name = serializers.CharField(source="target_location.full_path", read_only=True, default=None)
 
     class Meta:
         model = PurchaseRequest
         fields = [
             "id", "created_at", "quantity", "item_name", "description",
             "component", "component_name", "purchase", "requested_by_name",
+            "target_location", "target_location_name", "source",
         ]
 
     def get_requested_by_name(self, obj):

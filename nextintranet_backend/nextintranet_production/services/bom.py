@@ -216,6 +216,9 @@ def bom_availability_rows(
         {line.component_id for line in lines if line.component_id}, resolver=resolver
     )
 
+    from .requests import line_requests
+
+    requests_by_line = line_requests(template)
     rows = []
     for line in lines:
         needed_total = line_needed_total(line, template.qty_planned)
@@ -292,6 +295,7 @@ def bom_availability_rows(
             "here": here,
             "elsewhere": elsewhere,
             "status": status,
+            "requested": requests_by_line.get(str(line.id)),
             "shortage": not line.dnp and remaining > in_stock,
             "unlinked": line.component_id is None,
         }

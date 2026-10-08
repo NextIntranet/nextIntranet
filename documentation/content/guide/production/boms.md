@@ -88,6 +88,19 @@ The same computation can include `total_in_home`, stock scoped to the signed-in
 user's home location subtree, useful for "do I personally have enough on my bench"
 checks.
 
+## Requesting missing parts
+
+When a line is short in the BOM's warehouse, its Warehouse cell offers **Request N**: it files a
+[purchase request](../warehouse/purchases.md#purchase-requests) for the missing quantity. You can
+change the quantity and the target warehouse or position, which defaults to the BOM's
+warehouse. **Request missing** in the toolbar does this for every short line at once.
+
+- The quantity is the shortage in the BOM's warehouse minus what is already ordered for the line.
+- Each line has one open request. Requesting again updates it ("Update request").
+- The cell shows what is requested (and where it goes) and what is already ordered.
+- Stock in other warehouses is not used up automatically. Transfer requests between warehouses
+  are planned.
+
 ## Sourcing and placing
 
 Scanning a barcode against a BOM line records a `TemplateComponentScan`, in one of

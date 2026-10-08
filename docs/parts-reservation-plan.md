@@ -56,8 +56,9 @@ shows what is available here, what is only in another warehouse, and what is mis
 
 ### `PurchaseRequest`
 - `target_location` — FK `Warehouse` (any storable node). Defaults to the BOM's `stock_warehouse`.
-- `template_component` — nullable FK to the BOM line that asked for it, so the BOM can show
-  "requested 120" and a second click updates the open request instead of duplicating it.
+- `source` — JSON `{"type": "production", "bom_id", "line_id"}` linking the request to the BOM line
+  that asked for it, so the BOM can show "requested 120" and a second click updates the open request
+  instead of duplicating it.
 - Later: `kind` (`purchase` / `transfer`) + `source_warehouse` for transfer requests.
 
 ### Migration of existing data
@@ -172,8 +173,13 @@ is only a label on each entry, not a separate bucket.
    reservation list with links), used-in rows highlighted with held quantity and warehouse,
    manual reservations with warehouse and expiry, store list tooltips. A per-warehouse breakdown in
    the store list itself was skipped: it would need per-row warehouse data in the list API.
-4. **Request component** — `PurchaseRequest.target_location` + `template_component`, line/bulk
-   request endpoints and buttons, request list column/filter.
+4. **Request component** — *done.* `PurchaseRequest.target_location` + `source` JSON
+   (`{"type": "production", "bom_id", "line_id"}`; JSON instead of an FK so the warehouse app does
+   not depend on production). `POST template-components/<id>/request/` and
+   `templates/<id>/request-missing/` (service `nextintranet_production/services/requests.py`, MCP
+   `request_bom_line` / `request_missing_bom_parts`), `requested` on availability rows,
+   Request / Update request / Request missing buttons, Target column + edit on the request list,
+   `?target_location=` and `?bom_id=` filters.
 5. **Later** — transfer requests between warehouses, incoming supply (expected packets + ordered
    purchase requests) in availability, priority ordering by `planned_date` when free < 0.
 

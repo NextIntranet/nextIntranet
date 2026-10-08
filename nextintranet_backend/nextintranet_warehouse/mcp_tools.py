@@ -185,6 +185,15 @@ def _parse_expiration(value: str):
     return parsed
 
 
+def _purchase_target_location(location_id: str):
+    if not location_id:
+        return None
+    location = Warehouse.objects.get(id=location_id)
+    if not (location.is_warehouse or location.can_store_items):
+        raise ValueError(f"Location '{location.full_path}' is neither a warehouse nor a storage position.")
+    return location
+
+
 def _get_parent(model, parent_id: str):
     if not parent_id:
         return None
@@ -2040,6 +2049,7 @@ class WarehouseWriteToolset(MCPToolset):
         component_id: str = "",
         item_name: str = "",
         description: str = "",
+        target_location_id: str = "",
     ) -> dict:
         """File a purchase request (a wish to buy something), optionally for a known component.
 
@@ -2048,6 +2058,8 @@ class WarehouseWriteToolset(MCPToolset):
             component_id: UUID of a warehouse component, when the wish is for a stocked item.
             item_name: Free-text item name, required when no component is given.
             description: Optional note.
+            target_location_id: Optional warehouse or storage position (location UUID) the parts
+                should end up in.
         """
         _require_write(self.request)
 
@@ -2065,6 +2077,7 @@ class WarehouseWriteToolset(MCPToolset):
             item_name=name or None,
             description=description,
             requested_by=_mcp_actor_user(self.request),
+            target_location=_purchase_target_location(target_location_id),
         )
         return MCPPurchaseRequestSerializer(obj).data
 

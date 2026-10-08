@@ -56,6 +56,7 @@ from nextintranet_warehouse.services.availability import (
     default_warehouse_for_user,
     warehouses as availability_warehouses,
 )
+from nextintranet_production.services.requests import RequestError, request_line, request_missing
 from nextintranet_production.services.reservations import (
     ReservationError,
     bom_reserved_quantities,
@@ -1240,6 +1241,16 @@ class TemplateViewSet(viewsets.ModelViewSet):
             return Response({"error": str(exc)}, status=status.HTTP_409_CONFLICT)
         return Response(self.get_serializer(template).data)
 
+    @action(detail=True, methods=["post"], url_path="request-missing")
+    def request_missing_parts(self, request, pk=None):
+        """Request every line that is short in the BOM's warehouse."""
+        template = self.get_object()
+        try:
+            created = request_missing(template, request.user)
+        except RequestError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_409_CONFLICT)
+        return Response({"requested": len(created), "request_ids": [str(r.id) for r in created]})
+
     @action(detail=True, methods=["post"], url_path="unreserve")
     def unreserve(self, request, pk=None):
         template = self.get_object()
@@ -1662,6 +1673,32 @@ class TemplateComponentViewSet(viewsets.ModelViewSet):
         if template_id:
             queryset = queryset.filter(template_id=template_id)
         return queryset.order_by("position")
+
+    @action(detail=True, methods=["post"], url_path="request")
+    def request_parts(self, request, pk=None):
+        """Create or update the open purchase request for what this line is missing.
+
+        Optional `quantity` (defaults to the shortage in the BOM's warehouse minus what is already
+        ordered) and `target_location` (defaults to the BOM's warehouse).
+        """
+        line = self.get_object()
+        try:
+            purchase_request = request_line(
+                line,
+                request.user,
+                quantity=request.data.get("quantity") or None,
+                target_location_id=request.data.get("target_location") or None,
+            )
+        except RequestError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_409_CONFLICT)
+        return Response(
+            {
+                "id": str(purchase_request.id),
+                "quantity": purchase_request.quantity,
+                "target_location": str(purchase_request.target_location_id) if purchase_request.target_location_id else None,
+                "target_location_name": purchase_request.target_location.full_path if purchase_request.target_location else None,
+            }
+        )
 
     def _ensure_editable(self, template: Template):
         if template.status in CLOSED_TEMPLATE_STATUSES:

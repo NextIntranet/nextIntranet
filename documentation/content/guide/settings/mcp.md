@@ -115,7 +115,8 @@ without this key.
 
 Production BOM tools (`nextintranet_production`) are registered on the same server:
 `list_boms`, `get_bom`, `get_bom_availability`, `list_productions`, `get_production` (read) and
-`update_bom`, `set_bom_line_component`, `lock_bom`, `finalize_bom`, `reserve_bom`, `unreserve_bom` (write).
+`update_bom`, `set_bom_line_component`, `lock_bom`, `finalize_bom`, `reserve_bom`, `unreserve_bom`,
+`request_bom_line`, `request_missing_bom_parts` (write).
 
 ### Write (`mcp:write` scope, includes all read tools)
 
@@ -138,7 +139,7 @@ Production BOM tools (`nextintranet_production`) are registered on the same serv
 - `add_to_print_queue` — add a component, packet, or location label to a queue
 - `add_targets_to_print_queue` — add multiple labels in one call
 - `remove_print_queue_item` — remove an item from a queue
-- `create_purchase_request` / `update_purchase_request` / `delete_purchase_request` — purchase requests
+- `create_purchase_request` / `update_purchase_request` / `delete_purchase_request` — purchase requests (`create_purchase_request` takes an optional `target_location_id`)
 - `assign_purchase_requests` — attach requests to a purchase
 - `create_purchase` / `set_purchase_items` / `set_purchase_item_location` — build the order
 - `transition_purchase` — move the order through its lifecycle

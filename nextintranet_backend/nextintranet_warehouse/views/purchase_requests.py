@@ -7,6 +7,7 @@ from nextintranet_backend.permissions import AreaAccessPermission
 from nextintranet_backend.routers import NoFormatSuffixRouter as DefaultRouter
 from nextintranet_warehouse.models.component import Component, SupplierRelation
 from nextintranet_warehouse.models.purchase import Purchase, PurchaseRequest, PurchaseRequestFolder
+from nextintranet_warehouse.models.warehouse import Warehouse
 
 
 class SupplierRelationSummarySerializer(serializers.ModelSerializer):
@@ -59,6 +60,13 @@ class PurchaseRequestSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True
     )
+    target_location = serializers.PrimaryKeyRelatedField(
+        queryset=Warehouse.objects.all(),
+        required=False,
+        allow_null=True,
+    )
+    target_location_name = serializers.SerializerMethodField()
+    source = serializers.JSONField(read_only=True)
     suppliers = serializers.SerializerMethodField()
     mfpn = serializers.SerializerMethodField()
     matching_supplier_relation_id = serializers.SerializerMethodField()
@@ -75,6 +83,9 @@ class PurchaseRequestSerializer(serializers.ModelSerializer):
             'requested_by_name',
             'purchase_id',
             'folder_id',
+            'target_location',
+            'target_location_name',
+            'source',
             'suppliers',
             'mfpn',
             'matching_supplier_relation_id',
@@ -89,6 +100,16 @@ class PurchaseRequestSerializer(serializers.ModelSerializer):
             'matching_supplier_relation_id',
             'created_at',
         ]
+
+    def get_target_location_name(self, obj):
+        return obj.target_location.full_path if obj.target_location_id else None
+
+    def validate_target_location(self, value):
+        if value is not None and not (value.is_warehouse or value.can_store_items):
+            raise serializers.ValidationError(
+                f"Location '{value.full_path}' is neither a warehouse nor a storage position."
+            )
+        return value
 
     def get_suppliers(self, obj):
         if not obj.component:
@@ -146,12 +167,14 @@ class PurchaseRequestListAPIView(generics.ListCreateAPIView):
     required_level = 'read'
 
     def get_queryset(self):
-        queryset = PurchaseRequest.objects.select_related('component', 'requested_by', 'purchase', 'folder')\
+        queryset = PurchaseRequest.objects.select_related('component', 'requested_by', 'purchase', 'folder', 'target_location')\
             .prefetch_related('component__suppliers__supplier', 'component__parameters__parameter_type')
         search = self.request.query_params.get('search')
         supplier = self.request.query_params.get('supplier')
         component = self.request.query_params.get('component')
         assigned = self.request.query_params.get('assigned')
+        target_location = self.request.query_params.get('target_location')
+        bom_id = self.request.query_params.get('bom_id')
 
         if assigned is None or assigned.lower() in ('0', 'false', ''):
             queryset = queryset.filter(purchase__isnull=True)
@@ -171,6 +194,13 @@ class PurchaseRequestListAPIView(generics.ListCreateAPIView):
         if component:
             queryset = queryset.filter(component_id=component)
 
+        if target_location:
+            locations = Warehouse.objects.filter(id=target_location).get_descendants(include_self=True)
+            queryset = queryset.filter(target_location__in=locations)
+
+        if bom_id:
+            queryset = queryset.filter(source__bom_id=str(bom_id))
+
         return queryset.distinct().order_by('-created_at')
 
     def get_serializer_context(self):
@@ -183,7 +213,7 @@ class PurchaseRequestListAPIView(generics.ListCreateAPIView):
 
 class PurchaseRequestDetailAPIView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = PurchaseRequestSerializer
-    queryset = PurchaseRequest.objects.select_related('component', 'requested_by', 'purchase', 'folder')\
+    queryset = PurchaseRequest.objects.select_related('component', 'requested_by', 'purchase', 'folder', 'target_location')\
         .prefetch_related('component__suppliers__supplier', 'component__parameters__parameter_type')
     permission_classes = [IsAuthenticated, AreaAccessPermission]
     required_permission_area = 'warehouse'

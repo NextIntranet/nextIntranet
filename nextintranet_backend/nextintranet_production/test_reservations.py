@@ -254,3 +254,87 @@ class ReservationApiTests(TestCase):
         data = MCPReservationSerializer(reservation).data
         self.assertEqual(data["warehouse_id"], str(self.praha.id))
         self.assertEqual(data["warehouse_name"], "Praha")
+
+
+class RequestComponentTests(TestCase):
+    def setUp(self):
+        self.praha = Warehouse.objects.create(name="Praha", is_warehouse=True)
+        self.shelf = Warehouse.objects.create(name="Shelf", parent=self.praha, can_store_items=True)
+        self.room = Warehouse.objects.create(name="Room", parent=self.praha)
+        self.part = Component.objects.create(name="A")
+        Packet.objects.create(component=self.part, location=self.shelf, count=Decimal("30"))
+        folder = ProductionFolder.objects.create(name="Folder")
+        product = Production.objects.create(name="Board", folder=folder)
+        self.bom = Template.objects.create(production=product, name="B", qty_planned=5, stock_warehouse=self.praha)
+        self.line = TemplateComponent.objects.create(template=self.bom, component=self.part, qty_per_board=10)
+
+    def _row(self):
+        return next(r for r in bom_availability_rows(self.bom) if r["id"] == str(self.line.id))
+
+    def test_request_defaults_to_shortage_and_bom_warehouse(self):
+        from .services.requests import request_line
+
+        request = request_line(self.line)
+        self.assertEqual(request.quantity, 20)  # needs 50, 30 on hand
+        self.assertEqual(request.target_location, self.praha)
+        self.assertEqual(request.source["line_id"], str(self.line.id))
+        self.assertEqual(self._row()["requested"]["open_quantity"], 20)
+
+    def test_requesting_again_updates_the_open_request(self):
+        from nextintranet_warehouse.models.purchase import PurchaseRequest
+
+        from .services.requests import request_line
+
+        first = request_line(self.line)
+        second = request_line(self.line, quantity=25, target_location_id=self.shelf.id)
+        self.assertEqual(first.id, second.id)
+        self.assertEqual(PurchaseRequest.objects.count(), 1)
+        self.assertEqual(second.quantity, 25)
+        self.assertEqual(second.target_location, self.shelf)
+
+    def test_ordered_requests_are_subtracted(self):
+        from nextintranet_warehouse.models.purchase import Purchase, PurchaseRequest
+
+        from .services.requests import RequestError, request_line, request_missing
+
+        request = request_line(self.line)
+        from nextintranet_warehouse.models.component import Supplier
+
+        request.purchase = Purchase.objects.create(supplier=Supplier.objects.create(name="Shop"))
+        request.save()
+        self.assertEqual(self._row()["requested"]["ordered_quantity"], 20)
+        with self.assertRaises(RequestError):
+            request_line(self.line)  # everything missing is already ordered
+        self.assertEqual(request_missing(self.bom), [])
+        self.assertEqual(PurchaseRequest.objects.count(), 1)
+
+    def test_rejects_non_storage_target(self):
+        from .services.requests import RequestError, request_line
+
+        with self.assertRaises(RequestError):
+            request_line(self.line, target_location_id=self.room.id)
+
+    def test_request_missing_skips_covered_lines(self):
+        from .services.requests import request_missing
+
+        covered = Component.objects.create(name="B")
+        Packet.objects.create(component=covered, location=self.shelf, count=Decimal("100"))
+        TemplateComponent.objects.create(template=self.bom, component=covered, qty_per_board=1)
+
+        created = request_missing(self.bom)
+        self.assertEqual([r.component_id for r in created], [self.part.id])
+
+    def test_api_endpoints(self):
+        user = get_user_model().objects.create_superuser("admin", "admin@example.com", "pw")
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(user).access_token}")
+
+        response = client.post(f"/api/v1/production/template-components/{self.line.id}/request/", {}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.data["quantity"], 20)
+
+        listing = client.get("/api/v1/store/purchase-requests/", {"bom_id": str(self.bom.id)}).data
+        self.assertEqual(listing["results"][0]["target_location_name"], "Praha")
+
+        response = client.post(f"/api/v1/production/templates/{self.bom.id}/request-missing/", {}, format="json")
+        self.assertEqual(response.data["requested"], 1)

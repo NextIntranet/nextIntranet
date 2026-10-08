@@ -16,6 +16,8 @@ import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { ComponentAsyncSelect } from "@/components/ComponentAsyncSelect"
+import { LocationParentSelect } from "@/components/LocationParentSelect"
+import { type TargetLocationNode, targetLocationTree } from "@/components/RequestComponentSheet"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
@@ -149,7 +151,15 @@ export function PurchaseRequestsPage() {
   const [formState, setFormState] = useState({
     quantity: "",
     description: "",
+    target_location: "",
   })
+
+  const { data: locationsTree } = useQuery<TargetLocationNode[]>({
+    queryKey: ["locations-tree"],
+    queryFn: () => apiFetch<TargetLocationNode[]>("/api/v1/store/location/tree/"),
+    staleTime: 5 * 60 * 1000,
+  })
+  const targetTree = useMemo(() => targetLocationTree(locationsTree || []), [locationsTree])
 
   const [createFormState, setCreateFormState] = useState({
     component_id: "",
@@ -166,6 +176,7 @@ export function PurchaseRequestsPage() {
     setFormState({
       quantity: requestDetail.quantity ? String(requestDetail.quantity) : "",
       description: requestDetail.description || "",
+      target_location: requestDetail.target_location || "",
     })
   }, [requestDetail?.id])
 
@@ -455,6 +466,7 @@ export function PurchaseRequestsPage() {
     updateMutation.mutate({
       quantity: quantityValue ? Number(quantityValue) : 0,
       description: formState.description.trim() || null,
+      target_location: formState.target_location || null,
     })
   }
 
@@ -693,6 +705,22 @@ export function PurchaseRequestsPage() {
                       </div>
                     </div>
                     <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase text-muted-foreground">
+                        Target location
+                      </p>
+                      <p className="text-sm text-foreground">
+                        {requestDetail.target_location_name || "Not specified"}
+                      </p>
+                      {requestDetail.source?.type === "production" && requestDetail.source.bom_id ? (
+                        <Link
+                          to={`/production/bom/${requestDetail.source.bom_id}`}
+                          className="text-xs text-primary hover:underline"
+                        >
+                          Requested from a production BOM →
+                        </Link>
+                      ) : null}
+                    </div>
+                    <div className="space-y-1">
                       <p className="text-xs font-semibold uppercase text-muted-foreground">MPN</p>
                       <p className="text-sm text-foreground">{requestDetail.mfpn || "-"}</p>
                     </div>
@@ -730,6 +758,18 @@ export function PurchaseRequestsPage() {
                           setFormState({ ...formState, quantity: e.target.value })
                         }
                         placeholder="0"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">
+                        Target warehouse or position
+                      </label>
+                      <LocationParentSelect
+                        locations={targetTree}
+                        value={formState.target_location || null}
+                        onChange={(value) => setFormState({ ...formState, target_location: value ?? "" })}
+                        placeholder="Select target location"
+                        emptyLabel="Not specified"
                       />
                     </div>
                     <div className="space-y-2">

@@ -40,16 +40,19 @@ export function PurchaseRequestTable({
         <TableHeader className="bg-muted/40">
           <TableRow className="border-border/50">
             <TableHead className="h-9 w-10 px-1" />
-            <TableHead className="h-9 w-[32%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <TableHead className="h-9 w-[28%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
               Component / Folder
             </TableHead>
-            <TableHead className="h-9 w-[8%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <TableHead className="h-9 w-[7%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
               Qty
             </TableHead>
             <TableHead className="h-9 w-[16%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Target
+            </TableHead>
+            <TableHead className="h-9 w-[15%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
               Requested by / Suppliers
             </TableHead>
-            <TableHead className="h-9 w-[28%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <TableHead className="h-9 w-[24%] px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
               Description
             </TableHead>
             <TableHead className="h-9 w-[8%] px-3" />
@@ -58,7 +61,7 @@ export function PurchaseRequestTable({
         <TableBody>
           {isLoading ? (
             <TableRow className="border-border/40">
-              <TableCell colSpan={6} className="py-8">
+              <TableCell colSpan={7} className="py-8">
                 <div className="space-y-2">
                   <Skeleton className="h-5 w-1/2" />
                   <Skeleton className="h-5 w-3/4" />
@@ -95,7 +98,7 @@ export function PurchaseRequestTable({
             )
           ) : (
             <TableRow className="border-border/40">
-              <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
+              <TableCell colSpan={7} className="py-8 text-center text-sm text-muted-foreground">
                 No purchase requests found.
               </TableCell>
             </TableRow>
