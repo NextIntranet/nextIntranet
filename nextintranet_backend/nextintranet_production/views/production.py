@@ -1360,6 +1360,8 @@ class TemplateViewSet(viewsets.ModelViewSet):
                     "result": "found",
                     "line_id": str(line.id),
                     "message": "Found in BOM",
+                    # Lets the client highlight the scanned bag, whatever format the code was in.
+                    "resolved_packet_id": str(packet.id) if packet else None,
                 }
             )
 

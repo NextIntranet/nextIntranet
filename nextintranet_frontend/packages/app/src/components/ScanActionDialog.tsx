@@ -19,6 +19,8 @@ export type ScanOperation = "FIND" | "SOURCED" | "PLACED"
 
 export type ScanActionTarget = {
   barcode: string
+  /** Bag the scanned code resolved to (the code itself may be a URL, ISO 15434 data, a serial...). */
+  scannedPacketId?: string | null
   lineId: string
   componentId: string | null
   componentName: string
@@ -108,21 +110,26 @@ export function ScanActionDialog({
     enabled: open && Boolean(target?.componentId),
   })
 
+  const scannedId = target?.scannedPacketId || target?.barcode || null
+
   const bags = useMemo(() => {
-    const rows = unwrap(data).filter((p) => p.is_active !== false && toNumber(p.count) > 0)
+    // Empty or retired bags are hidden — except the scanned one, which must stay visible.
+    const rows = unwrap(data).filter(
+      (p) => p.id === scannedId || (p.is_active !== false && toNumber(p.count) > 0),
+    )
     // The bag that was just scanned always leads, then home-location bags, then the rest.
     return rows
       .map((packet, index) => ({ packet, index }))
       .sort((a, b) => {
-        const aScanned = a.packet.id === target?.barcode ? 0 : 1
-        const bScanned = b.packet.id === target?.barcode ? 0 : 1
+        const aScanned = a.packet.id === scannedId ? 0 : 1
+        const bScanned = b.packet.id === scannedId ? 0 : 1
         if (aScanned !== bScanned) return aScanned - bScanned
         const ah = isInHome(a.packet, homePath) ? 0 : 1
         const bh = isInHome(b.packet, homePath) ? 0 : 1
         return ah - bh || a.index - b.index
       })
       .map((entry) => entry.packet)
-  }, [data, homePath, target?.barcode])
+  }, [data, homePath, scannedId])
 
   const scannedBagRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
@@ -131,7 +138,7 @@ export function ScanActionDialog({
       scannedBagRef.current?.scrollIntoView({ block: "nearest" })
     }, 50)
     return () => window.clearTimeout(handle)
-  }, [open, target?.barcode])
+  }, [open, scannedId, bags])
 
   if (!target) return null
 
@@ -208,7 +215,7 @@ export function ScanActionDialog({
                   <div className="p-3 text-sm text-muted-foreground">No bags with stock.</div>
                 ) : (
                   bags.map((packet) => {
-                    const isScanned = packet.id === target.barcode
+                    const isScanned = packet.id === scannedId
                     return (
                     <div
                       key={packet.id}

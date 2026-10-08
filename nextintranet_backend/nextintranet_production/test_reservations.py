@@ -511,3 +511,27 @@ class TransferAndIncomingTests(TestCase):
             format="json",
         )
         self.assertEqual(bad.status_code, 400)
+
+
+class ScanFindTests(TestCase):
+    def test_find_returns_the_scanned_packet_for_any_code_format(self):
+        user = get_user_model().objects.create_superuser("admin", "admin@example.com", "pw")
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(user).access_token}")
+        praha = Warehouse.objects.create(name="Praha", is_warehouse=True)
+        shelf = Warehouse.objects.create(name="Shelf", parent=praha, can_store_items=True)
+        part = Component.objects.create(name="A")
+        packet = Packet.objects.create(component=part, location=shelf, count=Decimal("5"))
+        folder = ProductionFolder.objects.create(name="Folder")
+        product = Production.objects.create(name="Board", folder=folder)
+        bom = Template.objects.create(production=product, name="B")
+        TemplateComponent.objects.create(template=bom, component=part, qty_per_board=1)
+
+        response = client.post(
+            f"/api/v1/production/templates/{bom.id}/scan/",
+            {"mode": "FIND", "barcode": f"https://intranet.example/store/packet/{packet.id}"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.data["result"], "found")
+        self.assertEqual(response.data["resolved_packet_id"], str(packet.id))

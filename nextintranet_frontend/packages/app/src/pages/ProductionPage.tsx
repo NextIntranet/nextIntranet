@@ -196,6 +196,7 @@ type ScanResponse = {
     id: string
     name: string
   }
+  resolved_packet_id?: string | null
 }
 
 type BomItem = {
@@ -2286,11 +2287,12 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
 
 
   const openScanAction = useCallback(
-    (lineId: string, barcode: string) => {
+    (lineId: string, barcode: string, scannedPacketId: string | null = null) => {
       const matchedRow = findScannerRow(lineId)
       focusScannedLine(lineId)
       setScanActionTarget({
         barcode,
+        scannedPacketId,
         lineId,
         componentId: matchedRow?.component || null,
         componentName: matchedRow?.component_name || matchedRow?.value || "Component",
@@ -2357,7 +2359,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
           return
         }
         if (lookup.result === "found" && lookup.line_id) {
-          openScanAction(lookup.line_id, barcode)
+          openScanAction(lookup.line_id, barcode, lookup.resolved_packet_id || null)
           return
         }
 
