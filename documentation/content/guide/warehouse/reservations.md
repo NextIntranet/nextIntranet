@@ -12,11 +12,12 @@ Stock is reserved in a **warehouse** — a [location flagged as warehouse](locat
 A reservation holds stock only in its own warehouse; stock in other warehouses is
 unaffected.
 
-Two things hold stock:
+Three things hold stock:
 
 - **Manual reservations** — rows on the Reservations page, described below.
 - **Reserved production BOMs** — a BOM that has been reserved holds what its lines still
   need, computed live from the BOM. See [BOM availability](../production/boms.md#availability).
+- **Open transfers** — a [transfer](#transfers) holds its quantity in the source warehouse.
 
 Both count the same way. Everywhere stock is shown there is a single *reserved* figure,
 and each reservation in the breakdown carries a label saying where it comes from.
@@ -51,6 +52,26 @@ The list shows each reservation's warehouse and marks expired ones. Open a reser
 
 Creating, changing and deleting a reservation, as well as reserving and unreserving a BOM,
 is recorded in the component's activity log.
+
+## Transfers
+
+A transfer asks to move stock of a component from one warehouse to another warehouse or
+storage position. It is listed under **Warehouse → Transfers** (`/store/transfer`).
+
+- While **open**, it holds its quantity in the source warehouse, so nobody else counts on
+  those parts, and it shows as *incoming* in the target warehouse.
+- Move the packets with the usual packet tools, then mark the transfer **Done**. **Cancel**
+  releases the hold.
+- Transfers are usually created from a production BOM line (**Transfer N**), see
+  [BOMs](../production/boms.md#requesting-missing-parts).
+
+## Incoming stock
+
+Availability also shows what is on its way to a warehouse, without counting it as available:
+
+- ordered purchase items (purchase closed, exported, receiving or stocking) not yet stocked,
+  in the warehouse of their stock location;
+- open transfers into the warehouse.
 
 ## Permissions
 

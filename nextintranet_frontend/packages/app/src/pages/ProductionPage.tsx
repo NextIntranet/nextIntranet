@@ -270,6 +270,8 @@ type AvailabilityRow = {
     ordered_quantity: number
     target_location_id: string | null
     target_location_name: string | null
+    transfer_quantity?: number
+    transfers?: Array<{ id: string; quantity: number; source_warehouse_id: string; source_warehouse_name: string }>
   } | null
   shortage: boolean
   unlinked: boolean
@@ -1873,8 +1875,31 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     if (!row || row.dnp || !row.linked_component || !row.shortage) return 0
     const remaining = toNumber(row.remaining ?? row.needed_total)
     const ordered = toNumber(row.requested?.ordered_quantity ?? 0)
-    return Math.max(0, Math.ceil(remaining - toNumber(row.in_stock) - ordered - 1e-9))
+    const transferring = toNumber(row.requested?.transfer_quantity ?? 0)
+    return Math.max(0, Math.ceil(remaining - toNumber(row.in_stock) - ordered - transferring - 1e-9))
   }
+
+  /** Pieces worth moving here from the warehouse with the most free stock. */
+  const quantityToTransfer = (row: AvailabilityRow | undefined) => {
+    if (!row || row.dnp || !row.linked_component || !row.shortage || !(row.elsewhere?.length)) return 0
+    const best = Math.max(...row.elsewhere.map((other) => toNumber(other.free)))
+    return Math.max(0, Math.min(quantityToRequest(row), best))
+  }
+
+  const transferMutation = useMutation({
+    mutationFn: (lineId: string) =>
+      apiFetch<{ quantity: number; source_warehouse_name: string }>(
+        `/api/v1/production/template-components/${lineId}/transfer/`,
+        { method: "POST", body: JSON.stringify({}) },
+      ),
+    onSuccess: (transfer) => {
+      queryClient.invalidateQueries({ queryKey: ["production-availability", bomId] })
+      queryClient.invalidateQueries({ queryKey: ["transfers"] })
+      toast.success(`Transfer of ${transfer.quantity} from ${transfer.source_warehouse_name} requested.`)
+    },
+    onError: (err) =>
+      toast.error((err as { data?: { error?: string } } | null)?.data?.error || "Failed to request the transfer."),
+  })
 
   const linesToRequest = useMemo(
     () =>
@@ -3663,8 +3688,20 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                             ) : null}
                                             {availabilityRow?.requested &&
                                             (availabilityRow.requested.open_quantity > 0 ||
-                                              availabilityRow.requested.ordered_quantity > 0) ? (
+                                              availabilityRow.requested.ordered_quantity > 0 ||
+                                              (availabilityRow.requested.transfer_quantity ?? 0) > 0) ? (
                                               <div className="flex flex-wrap items-center gap-x-2 text-sky-800">
+                                                {(availabilityRow.requested.transfers || []).map((transfer) => (
+                                                  <StockTip
+                                                    key={transfer.id}
+                                                    tip={`Open transfer from ${transfer.source_warehouse_name}. Mark it done on the Transfers page once the packets are moved.`}
+                                                  >
+                                                    <Link to="/store/transfer" className="inline-flex items-center gap-0.5 hover:underline">
+                                                      <ArrowRightLeft className="h-3 w-3" />
+                                                      {transfer.quantity}
+                                                    </Link>
+                                                  </StockTip>
+                                                ))}
                                                 {availabilityRow.requested.open_quantity > 0 ? (
                                                   <StockTip
                                                     tip={`Requested for purchase${
@@ -3697,6 +3734,22 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                                   {availabilityRow.total_in_home}
                                                 </span>
                                               </StockTip>
+                                            ) : null}
+                                            {quantityToTransfer(availabilityRow) > 0 &&
+                                            !isBomClosed(selectedBom.status) &&
+                                            selectedBom.series_kind !== "template" &&
+                                            selectedBom.stock_warehouse ? (
+                                              <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="mr-1 h-7 bg-background px-2 text-xs"
+                                                disabled={transferMutation.isPending}
+                                                onClick={() => transferMutation.mutate(lineId)}
+                                                title="Hold the parts in the other warehouse and list them on the Transfers page"
+                                              >
+                                                <ArrowRightLeft className="mr-1 h-3 w-3" />
+                                                Transfer {quantityToTransfer(availabilityRow)}
+                                              </Button>
                                             ) : null}
                                             {quantityToRequest(availabilityRow) >
                                               toNumber(availabilityRow?.requested?.open_quantity ?? 0) &&

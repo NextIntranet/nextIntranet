@@ -184,8 +184,15 @@ is only a label on each entry, not a separate bucket.
    ⋯ → Reserve on the component page, warehouse/expiry in the list and edit form), dashboard count
    includes reserved BOMs, MCP inventory summary computes availability once per page, reservation
    and BOM reserve/unreserve changes logged to `WarehouseActivity`.
-6. **Later** — transfer requests between warehouses, incoming supply (expected packets + ordered
-   purchase requests) in availability, priority ordering by `planned_date` when free < 0.
+6. **Transfers and incoming** — *done.* `TransferRequest` model (warehouse app; open/done/cancelled,
+   `source` JSON link to the BOM line), registered as reservation provider `transfer` (holds the
+   source warehouse). `incoming` per warehouse = ordered purchase items not yet stocked (purchase
+   status closed/exported/receiving/stocking, by `stock_location`) + open transfers to the target.
+   BOM rows: `here.incoming`, status `incoming`, `requested.transfers`; `POST
+   template-components/<id>/transfer/`; `/api/v1/store/transfers/`; Transfers page; MCP
+   `list/create/update_transfer_request`, `transfer_bom_line`. Completing a transfer does not move
+   packets — that stays with the packet tools.
+7. **Later** — priority ordering by `planned_date` when free < 0.
 
 ## Tests
 

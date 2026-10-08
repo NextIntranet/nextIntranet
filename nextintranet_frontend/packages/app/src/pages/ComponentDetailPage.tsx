@@ -244,6 +244,7 @@ interface WarehouseStock {
   on_hand: number
   reserved: number
   free: number
+  incoming?: number
   reservations: StockReservation[]
 }
 
@@ -3736,6 +3737,7 @@ export function ComponentDetailPage() {
 function reservationLink(entry: StockReservation): string | null {
   if (entry.source === "production" && entry.bom_id) return `/production/bom/${entry.bom_id}`
   if (entry.source === "manual" && entry.reservation_id) return `/store/reservations/${entry.reservation_id}`
+  if (entry.source === "transfer") return "/store/transfer"
   return null
 }
 
@@ -3758,6 +3760,14 @@ function WarehouseStockTable({ warehouses }: { warehouses: WarehouseStock[] }) {
                 {stock.on_hand} on hand
                 {stock.reserved > 0 ? <>, {stock.reserved} reserved</> : null}
               </span>
+              {(stock.incoming ?? 0) > 0 ? (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-800"
+                  title="On its way: ordered purchases and open transfers into this warehouse"
+                >
+                  +{stock.incoming} incoming
+                </span>
+              ) : null}
               <span
                 className={cn(
                   "rounded-full px-2 py-0.5 text-xs font-semibold",

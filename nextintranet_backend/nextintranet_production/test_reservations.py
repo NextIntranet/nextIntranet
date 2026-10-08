@@ -394,3 +394,120 @@ class ReservationActivityAndSummaryTests(TestCase):
         ).data[0]
         self.assertEqual(data["reserved"], 20)
         self.assertEqual(data["quantity"], 80)
+
+
+class TransferAndIncomingTests(TestCase):
+    """Praha holds 10 of A, Brno 50; BOM in Praha needs 30."""
+
+    def setUp(self):
+        self.praha = Warehouse.objects.create(name="Praha", is_warehouse=True)
+        self.p_shelf = Warehouse.objects.create(name="Shelf P", parent=self.praha, can_store_items=True)
+        self.brno = Warehouse.objects.create(name="Brno", is_warehouse=True)
+        self.b_shelf = Warehouse.objects.create(name="Shelf B", parent=self.brno, can_store_items=True)
+        self.part = Component.objects.create(name="A")
+        Packet.objects.create(component=self.part, location=self.p_shelf, count=Decimal("10"))
+        Packet.objects.create(component=self.part, location=self.b_shelf, count=Decimal("50"))
+        folder = ProductionFolder.objects.create(name="Folder")
+        product = Production.objects.create(name="Board", folder=folder)
+        self.bom = Template.objects.create(production=product, name="B", qty_planned=1, stock_warehouse=self.praha)
+        self.line = TemplateComponent.objects.create(template=self.bom, component=self.part, qty_per_board=30)
+
+    def _row(self):
+        return next(r for r in bom_availability_rows(self.bom) if r["id"] == str(self.line.id))
+
+    def test_transfer_holds_source_and_is_incoming_in_target(self):
+        from .services.requests import transfer_line
+
+        self.assertEqual(self._row()["status"], "elsewhere")
+        transfer = transfer_line(self.line)
+        self.assertEqual(transfer.source_warehouse, self.brno)
+        self.assertEqual(transfer.quantity, 20)
+
+        row = self._row()
+        self.assertEqual(row["here"]["incoming"], 20)
+        self.assertEqual(row["status"], "incoming")
+        self.assertEqual(row["elsewhere"], [{"warehouse_id": str(self.brno.id), "free": 30}])
+        self.assertEqual(row["requested"]["transfer_quantity"], 20)
+
+        brno = component_availability([self.part.id])[self.part.id].in_warehouse(self.brno.id)
+        self.assertEqual(brno.reserved, 20)
+        self.assertEqual(brno.free, 30)
+
+    def test_transferring_again_updates_and_purchase_request_accounts_for_it(self):
+        from nextintranet_warehouse.models.transfer import TransferRequest
+
+        from .services.requests import RequestError, request_line, transfer_line
+
+        first = transfer_line(self.line, quantity=5)
+        second = transfer_line(self.line)
+        self.assertEqual(first.id, second.id)
+        self.assertEqual(second.quantity, 20)  # its own hold does not count against it
+        self.assertEqual(TransferRequest.objects.count(), 1)
+        with self.assertRaises(RequestError):
+            request_line(self.line)  # shortage fully covered by the transfer
+
+    def test_transfer_capped_by_free_stock(self):
+        from .services.requests import RequestError, transfer_line
+
+        self.line.qty_per_board = 100
+        self.line.save()
+        transfer = transfer_line(self.line)
+        self.assertEqual(transfer.quantity, 50)
+        with self.assertRaises(RequestError):
+            transfer_line(self.line, quantity=60)
+
+    def test_done_transfer_releases_hold(self):
+        from nextintranet_warehouse.models.transfer import TransferStatus
+
+        from .services.requests import transfer_line
+
+        transfer = transfer_line(self.line)
+        transfer.status = TransferStatus.DONE
+        transfer.save()
+        self.assertEqual(self._row()["here"]["incoming"], 0)
+        self.assertEqual(component_availability([self.part.id])[self.part.id].in_warehouse(self.brno.id).free, 50)
+
+    def test_ordered_purchase_items_are_incoming(self):
+        from nextintranet_warehouse.models.component import Supplier
+        from nextintranet_warehouse.models.purchase import Purchase, PurchaseItem
+
+        purchase = Purchase.objects.create(supplier=Supplier.objects.create(name="Shop"), status="exported")
+        PurchaseItem.objects.create(
+            purchase=purchase, component=self.part, quantity=25, stocked_quantity=5, stock_location=self.p_shelf
+        )
+        draft = Purchase.objects.create(supplier=Supplier.objects.create(name="Shop 2"))
+        PurchaseItem.objects.create(purchase=draft, component=self.part, quantity=100, stock_location=self.p_shelf)
+
+        row = self._row()
+        self.assertEqual(row["here"]["incoming"], 20)
+        self.assertEqual(row["status"], "incoming")
+        self.assertEqual(row["in_stock"], 10)
+
+    def test_transfer_api(self):
+        user = get_user_model().objects.create_superuser("admin", "admin@example.com", "pw")
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(user).access_token}")
+
+        response = client.post(f"/api/v1/production/template-components/{self.line.id}/transfer/", {}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        transfer_id = response.data["id"]
+
+        listing = client.get("/api/v1/store/transfers/").data["results"]
+        self.assertEqual(listing[0]["source_warehouse_name"], "Brno")
+
+        response = client.patch(f"/api/v1/store/transfer/{transfer_id}/", {"status": "done"}, format="json")
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertIsNotNone(response.data["completed_at"])
+        self.assertEqual(client.get("/api/v1/store/transfers/").data["results"], [])
+
+        bad = client.post(
+            "/api/v1/store/transfers/",
+            {
+                "component_id": str(self.part.id),
+                "quantity": 1,
+                "source_warehouse": str(self.brno.id),
+                "target_location": str(self.b_shelf.id),
+            },
+            format="json",
+        )
+        self.assertEqual(bad.status_code, 400)

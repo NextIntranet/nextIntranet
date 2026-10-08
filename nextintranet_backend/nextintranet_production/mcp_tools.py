@@ -17,7 +17,7 @@ from nextintranet_warehouse.services.availability import (
     default_warehouse_for_user,
     warehouses as availability_warehouses,
 )
-from nextintranet_production.services.requests import request_line, request_missing
+from nextintranet_production.services.requests import request_line, request_missing, transfer_line
 from nextintranet_production.services.reservations import reserve_bom, unreserve_bom
 from nextintranet_production.services.bom import (
     bom_availability_rows,
@@ -198,6 +198,31 @@ class ProductionWriteToolset(MCPToolset):
             "request_id": str(request.id),
             "quantity": request.quantity,
             "target_location_id": str(request.target_location_id) if request.target_location_id else None,
+        }
+
+    def transfer_bom_line(
+        self,
+        line_id: str,
+        source_warehouse_id: str = "",
+        quantity: float | None = None,
+    ) -> dict:
+        """Create or update the open transfer of a BOM line's component into the BOM's warehouse.
+
+        Args:
+            line_id: UUID of the BOM line (TemplateComponent).
+            source_warehouse_id: Warehouse to take the parts from. Defaults to the warehouse with
+                the most free stock.
+            quantity: Quantity to move. Defaults to what is missing, capped by what is free there.
+        """
+        _require_write(self.request)
+
+        line = TemplateComponent.objects.select_related("template__production").get(id=line_id)
+        transfer = transfer_line(line, _mcp_actor_user(self.request), source_warehouse_id or None, quantity)
+        return {
+            "transfer_id": str(transfer.id),
+            "quantity": transfer.quantity,
+            "source_warehouse_id": str(transfer.source_warehouse_id),
+            "target_location_id": str(transfer.target_location_id),
         }
 
     def request_missing_bom_parts(self, bom_id: str) -> dict:

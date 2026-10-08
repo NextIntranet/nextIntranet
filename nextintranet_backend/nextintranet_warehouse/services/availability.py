@@ -106,6 +106,124 @@ class ManualReservationProvider:
 register_reservation_provider(ManualReservationProvider())
 
 
+class TransferReservationProvider:
+    """An open transfer request holds its quantity in the source warehouse until it is done."""
+
+    source = "transfer"
+
+    def entries(self, component_ids):
+        from ..models.transfer import TransferRequest, TransferStatus
+
+        transfers = TransferRequest.objects.filter(
+            component_id__in=component_ids, status=TransferStatus.OPEN
+        ).select_related("target_location")
+        for transfer in transfers:
+            yield ReservationEntry(
+                source=self.source,
+                ref_id=str(transfer.id),
+                component_id=transfer.component_id,
+                warehouse_id=transfer.source_warehouse_id,
+                quantity=float(transfer.quantity or 0),
+                label=f"Transfer to {transfer.target_location.full_path}",
+                meta={"transfer_id": str(transfer.id), **_source_meta(transfer.source)},
+            )
+
+    def total_subquery(self):
+        from django.db.models import OuterRef, Subquery
+
+        from ..models.transfer import TransferRequest, TransferStatus
+
+        return Subquery(
+            TransferRequest.objects.filter(component=OuterRef("pk"), status=TransferStatus.OPEN)
+            .values("component")
+            .annotate(s=Sum("quantity"))
+            .values("s")[:1]
+        )
+
+
+def _source_meta(source) -> dict:
+    source = source or {}
+    return {key: source[key] for key in ("bom_id", "line_id") if source.get(key)}
+
+
+register_reservation_provider(TransferReservationProvider())
+
+
+# --------------------------------------------------------------------------- #
+# Incoming stock
+# --------------------------------------------------------------------------- #
+
+#: Purchases whose items are ordered but not yet fully stocked.
+INCOMING_PURCHASE_STATUSES = ("closed", "exported", "receiving", "stocking")
+
+
+@dataclass(frozen=True)
+class IncomingEntry:
+    source: str  # "purchase" | "transfer"
+    ref_id: str
+    component_id: Any
+    warehouse_id: Any
+    quantity: float
+    label: str = ""
+    meta: dict = field(default_factory=dict, compare=False, hash=False)
+
+    def as_dict(self) -> dict:
+        return {
+            "source": self.source,
+            "ref_id": self.ref_id,
+            "label": self.label,
+            "warehouse_id": str(self.warehouse_id) if self.warehouse_id else None,
+            "quantity": self.quantity,
+            **self.meta,
+        }
+
+
+def incoming_entries(component_ids, resolver) -> list[IncomingEntry]:
+    """Stock on its way: ordered purchase items not yet stocked, and open transfers."""
+    from ..models.purchase import PurchaseItem
+    from ..models.transfer import TransferRequest, TransferStatus
+
+    entries = []
+    items = PurchaseItem.objects.filter(
+        component_id__in=component_ids,
+        purchase__status__in=INCOMING_PURCHASE_STATUSES,
+    ).values(
+        "id", "component_id", "quantity", "stocked_quantity", "purchase_id",
+        "stock_location__tree_id", "stock_location__lft",
+    )
+    for item in items:
+        pending = (item["quantity"] or 0) - (item["stocked_quantity"] or 0)
+        if pending <= 0:
+            continue
+        entries.append(
+            IncomingEntry(
+                source="purchase",
+                ref_id=str(item["id"]),
+                component_id=item["component_id"],
+                warehouse_id=resolver.resolve(item["stock_location__tree_id"], item["stock_location__lft"]),
+                quantity=float(pending),
+                label="Purchase",
+                meta={"purchase_id": str(item["purchase_id"])},
+            )
+        )
+    transfers = TransferRequest.objects.filter(
+        component_id__in=component_ids, status=TransferStatus.OPEN
+    ).select_related("source_warehouse", "target_location")
+    for transfer in transfers:
+        entries.append(
+            IncomingEntry(
+                source="transfer",
+                ref_id=str(transfer.id),
+                component_id=transfer.component_id,
+                warehouse_id=resolver.resolve(transfer.target_location.tree_id, transfer.target_location.lft),
+                quantity=float(transfer.quantity or 0),
+                label=f"Transfer from {transfer.source_warehouse.full_path}",
+                meta={"transfer_id": str(transfer.id), **_source_meta(transfer.source)},
+            )
+        )
+    return entries
+
+
 # --------------------------------------------------------------------------- #
 # Warehouses
 # --------------------------------------------------------------------------- #
@@ -184,6 +302,12 @@ class WarehouseStock:
     warehouse_id: Any
     on_hand: float = 0.0
     reservations: list[ReservationEntry] = field(default_factory=list)
+    incoming_entries: list[IncomingEntry] = field(default_factory=list)
+
+    @property
+    def incoming(self) -> float:
+        """On its way here; not part of on_hand or free."""
+        return sum(entry.quantity for entry in self.incoming_entries)
 
     @property
     def reserved(self) -> float:
@@ -199,7 +323,9 @@ class WarehouseStock:
             "on_hand": self.on_hand,
             "reserved": self.reserved,
             "free": self.free,
+            "incoming": self.incoming,
             "reservations": [entry.as_dict() for entry in self.reservations],
+            "incoming_entries": [entry.as_dict() for entry in self.incoming_entries],
         }
 
 
@@ -218,7 +344,9 @@ class ComponentAvailability:
         bucket = self.stock.get(warehouse_id) or WarehouseStock(warehouse_id)
         if warehouse_id is None:
             return bucket
-        return WarehouseStock(warehouse_id, bucket.on_hand, [*bucket.reservations, *self.unscoped])
+        return WarehouseStock(
+            warehouse_id, bucket.on_hand, [*bucket.reservations, *self.unscoped], list(bucket.incoming_entries)
+        )
 
     def warehouse_ids(self) -> list:
         return [wid for wid in self.stock if wid is not None]
@@ -240,6 +368,7 @@ def component_availability(
     component_ids: Iterable,
     exclude: set[tuple[str, str]] | None = None,
     resolver: WarehouseResolver | None = None,
+    include_incoming: bool = True,
 ) -> dict[Any, ComponentAvailability]:
     """Per-component, per-warehouse on hand / reserved / free.
 
@@ -277,6 +406,12 @@ def component_availability(
             else:
                 availability._bucket(entry.warehouse_id).reservations.append(entry)
 
+    if include_incoming:
+        for entry in incoming_entries(component_ids, resolver):
+            availability = result.get(entry.component_id)
+            if availability is not None:
+                availability._bucket(entry.warehouse_id).incoming_entries.append(entry)
+
     return result
 
 
@@ -284,7 +419,7 @@ def component_totals(component_ids: Iterable) -> dict[Any, dict[str, float]]:
     """{component_id: {on_hand, reserved}} across all warehouses."""
     return {
         cid: {"on_hand": availability.on_hand, "reserved": availability.reserved}
-        for cid, availability in component_availability(component_ids).items()
+        for cid, availability in component_availability(component_ids, include_incoming=False).items()
     }
 
 

@@ -22,6 +22,7 @@ from nextintranet_warehouse.models.category import Category
 from nextintranet_warehouse.models.purchase import (
     Purchase, PurchaseDelivery, PurchaseItem, PurchaseItemType, PurchaseRequest, PurchaseStatus,
 )
+from nextintranet_warehouse.models.transfer import TransferRequest, TransferStatus
 from nextintranet_warehouse.models.warehouse import Warehouse
 from nextintranet_warehouse.services import purchase as purchase_service
 from nextintranet_warehouse.services.activity import log_reservation, reservation_snapshot
@@ -185,6 +186,24 @@ def _parse_expiration(value: str):
     if timezone.is_naive(parsed):
         parsed = timezone.make_aware(parsed)
     return parsed
+
+
+def _transfer_payload(transfer) -> dict:
+    return {
+        "id": str(transfer.id),
+        "component_id": str(transfer.component_id),
+        "component_name": transfer.component.name,
+        "quantity": transfer.quantity,
+        "source_warehouse_id": str(transfer.source_warehouse_id),
+        "source_warehouse_name": transfer.source_warehouse.full_path,
+        "target_location_id": str(transfer.target_location_id),
+        "target_location_name": transfer.target_location.full_path,
+        "status": transfer.status,
+        "note": transfer.note,
+        "source": transfer.source,
+        "created_at": transfer.created_at.isoformat() if transfer.created_at else None,
+        "completed_at": transfer.completed_at.isoformat() if transfer.completed_at else None,
+    }
 
 
 def _purchase_target_location(location_id: str):
@@ -710,6 +729,35 @@ class WarehouseReadToolset(MCPToolset):
             )
         limit = min(max(limit, 1), 200)
         return MCPReservationSerializer(qs[:limit], many=True).data
+
+    def list_transfer_requests(
+        self,
+        status: str = "open",
+        component_id: str = "",
+        warehouse_id: str = "",
+        limit: int = 50,
+    ) -> list[dict]:
+        """List requests to move stock between warehouses. An open transfer holds its quantity in the
+        source warehouse and counts as incoming in the target.
+
+        Args:
+            status: open (default), done, cancelled or all.
+            component_id: Optional component UUID.
+            warehouse_id: Optional warehouse UUID (matches source or target).
+            limit: Maximum number of results (default 50, max 200).
+        """
+        _require_read(self.request)
+
+        qs = TransferRequest.objects.select_related("component", "source_warehouse", "target_location")
+        if status != "all":
+            qs = qs.filter(status=status)
+        if component_id:
+            qs = qs.filter(component_id=component_id)
+        if warehouse_id:
+            targets = Warehouse.objects.filter(id=warehouse_id).get_descendants(include_self=True)
+            qs = qs.filter(Q(source_warehouse_id=warehouse_id) | Q(target_location__in=targets))
+        limit = min(max(limit, 1), 200)
+        return [_transfer_payload(t) for t in qs.order_by("-created_at")[:limit]]
 
     def get_reservation(self, reservation_id: str) -> dict:
         """Get a single reservation by ID.
@@ -1897,6 +1945,79 @@ class WarehouseWriteToolset(MCPToolset):
         reservation.save()
         log_reservation("reservation_updated", reservation, _mcp_actor_user(self.request), before=before)
         return MCPReservationSerializer(reservation).data
+
+    def create_transfer_request(
+        self,
+        component_id: str,
+        quantity: float,
+        source_warehouse_id: str,
+        target_location_id: str,
+        note: str = "",
+    ) -> dict:
+        """Request moving stock of a component from one warehouse to another (warehouse or position).
+
+        Args:
+            component_id: UUID of the component.
+            quantity: Quantity to move.
+            source_warehouse_id: Warehouse location UUID to take the parts from (must have is_warehouse).
+            target_location_id: Warehouse or storage position UUID to move them to.
+            note: Optional note.
+        """
+        _require_write(self.request)
+
+        if quantity <= 0:
+            raise ValueError("quantity must be greater than zero.")
+        source = Warehouse.objects.get(id=source_warehouse_id)
+        if not source.is_warehouse:
+            raise ValueError(f"Location '{source.full_path}' is not a warehouse.")
+        target = _purchase_target_location(target_location_id)
+        if target is None:
+            raise ValueError("target_location_id is required.")
+        transfer = TransferRequest.objects.create(
+            component=Component.objects.get(id=component_id),
+            quantity=quantity,
+            source_warehouse=source,
+            target_location=target,
+            note=note,
+            requested_by=_mcp_actor_user(self.request),
+        )
+        return _transfer_payload(transfer)
+
+    def update_transfer_request(
+        self,
+        transfer_id: str,
+        status: str = "",
+        quantity: float | None = None,
+        note: str | None = None,
+    ) -> dict:
+        """Update a transfer request; mark it done once the packets were moved, or cancel it.
+
+        Args:
+            transfer_id: UUID of the transfer request.
+            status: New status: open, done or cancelled (leave empty to keep).
+            quantity: New quantity (leave None to keep).
+            note: New note (leave None to keep).
+        """
+        _require_write(self.request)
+
+        transfer = TransferRequest.objects.select_related("component", "source_warehouse", "target_location").get(
+            id=transfer_id
+        )
+        if status:
+            if status not in TransferStatus.values:
+                raise ValueError("status must be open, done or cancelled.")
+            if status != transfer.status:
+                transfer.status = status
+                transfer.completed_at = None if status == TransferStatus.OPEN else timezone.now()
+                transfer.completed_by = None if status == TransferStatus.OPEN else _mcp_actor_user(self.request)
+        if quantity is not None:
+            if quantity <= 0:
+                raise ValueError("quantity must be greater than zero.")
+            transfer.quantity = quantity
+        if note is not None:
+            transfer.note = note
+        transfer.save()
+        return _transfer_payload(transfer)
 
     def delete_reservation(self, reservation_id: str) -> dict:
         """Delete a component reservation.

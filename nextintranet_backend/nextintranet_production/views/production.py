@@ -56,7 +56,7 @@ from nextintranet_warehouse.services.availability import (
     default_warehouse_for_user,
     warehouses as availability_warehouses,
 )
-from nextintranet_production.services.requests import RequestError, request_line, request_missing
+from nextintranet_production.services.requests import RequestError, request_line, request_missing, transfer_line
 from nextintranet_production.services.reservations import (
     ReservationError,
     bom_reserved_quantities,
@@ -1673,6 +1673,33 @@ class TemplateComponentViewSet(viewsets.ModelViewSet):
         if template_id:
             queryset = queryset.filter(template_id=template_id)
         return queryset.order_by("position")
+
+    @action(detail=True, methods=["post"], url_path="transfer")
+    def transfer_parts(self, request, pk=None):
+        """Create or update the open transfer of this line's component into the BOM's warehouse.
+
+        Optional `source_warehouse` (defaults to the warehouse with the most free stock) and
+        `quantity` (defaults to what is missing, capped by what is free there).
+        """
+        line = self.get_object()
+        try:
+            transfer = transfer_line(
+                line,
+                request.user,
+                source_warehouse_id=request.data.get("source_warehouse") or None,
+                quantity=request.data.get("quantity") or None,
+            )
+        except RequestError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_409_CONFLICT)
+        return Response(
+            {
+                "id": str(transfer.id),
+                "quantity": transfer.quantity,
+                "source_warehouse": str(transfer.source_warehouse_id),
+                "source_warehouse_name": transfer.source_warehouse.full_path,
+                "target_location_name": transfer.target_location.full_path,
+            }
+        )
 
     @action(detail=True, methods=["post"], url_path="request")
     def request_parts(self, request, pk=None):

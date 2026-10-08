@@ -249,12 +249,18 @@ def bom_availability_rows(
             reserved_by_others = sum(e.quantity for e in reserved) - own
             free = on_hand - reserved_by_others
             in_stock = max(0.0, free)
+            incoming = (
+                component_availability_row.in_warehouse(here_id).incoming
+                if here_id is not None
+                else sum(bucket.incoming for bucket in component_availability_row.stock.values())
+            )
             here = {
                 "warehouse_id": str(here_id) if here_id else None,
                 "on_hand": on_hand,
                 "reserved_by_others": reserved_by_others,
                 "reserved_by_this_line": own,
                 "free": free,
+                "incoming": incoming,
             }
             if here_id is not None:
                 for other_id in component_availability_row.warehouse_ids():
@@ -265,7 +271,9 @@ def bom_availability_rows(
                         elsewhere.append({"warehouse_id": str(other_id), "free": other_free})
             if line.dnp or remaining <= in_stock:
                 status = "ok"
-            elif in_stock + sum(item["free"] for item in elsewhere) >= remaining:
+            elif in_stock + incoming >= remaining:
+                status = "incoming"
+            elif in_stock + incoming + sum(item["free"] for item in elsewhere) >= remaining:
                 status = "elsewhere"
             else:
                 status = "missing"

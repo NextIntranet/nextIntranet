@@ -138,6 +138,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         ...(canReadWarehouse ? [{ title: "Inventory", url: "/store/inventory-campaign" }] : []),
         ...(canReadWarehouse ? [{ title: "Put-away check", url: "/store/put-away" }] : []),
         ...(canAccessOperations ? [{ title: "Reservations", url: "/store/reservations" }] : []),
+        ...(canAccessOperations ? [{ title: "Transfers", url: "/store/transfer" }] : []),
         ...(canAccessOperations ? [{ title: "Purchases", url: "/store/purchase" }] : []),
         ...(canAccessOperations ? [{ title: "Requests", url: "/store/purchase-requests" }] : []),
         ...(canAccessOperations ? [{ title: "Print queue", url: "/print/queue" }] : []),

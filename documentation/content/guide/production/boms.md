@@ -74,15 +74,18 @@ Each line's availability is computed for the BOM's warehouse:
 - `in_stock` — what the line can use there (`free`, never below zero).
 - `elsewhere` — other warehouses with free stock. This is shown for information
   only and never counted.
-- `status` — `ok` when the warehouse covers `remaining`, `elsewhere` when other warehouses
-  could cover the shortage, `missing` when no warehouse can, `unlinked` for lines
-  without a component.
+- `incoming` (in `here`) — ordered purchases and open transfers on their way to the warehouse.
+- `status` — `ok` when the warehouse covers `remaining`, `incoming` when stock on its way
+  covers the rest, `elsewhere` when other warehouses could cover the shortage, `missing`
+  when nothing can, `unlinked` for lines without a component.
 - `shortage` — true when `remaining` exceeds `in_stock`.
 
-In the BOM table the **Warehouse** column shows `in_stock / remaining`, the BOM's
-warehouse with what others reserve and what this BOM holds, free stock in other
-warehouses, and the packets. Colours: green available, amber exact, orange only in
-another warehouse, red missing.
+In the BOM table the **Warehouse** column leads with the number available for the line
+(box icon) and the number still needed (target icon). Below are icons for the warehouse,
+on hand, reserved in total, incoming and storage positions, then free stock in other
+warehouses, open transfers and purchase requests. Hover an icon for its meaning. Colours:
+green available, amber exact, orange covered by incoming stock or another warehouse, red
+missing.
 
 The same computation can include `total_in_home`, stock scoped to the signed-in
 user's home location subtree, useful for "do I personally have enough on my bench"
@@ -98,8 +101,10 @@ warehouse. **Request missing** in the toolbar does this for every short line at 
 - The quantity is the shortage in the BOM's warehouse minus what is already ordered for the line.
 - Each line has one open request. Requesting again updates it ("Update request").
 - The cell shows what is requested (and where it goes) and what is already ordered.
-- Stock in other warehouses is not used up automatically. Transfer requests between warehouses
-  are planned.
+- When another warehouse has free stock, **Transfer N** creates a [transfer](../warehouse/reservations.md#transfers)
+  from the warehouse with the most free stock. It holds the parts there and shows them as
+  incoming here. Transferring again updates the open transfer.
+- Ordered requests and open transfers are subtracted from what still needs requesting.
 
 ## Sourcing and placing
 
