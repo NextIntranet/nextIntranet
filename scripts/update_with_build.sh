@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 #
-# NextIntranet update script (nasazení z GHCR image)
-# Stáhne aktuální image z GHCR a restartuje kontejnery bez lokálního buildu.
+# NextIntranet update script (build z lokálních zdrojů)
+# Stáhne nejnovější změny z gitu a případně přebuduje Docker obrazy.
 #
 # Použití:
-#   ./scripts/update.sh              # git pull + docker compose pull + up -d + migrace
-#   ./scripts/update.sh --restart    # pouze restart kontejnerů (bez pull)
-#   ./scripts/update.sh --migrate    # po update spustit migrace (plán + apply)
-#   ./scripts/update.sh --no-migrate # migrace přeskočit
-#
-# Pozn.: Pro build z lokálních zdrojů použij ./scripts/update_with_build.sh
+#   ./scripts/update_with_build.sh            # automatická detekce potřeby rebuild
+#   ./scripts/update_with_build.sh --rebuild  # vynucený rebuild bez ohledu na změny
+#   ./scripts/update_with_build.sh --restart  # pouze restart, bez pull ani rebuild
+#   ./scripts/update_with_build.sh --migrate  # po update spustit migrace (plán + apply)
+#   ./scripts/update_with_build.sh --no-migrate  # migrace přeskočit
 #
 
 set -euo pipefail
@@ -18,12 +17,14 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 COMPOSE_DIR="$(cd "$PROJECT_DIR/.." && pwd)"
 
+FORCE_REBUILD=false
 ONLY_RESTART=false
 RUN_MIGRATIONS=""
 CHANGED_FILES=""
 
 for arg in "$@"; do
     case "$arg" in
+        --rebuild) FORCE_REBUILD=true ;;
         --restart) ONLY_RESTART=true ;;
         --migrate) RUN_MIGRATIONS=true ;;
         --no-migrate) RUN_MIGRATIONS=false ;;
@@ -86,7 +87,19 @@ maybe_run_migrations() {
     echo "      Migrace dokončeny."
 }
 
-echo "=== NextIntranet update (GHCR image) ==="
+# Soubory, jejichž změna vyžaduje přebudování obrazů
+BUILD_TRIGGERS=(
+    "nextintranet_backend/Dockerfile"
+    "nextintranet_backend/requirements.txt"
+    "nextintranet_backend/requirements"
+    "nextintranet_frontend/Dockerfile"
+    "nextintranet_frontend/package.json"
+    "nextintranet_frontend/pnpm-lock.yaml"
+    "nextintranet_frontend/packages/"
+    "docker-compose.yml"
+)
+
+echo "=== NextIntranet update ==="
 echo "Repozitář: $PROJECT_DIR"
 echo "Compose:   $COMPOSE_DIR"
 echo ""
@@ -103,7 +116,7 @@ if $ONLY_RESTART; then
     exit 0
 fi
 
-# --- Git pull (aktualizace compose souborů a konfigurace) ---
+# --- Git pull ---
 echo "[1/4] Stahování změn z gitu..."
 cd "$PROJECT_DIR"
 
@@ -113,26 +126,54 @@ git submodule update --init --recursive
 AFTER_HASH="$(git rev-parse HEAD)"
 
 if [ "$BEFORE_HASH" = "$AFTER_HASH" ]; then
-    echo "      Žádné nové změny v gitu."
+    echo "      Žádné nové změny."
     CHANGED_FILES=""
 else
     CHANGED_FILES="$(git diff --name-only "$BEFORE_HASH" "$AFTER_HASH")"
     echo "      Aktualizováno: $(git --no-pager log --oneline "$BEFORE_HASH..$AFTER_HASH" | wc -l | tr -d ' ') nových commitů"
 fi
 
-# --- Stažení image z GHCR ---
+# --- Detekce potřeby rebuildu ---
 echo ""
-echo "[2/4] Stahování image z GHCR..."
-$DC pull
+echo "[2/4] Kontrola potřeby přebudování obrazů..."
 
-# --- Restart kontejnerů s novými image ---
+NEEDS_REBUILD=false
+
+if $FORCE_REBUILD; then
+    echo "      Vynucený rebuild (--rebuild)."
+    NEEDS_REBUILD=true
+elif [ -z "$CHANGED_FILES" ]; then
+    echo "      Žádné změny, rebuild není potřeba."
+else
+    for pattern in "${BUILD_TRIGGERS[@]}"; do
+        if echo "$CHANGED_FILES" | grep -q "$pattern"; then
+            echo "      Zjištěna změna v: $(echo "$CHANGED_FILES" | grep "$pattern")"
+            NEEDS_REBUILD=true
+            break
+        fi
+    done
+    if ! $NEEDS_REBUILD; then
+        echo "      Změny nevyžadují rebuild obrazů."
+    fi
+fi
+
+# --- Docker build / up ---
 echo ""
-echo "[3/4] Spouštím kontejnery s novými image..."
-$DC up -d
+echo "[3/4] Aktualizace Docker kontejnerů..."
+
+if $NEEDS_REBUILD; then
+    echo "      Sestavuji obrazy..."
+    $DC build
+    echo "      Spouštím kontejnery..."
+    $DC up -d
+else
+    echo "      Restartuji kontejnery (bez rebuildu)..."
+    $DC up -d
+fi
+
 echo "      Restartuji nginx (obnova DNS rozlišení)..."
 $DC restart nginx
 
-# --- Migrace ---
 echo ""
 echo "[4/4] Migrace..."
 maybe_run_migrations
