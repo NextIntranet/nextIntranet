@@ -3317,10 +3317,10 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                   <TableRow>
                                     <TableHead className="h-10 w-[70px] px-3 py-2 align-top">#</TableHead>
                                     <TableHead className="h-10 w-[220px] px-3 py-2 align-top">Ref</TableHead>
-                                    <TableHead className="h-10 w-[400px] px-3 py-2 align-top">BOM</TableHead>
+                                    <TableHead className="h-10 min-w-[320px] px-3 py-2 align-top">BOM</TableHead>
                                     <TableHead className="h-10 w-[320px] px-3 py-2 align-top">Component</TableHead>
-                                    <TableHead className="h-10 min-w-[220px] px-3 py-2 align-top">Warehouse</TableHead>
-                                    <TableHead className="h-10 w-[180px] px-3 py-2 align-top">Actions</TableHead>
+                                    <TableHead className="h-10 w-[230px] min-w-[230px] px-3 py-2 align-top">Warehouse</TableHead>
+                                    <TableHead className="h-10 w-[110px] px-3 py-2 align-top">Actions</TableHead>
                                   </TableRow>
                                 </TableHeader>
                                 <TableBody>
