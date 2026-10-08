@@ -9,6 +9,7 @@
 #   BACKUP_COMPONENTS="db rustfs" ./scripts/backup.sh  # záloha jen vybraných komponent
 #
 # Komponenty: db, rustfs, redis (default: všechny; kompatibilní i s "minio")
+# Image pro S3 klienta lze přepsat: MC_IMAGE=... (default minio/mc:latest)
 #
 
 set -euo pipefail
@@ -29,6 +30,8 @@ fi
 POSTGRES_DB="${POSTGRES_DB:-nextintranet}"
 POSTGRES_USER="${POSTGRES_USER:-nextintranet_user}"
 MINIO_BUCKET="${MINIO_BUCKET:-nextintranet-dev}"
+MC_IMAGE="${MC_IMAGE:-minio/mc:latest}"
+RUSTFS_IMAGE="${RUSTFS_IMAGE:-rustfs/rustfs:1.0.0-alpha.89}"
 
 mkdir -p "$BACKUP_DIR"
 
@@ -50,27 +53,52 @@ else
 fi
 
 # --- RustFS / S3 ---
+# Bucket se zrcadlí přes S3 API (mc mirror) do $BACKUP_DIR/minio/ – tento formát
+# umí restore.sh nahrát zpět. mc běží v samostatném kontejneru (MC_IMAGE) ve stejné
+# síti jako rustfs, služba rustfs_init v compose není potřeba.
 if echo "$COMPONENTS" | grep -qwE "rustfs|minio"; then
     echo "[2/3] Záloha RustFS bucketu '$MINIO_BUCKET'..."
-    docker compose -f "$PROJECT_DIR/docker-compose.yml" run --rm --entrypoint "" rustfs_init \
-        /bin/sh -c "
-            /usr/bin/mc alias set local http://rustfs:9000 \${MINIO_ROOT_USER:-minioadmin} \${MINIO_ROOT_PASSWORD:-minioadmin} &&
-            /usr/bin/mc mirror --quiet local/$MINIO_BUCKET /backup
-        " --volume "$BACKUP_DIR/minio:/backup"
-    # Fallback: pokud mc mirror selže, zkusíme přímou kopii volume
-    if [ $? -ne 0 ] || [ ! -d "$BACKUP_DIR/minio" ] || [ -z "$(ls -A "$BACKUP_DIR/minio" 2>/dev/null)" ]; then
-        echo "      mc mirror nedostupný, kopíruji volume přímo..."
-        rmdir "$BACKUP_DIR/minio" 2>/dev/null || true
-        RUSTFS_VOLUME="$(docker volume ls -q | grep -E '(^|_|-)(rustfs_data|minio)$' | head -1)"
+    RUSTFS_CONTAINER="$(docker compose -f "$PROJECT_DIR/docker-compose.yml" ps -q rustfs 2>/dev/null || true)"
+    RUSTFS_CONTAINER="${RUSTFS_CONTAINER:-rustfs}"
+    RUSTFS_NETWORK="$(docker inspect --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}} {{end}}' "$RUSTFS_CONTAINER" 2>/dev/null | awk '{print $1}')"
+    RUSTFS_HOST="$(docker inspect --format '{{.Name}}' "$RUSTFS_CONTAINER" 2>/dev/null | sed 's#^/##')"
+
+    MIRROR_OK=0
+    if [ -n "$RUSTFS_NETWORK" ] && [ -n "$RUSTFS_HOST" ]; then
+        mkdir -p "$BACKUP_DIR/minio"
+        if docker run --rm --network "$RUSTFS_NETWORK" \
+            --user "$(id -u):$(id -g)" \
+            -e MC_CONFIG_DIR=/tmp/.mc \
+            -e S3_USER="${MINIO_ROOT_USER:-minioadmin}" \
+            -e S3_PASS="${MINIO_ROOT_PASSWORD:-minioadmin}" \
+            -v "$BACKUP_DIR/minio:/backup" \
+            --entrypoint /bin/sh "$MC_IMAGE" -c "
+                mc alias set local http://$RUSTFS_HOST:9000 \"\$S3_USER\" \"\$S3_PASS\" >/dev/null &&
+                mc mirror --quiet --overwrite local/$MINIO_BUCKET /backup >/dev/null
+            "; then
+            MIRROR_OK=1
+        fi
+    else
+        echo "      ⚠ RustFS kontejner neběží"
+    fi
+
+    if [ "$MIRROR_OK" -eq 1 ]; then
+        echo "      → $BACKUP_DIR/minio/ ($(find "$BACKUP_DIR/minio" -type f | wc -l) souborů, $(du -sh --apparent-size "$BACKUP_DIR/minio" | cut -f1))"
+    else
+        # Fallback: surová kopie volume (RustFS disk formát, obnovitelný jen
+        # nahráním zpět do rustfs_data volume – restore.sh ho automaticky nepoužije)
+        echo "      mc mirror selhal, kopíruji RustFS volume přímo..."
+        rm -rf "$BACKUP_DIR/minio"
+        RUSTFS_VOLUME="$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Name}}{{end}}{{end}}' "$RUSTFS_CONTAINER" 2>/dev/null || true)"
+        RUSTFS_VOLUME="${RUSTFS_VOLUME:-$(docker volume ls -q | grep -E "^$(basename "$PROJECT_DIR")_rustfs_data$" | head -1)}"
         if [ -n "$RUSTFS_VOLUME" ]; then
-            docker run --rm -v "$RUSTFS_VOLUME":/data:ro -v "$BACKUP_DIR":/backup \
-                alpine sh -c "tar -czf /backup/minio.tar.gz -C /data ."
-            echo "      → $BACKUP_DIR/minio.tar.gz ($(du -h "$BACKUP_DIR/minio.tar.gz" | cut -f1))"
+            docker run --rm --user 0 -v "$RUSTFS_VOLUME":/data:ro -v "$BACKUP_DIR":/backup \
+                --entrypoint /bin/sh "$RUSTFS_IMAGE" -c \
+                "tar -czf /backup/rustfs_volume.tar.gz -C /data . && chown $(id -u):$(id -g) /backup/rustfs_volume.tar.gz"
+            echo "      → $BACKUP_DIR/rustfs_volume.tar.gz ($(du -h "$BACKUP_DIR/rustfs_volume.tar.gz" | cut -f1))"
         else
             echo "      ⚠ RustFS volume nenalezena, přeskočeno"
         fi
-    else
-        echo "      → $BACKUP_DIR/minio/"
     fi
 else
     echo "[2/3] RustFS přeskočeno"
