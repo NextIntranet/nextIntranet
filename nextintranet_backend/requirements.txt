@@ -66,3 +66,5 @@ drf-spectacular[sidecar]
 django-storages
 boto3
 django-mcp-server
+# mcp 1.19 importuje pydantic._internal._typing_extra.eval_type_backport, které pydantic 2.14 odstranil (ověřeno: 1.30 OK); mcp 2.x má jiné API (FastMCP -> MCPServer)
+mcp>=1.30,<2
