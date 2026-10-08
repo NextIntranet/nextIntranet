@@ -46,6 +46,13 @@ from django.db.models.functions import Coalesce
 
 from ..models.component import Component, Identifier
 from ..models.purchase import PurchaseRequest
+from ..models.component import PacketState
+from ..services.availability import (
+    component_availability,
+    component_totals,
+    reserved_total_annotation,
+    warehouses as availability_warehouses,
+)
 from ..models.component import Tag
 from ..models.category import Category
 from django.contrib.contenttypes.models import ContentType
@@ -278,16 +285,15 @@ class ComponentListSerializer(serializers.ModelSerializer):
 
         # Fallback: compute in Python (shouldn't happen with optimized queryset)
         home_location_ids = self.context.get('home_location_ids')
-        total = 0
+        totals = component_totals([instance.pk])[instance.pk]
+        total = totals['on_hand']
+        res_qty = totals['reserved']
         home = 0
         for packet in instance.packets.all():
-            packet_count = packet.count or 0
-            total += packet_count
+            if packet.state != PacketState.STOCKED:
+                continue
             if home_location_ids and packet.location_id in home_location_ids:
-                home += packet_count
-        res_qty = instance.reservations.aggregate(
-            total_reserved=Sum('quantity')
-        )['total_reserved'] or 0
+                home += packet.count or 0
         purch_qty = PurchaseRequest.objects.filter(
             component=instance, purchase__isnull=True,
         ).aggregate(total_requested=Sum('quantity'))['total_requested'] or 0
@@ -379,20 +385,28 @@ class ComponentSerializer(serializers.ModelSerializer):
         return max(timestamps)
 
     def get_inventory_summary(self, instance):
-        total_quantity = 0
+        availability = component_availability([instance.pk])[instance.pk]
+        total_quantity = availability.on_hand
+        reserved_quantity = availability.reserved
         home_quantity = 0
-        reserved_quantity = instance.reservations.aggregate(
-            total_reserved=models.Sum('quantity')
-        )['total_reserved'] or 0
         home_location_ids = self.context.get('home_location_ids')
         for packet in instance.packets.all():
-            # Disabled: avoid recalculating on read; rely on StockOperation.save() for count updates.
-            # if packet.count == 0 and packet.operations.exists():
-            #     packet.calculate()
-            packet_count = packet.count or 0
-            total_quantity += packet_count
+            if packet.state != PacketState.STOCKED:
+                continue
             if home_location_ids and packet.location_id in home_location_ids:
-                home_quantity += packet_count
+                home_quantity += packet.count or 0
+        warehouse_names = availability_warehouses()
+        # Warehouses with stock or reservations; unscoped (legacy) reservations touch all of them.
+        shown = set(availability.stock)
+        if availability.unscoped:
+            shown |= set(warehouse_names)
+        per_warehouse = []
+        for warehouse_id in [*warehouse_names, None]:
+            if warehouse_id not in shown:
+                continue
+            stock = availability.in_warehouse(warehouse_id).as_dict()
+            stock['warehouse_name'] = warehouse_names[warehouse_id]['full_path'] if warehouse_id else None
+            per_warehouse.append(stock)
         purchase_quantity = PurchaseRequest.objects.filter(
             component=instance,
             purchase__isnull=True,
@@ -408,6 +422,7 @@ class ComponentSerializer(serializers.ModelSerializer):
             'purchase_quantity': float(purchase_quantity),
             'purchase_requested_quantity': float(purchase_quantity),
             'purchase_ordered_quantity': float(ordered_quantity),
+            'warehouses': per_warehouse,
         }
 
 
@@ -513,7 +528,7 @@ class ComponentListAPIView(generics.ListCreateAPIView):
         annotations = {
             '_total_quantity': Coalesce(
                 Subquery(
-                    Packet.objects.filter(component=OuterRef('pk'))
+                    Packet.objects.filter(component=OuterRef('pk'), state=PacketState.STOCKED)
                     .values('component')
                     .annotate(s=Sum('count'))
                     .values('s')[:1]
@@ -521,16 +536,7 @@ class ComponentListAPIView(generics.ListCreateAPIView):
                 Value(0),
                 output_field=DecimalField(),
             ),
-            '_reserved_quantity': Coalesce(
-                Subquery(
-                    Reservation.objects.filter(component=OuterRef('pk'))
-                    .values('component')
-                    .annotate(s=Sum('quantity'))
-                    .values('s')[:1]
-                ),
-                Value(0),
-                output_field=DecimalField(),
-            ),
+            '_reserved_quantity': reserved_total_annotation(),
             '_purchase_requested_quantity': Coalesce(
                 Subquery(
                     PurchaseRequest.objects.filter(component=OuterRef('pk'), purchase__isnull=True)
@@ -556,7 +562,9 @@ class ComponentListAPIView(generics.ListCreateAPIView):
         if home_location_ids:
             annotations['_home_quantity'] = Coalesce(
                 Subquery(
-                    Packet.objects.filter(component=OuterRef('pk'), location_id__in=home_location_ids)
+                    Packet.objects.filter(
+                        component=OuterRef('pk'), location_id__in=home_location_ids, state=PacketState.STOCKED
+                    )
                     .values('component')
                     .annotate(s=Sum('count'))
                     .values('s')[:1]

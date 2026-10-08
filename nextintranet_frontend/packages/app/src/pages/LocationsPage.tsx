@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@nextintranet/core';
-import { CheckCircle, ChevronRight, Copy, Home, Pencil, Plus } from 'lucide-react';
+import { CheckCircle, ChevronRight, Copy, Home, Pencil, Plus, Warehouse } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { LocationParentSelect } from '@/components/LocationParentSelect';
@@ -24,6 +24,7 @@ interface LocationNode {
   description?: string | null;
   full_path: string;
   can_store_items: boolean;
+  is_warehouse?: boolean;
   parent?: string | null;
   map?: string | null;
   children?: LocationNode[];
@@ -37,6 +38,7 @@ interface LocationDetail {
   description?: string | null;
   full_path: string;
   can_store_items: boolean;
+  is_warehouse?: boolean;
   parent?: string | null;
   map?: string | null;
 }
@@ -171,6 +173,7 @@ export function LocationsPage() {
     description: '',
     parent: '',
     can_store_items: false,
+    is_warehouse: false,
   });
 
   const { data: user } = useQuery<User>({
@@ -271,6 +274,7 @@ export function LocationsPage() {
     description: '',
     parent: '',
     can_store_items: false,
+    is_warehouse: false,
   });
 
   useEffect(() => {
@@ -283,6 +287,7 @@ export function LocationsPage() {
       description: locationDetail.description || '',
       parent: locationDetail.parent || '',
       can_store_items: locationDetail.can_store_items,
+      is_warehouse: Boolean(locationDetail.is_warehouse),
     });
     setMapFile(null);
     setRemoveMap(false);
@@ -488,6 +493,7 @@ export function LocationsPage() {
       description: formState.description.trim() || null,
       parent: formState.parent || null,
       can_store_items: formState.can_store_items,
+      is_warehouse: formState.is_warehouse,
     };
     if (mapFile || removeMap) {
       const data = new FormData();
@@ -496,6 +502,7 @@ export function LocationsPage() {
       data.append('description', payload.description ?? '');
       data.append('parent', payload.parent ?? '');
       data.append('can_store_items', payload.can_store_items ? 'true' : 'false');
+      data.append('is_warehouse', payload.is_warehouse ? 'true' : 'false');
       if (removeMap) {
         data.append('map', '');
       }
@@ -515,6 +522,7 @@ export function LocationsPage() {
       description: '',
       parent: parentId ?? levelId ?? '',
       can_store_items: false,
+      is_warehouse: false,
     });
     setCreateMapFile(null);
     setCreateOpen(true);
@@ -530,6 +538,7 @@ export function LocationsPage() {
       description: createForm.description.trim() || null,
       parent: createForm.parent || null,
       can_store_items: createForm.can_store_items,
+      is_warehouse: createForm.is_warehouse,
     };
     if (createMapFile) {
       const data = new FormData();
@@ -538,6 +547,7 @@ export function LocationsPage() {
       data.append('description', payload.description ?? '');
       data.append('parent', payload.parent ?? '');
       data.append('can_store_items', payload.can_store_items ? 'true' : 'false');
+      data.append('is_warehouse', payload.is_warehouse ? 'true' : 'false');
       data.append('map', createMapFile);
       createMutation.mutate(data);
       return;
@@ -732,6 +742,16 @@ export function LocationsPage() {
                                   </span>
                                 </TooltipTrigger>
                                 <TooltipContent>Home location</TooltipContent>
+                              </Tooltip>
+                            )}
+                            {row.is_warehouse && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-sky-100 text-sky-700">
+                                    <Warehouse className="h-3.5 w-3.5" />
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>Warehouse</TooltipContent>
                               </Tooltip>
                             )}
                             {row.can_store_items && (
@@ -985,6 +1005,14 @@ export function LocationsPage() {
                           {locationDetail.can_store_items ? 'Yes' : 'No'}
                         </p>
                       </div>
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">
+                          Warehouse
+                        </p>
+                        <p className="text-sm text-foreground">
+                          {locationDetail.is_warehouse ? 'Yes' : 'No'}
+                        </p>
+                      </div>
                     </div>
                     <div className="space-y-1">
                       <p className="text-xs font-semibold uppercase text-muted-foreground">
@@ -1122,6 +1150,20 @@ export function LocationsPage() {
                       />
                       Can store items
                     </label>
+                    <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+                      <input
+                        type="checkbox"
+                        checked={formState.is_warehouse}
+                        onChange={(e) =>
+                          setFormState({ ...formState, is_warehouse: e.target.checked })
+                        }
+                        className="h-4 w-4 rounded border border-input"
+                      />
+                      Warehouse
+                      <span className="font-normal text-muted-foreground">
+                        (stock and reservations below this location belong to it)
+                      </span>
+                    </label>
                     <div className="flex items-center justify-between gap-2 pt-2">
                       <Button variant="outline" onClick={() => handleEditMode('detail')}>
                         Cancel
@@ -1216,6 +1258,20 @@ export function LocationsPage() {
                   className="h-4 w-4 rounded border border-input"
                 />
                 Can store items
+              </label>
+              <label className="flex items-center gap-2 text-sm font-medium text-foreground">
+                <input
+                  type="checkbox"
+                  checked={createForm.is_warehouse}
+                  onChange={(e) =>
+                    setCreateForm({ ...createForm, is_warehouse: e.target.checked })
+                  }
+                  className="h-4 w-4 rounded border border-input"
+                />
+                Warehouse
+                <span className="font-normal text-muted-foreground">
+                  (stock and reservations below this location belong to it)
+                </span>
               </label>
               <div className="flex items-center justify-between gap-2 pt-2">
                 <Button variant="outline" onClick={() => setCreateOpen(false)}>

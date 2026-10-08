@@ -25,6 +25,11 @@ class Warehouse(MPTTModel, NIModel):
     location = models.CharField(max_length=255, blank=True, null=True, verbose_name=_('Location'))  # Lokace skladu (může být adresa nebo jiné označení)
     parent = TreeForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='sub_units', verbose_name=_('Parent unit'))  # Hierarchický vztah
     can_store_items = models.BooleanField(default=False, help_text=_('Indicates if this location can store components.'), verbose_name=_('Can store items'))
+    is_warehouse = models.BooleanField(
+        default=False,
+        help_text=_('Marks this location as a warehouse. Stock and reservations are scoped to the nearest warehouse above a location.'),
+        verbose_name=_('Is warehouse'),
+    )
     description = models.TextField(blank=True, null=True, verbose_name=_('Description'))  # Popis skladu nebo umístění
     map = models.FileField(
         upload_to=location_map_upload_path,
@@ -43,6 +48,16 @@ class Warehouse(MPTTModel, NIModel):
         path = self.get_ancestors(include_self=True)
         path_names = [node.name for node in path]
         return "/".join(path_names)
+
+    @property
+    def warehouse(self):
+        """The warehouse this location belongs to: the nearest ancestor-or-self with is_warehouse."""
+        return (
+            self.get_ancestors(include_self=True)
+            .filter(is_warehouse=True)
+            .order_by('-level')
+            .first()
+        )
 
     def __str__(self):
         return f"{self.full_path}"

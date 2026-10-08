@@ -13,6 +13,12 @@ from nextintranet_production.mcp_serializers import (
     MCPBomDetailSerializer,
     MCPBomLineSerializer,
 )
+from nextintranet_warehouse.services.availability import (
+    default_warehouse_for_user,
+    warehouses as availability_warehouses,
+)
+from nextintranet_production.services.requests import request_line, request_missing, transfer_line
+from nextintranet_production.services.reservations import reserve_bom, unreserve_bom
 from nextintranet_production.services.bom import (
     bom_availability_rows,
     assign_component_to_refs,
@@ -120,10 +126,13 @@ class ProductionReadToolset(MCPToolset):
         return MCPBomDetailSerializer(template).data
 
     def get_bom_availability(self, bom_id: str) -> dict:
-        """Get stock availability per BOM line: needed quantity, in-stock quantity, and shortages.
+        """Get stock availability per BOM line in the BOM's warehouse.
 
-        Shortage accounts for reservations held by other BOMs (self-reservations for this
-        BOM do not count against its own availability).
+        Per line: needed_total, placed_total, remaining (still to place), in_stock (what this
+        line can use in the BOM's warehouse), `here` (on_hand / reserved_by_others / free),
+        `elsewhere` (other warehouses with free stock, informational only) and status
+        ok / elsewhere / missing / unlinked. Reservations held by anything else — other BOMs,
+        other lines, manual reservations — count against the line; its own hold does not.
 
         Args:
             bom_id: UUID of the BOM (Template).
@@ -131,16 +140,114 @@ class ProductionReadToolset(MCPToolset):
         _require_read(self.request)
 
         template = Template.objects.get(id=bom_id)
-        rows = bom_availability_rows(template)
+        warehouse_id = template.stock_warehouse_id or default_warehouse_for_user(_mcp_actor_user(self.request))
+        rows = bom_availability_rows(template, warehouse_id=warehouse_id)
         return {
             "bom_id": str(template.id),
             "qty_planned": template.qty_planned,
+            "warehouse_id": str(warehouse_id) if warehouse_id else None,
+            "warehouses": list(availability_warehouses().values()),
+            "reserved": template.holds_stock,
             "rows": rows,
         }
 
 
 class ProductionWriteToolset(MCPToolset):
     """Write tools for controlling a production BOM."""
+
+    def reserve_bom(self, bom_id: str, warehouse_id: str = "") -> dict:
+        """Reserve a BOM: it then holds its remaining parts (needed − placed per line) in its
+        warehouse until it is finished or unreserved. Nothing is copied — the hold follows the BOM.
+
+        Args:
+            bom_id: UUID of the BOM (Template).
+            warehouse_id: Warehouse to draw parts from (location UUID with is_warehouse). Optional
+                when the BOM already has one or there is a single warehouse.
+        """
+        _require_write(self.request)
+
+        template = Template.objects.get(id=bom_id)
+        reserve_bom(template, _mcp_actor_user(self.request), warehouse_id or None)
+        return {
+            "bom_id": str(template.id),
+            "reserved": template.holds_stock,
+            "reserved_at": template.reserved_at.isoformat() if template.reserved_at else None,
+            "stock_warehouse_id": str(template.stock_warehouse_id) if template.stock_warehouse_id else None,
+        }
+
+    def request_bom_line(
+        self,
+        line_id: str,
+        quantity: int | None = None,
+        target_location_id: str = "",
+    ) -> dict:
+        """Create or update the open purchase request for parts a BOM line is missing.
+
+        Args:
+            line_id: UUID of the BOM line (TemplateComponent).
+            quantity: Quantity to request. Defaults to the shortage in the BOM's warehouse minus
+                what is already ordered for the line.
+            target_location_id: Warehouse or storage position (location UUID) the parts should end
+                up in. Defaults to the BOM's warehouse.
+        """
+        _require_write(self.request)
+
+        line = TemplateComponent.objects.select_related("template__production").get(id=line_id)
+        request = request_line(line, _mcp_actor_user(self.request), quantity, target_location_id or None)
+        return {
+            "request_id": str(request.id),
+            "quantity": request.quantity,
+            "target_location_id": str(request.target_location_id) if request.target_location_id else None,
+        }
+
+    def transfer_bom_line(
+        self,
+        line_id: str,
+        source_warehouse_id: str = "",
+        quantity: float | None = None,
+    ) -> dict:
+        """Create or update the open transfer of a BOM line's component into the BOM's warehouse.
+
+        Args:
+            line_id: UUID of the BOM line (TemplateComponent).
+            source_warehouse_id: Warehouse to take the parts from. Defaults to the warehouse with
+                the most free stock.
+            quantity: Quantity to move. Defaults to what is missing, capped by what is free there.
+        """
+        _require_write(self.request)
+
+        line = TemplateComponent.objects.select_related("template__production").get(id=line_id)
+        transfer = transfer_line(line, _mcp_actor_user(self.request), source_warehouse_id or None, quantity)
+        return {
+            "transfer_id": str(transfer.id),
+            "quantity": transfer.quantity,
+            "source_warehouse_id": str(transfer.source_warehouse_id),
+            "target_location_id": str(transfer.target_location_id),
+        }
+
+    def request_missing_bom_parts(self, bom_id: str) -> dict:
+        """Create or update purchase requests for every BOM line short in the BOM's warehouse.
+
+        Args:
+            bom_id: UUID of the BOM (Template).
+        """
+        _require_write(self.request)
+
+        template = Template.objects.select_related("production").get(id=bom_id)
+        created = request_missing(template, _mcp_actor_user(self.request))
+        return {"bom_id": str(template.id), "requested": len(created), "request_ids": [str(r.id) for r in created]}
+
+    def unreserve_bom(self, bom_id: str) -> dict:
+        """Release a BOM's hold on stock.
+
+        Args:
+            bom_id: UUID of the BOM (Template).
+        """
+        _require_write(self.request)
+
+        template = Template.objects.get(id=bom_id)
+        unreserve_bom(template, _mcp_actor_user(self.request))
+        return {"bom_id": str(template.id), "reserved": False}
 
     def update_bom(
         self,

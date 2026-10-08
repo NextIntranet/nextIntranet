@@ -23,6 +23,8 @@ import { setScannerCapture } from "@/lib/scannerCapture"
 import { IDENTIFIER_SCHEME_OPTIONS } from "@/lib/identifierSchemes"
 import {
   Image as ImageIcon,
+  Lock,
+  Warehouse as WarehouseIcon,
   Building2,
   Home,
   Layers,
@@ -95,6 +97,7 @@ import { PacketOperationSheet } from "@/components/PacketOperationSheet"
 import { ActivityLogTable, type PaginatedActivities } from "@/components/ActivityLogTable"
 import { MarkdownView } from "@/components/MarkdownView"
 import { RequestComponentSheet } from "@/components/RequestComponentSheet"
+import { ReservationSheet } from "@/components/ReservationSheet"
 import { packetStateLabel } from "@/lib/packetState"
 
 interface Category {
@@ -201,6 +204,7 @@ interface Component {
     purchase_quantity: number
     purchase_requested_quantity?: number
     purchase_ordered_quantity?: number
+    warehouses?: WarehouseStock[]
   }
   internal_price?: number
   selling_price?: number
@@ -224,6 +228,26 @@ interface ComponentHistoryResponse {
   history: ComponentHistoryEntry[]
 }
 
+interface StockReservation {
+  source: string
+  ref_id: string
+  label: string
+  quantity: number
+  bom_id?: string
+  reservation_id?: string
+  reserved_by?: string | null
+}
+
+interface WarehouseStock {
+  warehouse_id: string | null
+  warehouse_name: string | null
+  on_hand: number
+  reserved: number
+  free: number
+  incoming?: number
+  reservations: StockReservation[]
+}
+
 interface UsedInManufacturing {
   bom_id: string
   bom_name: string
@@ -231,6 +255,10 @@ interface UsedInManufacturing {
   product_name: string
   status: string
   planned_date?: string | null
+  stock_warehouse?: string | null
+  stock_warehouse_name?: string | null
+  reserved?: boolean
+  reserved_quantity?: number
 }
 
 type ManufacturingGroup = {
@@ -321,6 +349,7 @@ export function ComponentDetailPage() {
   const [activityPageSize, setActivityPageSize] = useState(25)
   const [packetSheetOpen, setPacketSheetOpen] = useState(false)
   const [requestSheetOpen, setRequestSheetOpen] = useState(false)
+  const [reservationSheetOpen, setReservationSheetOpen] = useState(false)
   const [operationSheetOpen, setOperationSheetOpen] = useState(false)
   const [operationPacketId, setOperationPacketId] = useState<string | null>(null)
   const [supplierSheetOpen, setSupplierSheetOpen] = useState(false)
@@ -539,8 +568,11 @@ export function ComponentDetailPage() {
     id: string
     component_id: string
     quantity: number
+    warehouse_name?: string | null
     reserved_by?: string | null
     reservation_date?: string | null
+    expiration_date?: string | null
+    is_active?: boolean
   }
   const { data: reservationsData } = useQuery<
     ReservationRow[] | { results: ReservationRow[] }
@@ -2217,6 +2249,10 @@ export function ComponentDetailPage() {
                         <ShoppingCart className="h-4 w-4" />
                         Request component
                       </DropdownMenuItem>
+                      <DropdownMenuItem onSelect={() => setReservationSheetOpen(true)} className="gap-2">
+                        <Lock className="h-4 w-4" />
+                        Reserve
+                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </>
@@ -2393,6 +2429,10 @@ export function ComponentDetailPage() {
                         </p>
                       </div>
                     </div>
+
+                    {(component.inventory_summary?.warehouses?.length ?? 0) > 0 ? (
+                      <WarehouseStockTable warehouses={component.inventory_summary.warehouses ?? []} />
+                    ) : null}
 
                     <Separator />
 
@@ -2678,7 +2718,13 @@ export function ComponentDetailPage() {
                     </div>
                     <ul className="divide-y divide-border/40">
                       {group.boms.map((row) => (
-                        <li key={row.bom_id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5">
+                        <li
+                          key={row.bom_id}
+                          className={cn(
+                            "flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5",
+                            row.reserved && (row.reserved_quantity ?? 0) > 0 && "bg-sky-50/70",
+                          )}
+                        >
                           <Link
                             to={`/production/bom/${row.bom_id}`}
                             className="text-sm text-primary hover:underline"
@@ -2694,6 +2740,18 @@ export function ComponentDetailPage() {
                           >
                             {row.status}
                           </span>
+                          {row.reserved && (row.reserved_quantity ?? 0) > 0 ? (
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-800"
+                              title="Quantity of this component the BOM still holds"
+                            >
+                              <Lock className="h-3 w-3" aria-hidden />
+                              {row.reserved_quantity} reserved
+                              {row.stock_warehouse_name ? ` in ${row.stock_warehouse_name}` : ""}
+                            </span>
+                          ) : row.reserved ? (
+                            <span className="text-xs text-muted-foreground">Reserved, nothing left to hold</span>
+                          ) : null}
                           <span className="ml-auto text-xs text-muted-foreground">
                             {row.planned_date ? new Date(row.planned_date).toLocaleDateString() : "-"}
                           </span>
@@ -2818,7 +2876,7 @@ export function ComponentDetailPage() {
             <div className="space-y-1">
               <h2 className="text-lg font-semibold text-foreground">On reservation list</h2>
               <p className="text-sm text-muted-foreground">
-                Reservations that include this component.
+                Manual reservations of this component. Production holds are listed under Used in manufacturing.
               </p>
             </div>
             {reservationsList.length > 0 ? (
@@ -2828,6 +2886,9 @@ export function ComponentDetailPage() {
                     <TableRow className="border-border/50">
                       <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                         Quantity
+                      </TableHead>
+                      <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        Warehouse
                       </TableHead>
                       <TableHead className="h-9 px-3 text-[12px] font-semibold uppercase tracking-wide text-muted-foreground">
                         Reserved by
@@ -2842,9 +2903,18 @@ export function ComponentDetailPage() {
                   </TableHeader>
                   <TableBody>
                     {reservationsList.map((row) => (
-                      <TableRow key={row.id} className="border-border/40">
+                      <TableRow
+                        key={row.id}
+                        className={cn("border-border/40", row.is_active === false && "opacity-60")}
+                      >
                         <TableCell className="h-9 px-3 text-sm font-medium text-foreground">
                           {row.quantity}
+                          {row.is_active === false ? (
+                            <span className="ml-1.5 text-xs font-normal text-muted-foreground">expired</span>
+                          ) : null}
+                        </TableCell>
+                        <TableCell className="h-9 px-3 text-sm text-muted-foreground">
+                          {row.warehouse_name ?? "All warehouses"}
                         </TableCell>
                         <TableCell className="h-9 px-3 text-sm text-muted-foreground">
                           {row.reserved_by ?? "—"}
@@ -3646,6 +3716,12 @@ export function ComponentDetailPage() {
         </SheetContent>
       </Sheet>
 
+      <ReservationSheet
+        open={reservationSheetOpen}
+        onOpenChange={setReservationSheetOpen}
+        componentId={component?.id}
+        componentName={component?.name}
+      />
       <RequestComponentSheet
         open={requestSheetOpen}
         onOpenChange={setRequestSheetOpen}
@@ -3654,5 +3730,81 @@ export function ComponentDetailPage() {
       />
       </div>
     </TooltipProvider>
+  )
+}
+
+
+function reservationLink(entry: StockReservation): string | null {
+  if (entry.source === "production" && entry.bom_id) return `/production/bom/${entry.bom_id}`
+  if (entry.source === "manual" && entry.reservation_id) return `/store/reservations/${entry.reservation_id}`
+  if (entry.source === "transfer") return "/store/transfer"
+  return null
+}
+
+/** Stock per warehouse with the reservations that hold it, whatever their source. */
+function WarehouseStockTable({ warehouses }: { warehouses: WarehouseStock[] }) {
+  return (
+    <div className="rounded-lg border border-border/70 bg-card shadow-sm">
+      <p className="border-b border-border/50 px-3 py-2 text-xs font-semibold uppercase text-muted-foreground">
+        By warehouse
+      </p>
+      <ul className="divide-y divide-border/40">
+        {warehouses.map((stock) => (
+          <li key={stock.warehouse_id ?? "unassigned"} className="space-y-1 px-3 py-2 text-sm">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="inline-flex min-w-0 flex-1 items-center gap-1.5 font-medium text-foreground">
+                <WarehouseIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                <span className="truncate">{stock.warehouse_name ?? "Not in any warehouse"}</span>
+              </span>
+              <span className="text-muted-foreground">
+                {stock.on_hand} on hand
+                {stock.reserved > 0 ? <>, {stock.reserved} reserved</> : null}
+              </span>
+              {(stock.incoming ?? 0) > 0 ? (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-800"
+                  title="On its way: ordered purchases and open transfers into this warehouse"
+                >
+                  +{stock.incoming} incoming
+                </span>
+              ) : null}
+              <span
+                className={cn(
+                  "rounded-full px-2 py-0.5 text-xs font-semibold",
+                  stock.free > 0 ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-700",
+                )}
+              >
+                {stock.free} free
+              </span>
+            </div>
+            {stock.reservations.length > 0 ? (
+              <ul className="space-y-0.5 pl-5 text-xs text-muted-foreground">
+                {stock.reservations.map((entry) => {
+                  const href = reservationLink(entry)
+                  const label =
+                    entry.source === "production"
+                      ? entry.label
+                      : entry.label || entry.reserved_by || "Manual reservation"
+                  return (
+                    <li key={`${entry.source}:${entry.ref_id}`} className="flex items-center gap-1.5">
+                      <Lock className="h-3 w-3 shrink-0" aria-hidden />
+                      <span className="font-semibold text-foreground">{entry.quantity}</span>
+                      <span className="rounded bg-muted px-1 text-[10px] uppercase">{entry.source}</span>
+                      {href ? (
+                        <Link to={href} className="truncate text-primary hover:underline">
+                          {label}
+                        </Link>
+                      ) : (
+                        <span className="truncate">{label}</span>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }

@@ -67,36 +67,20 @@ class Component(NIModel):
 
     @property
     def count(self):
-        # Calculate current quantity of the component across all batches, excluding reservations
-        total_quantity = sum(
-            (packet.count for packet in self.packets.all()),
-            Decimal(0),
-        )
-        reserved_quantity = self.reservations.aggregate(total_reserved=models.Sum('quantity'))[
-            'total_reserved'
-        ]
-        if reserved_quantity is None:
-            reserved_quantity = Decimal(0)
-        else:
-            reserved_quantity = Decimal(reserved_quantity)
-        return total_quantity - reserved_quantity
+        # Stocked quantity across all warehouses minus everything reserved for it.
+        from ..services.availability import component_totals
+
+        totals = component_totals([self.pk])[self.pk]
+        return Decimal(str(totals["on_hand"] - totals["reserved"]))
 
     def count_warehouse(self, include_reservations=True):
-        # Calculate current quantity of the component across all batches with option to include reservations
-        total_quantity = sum(
-            (packet.count for packet in self.packets.all()),
-            Decimal(0),
-        )
+        # Stocked quantity across all warehouses; include_reservations=False subtracts reservations.
+        from ..services.availability import component_totals
+
+        totals = component_totals([self.pk])[self.pk]
         if not include_reservations:
-            reserved_quantity = self.reservations.aggregate(total_reserved=models.Sum('quantity'))[
-                'total_reserved'
-            ]
-            if reserved_quantity is None:
-                reserved_quantity = Decimal(0)
-            else:
-                reserved_quantity = Decimal(reserved_quantity)
-            return total_quantity - reserved_quantity
-        return total_quantity
+            return Decimal(str(totals["on_hand"] - totals["reserved"]))
+        return Decimal(str(totals["on_hand"]))
 
     def min_purchase_price(self):
         return StockOperation.objects.filter(packet__component=self, operation_type='buy').aggregate(models.Min('unit_price'))['unit_price__min']
@@ -713,6 +697,11 @@ class WarehouseActivity(NIModel):
         ("component_updated", _("Component updated")),
         ("identifier_added", _("Identifier added")),
         ("identifier_removed", _("Identifier removed")),
+        ("reservation_created", _("Reservation created")),
+        ("reservation_updated", _("Reservation updated")),
+        ("reservation_deleted", _("Reservation deleted")),
+        ("bom_reserved", _("BOM reserved")),
+        ("bom_unreserved", _("BOM unreserved")),
     )
 
     SOURCE_CHOICES = (
@@ -781,10 +770,27 @@ class WarehouseActivity(NIModel):
         target = self.packet_id or self.component_id or "-"
         return f"{self.activity_type} {target} at {self.occurred_at}"
 
+class ReservationQuerySet(models.QuerySet):
+    def active(self, now=None):
+        """Reservations that still hold stock: not expired."""
+        now = now or timezone.now()
+        return self.filter(models.Q(expiration_date__isnull=True) | models.Q(expiration_date__gte=now))
+
+
 class Reservation(NIModel):
     # Rezervace součástek
     uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     component = models.ForeignKey(Component, on_delete=models.CASCADE, related_name='reservations', verbose_name=_('Component'))
+    warehouse = models.ForeignKey(
+        'Warehouse',
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name='reservations',
+        limit_choices_to={'is_warehouse': True},
+        verbose_name=_('Warehouse'),
+        help_text=_('Warehouse the stock is held in. Empty only for legacy rows; those hold stock in every warehouse.'),
+    )
     quantity = models.FloatField(verbose_name=_('Quantity'))  # Počet kusů nebo délka rezervace
     reserved_by = models.CharField(max_length=255, verbose_name=_('Reserved by'))  # Kdo rezervaci provedl
     priority = models.PositiveSmallIntegerField(
@@ -804,6 +810,8 @@ class Reservation(NIModel):
     )
     reservation_date = models.DateTimeField(auto_now_add=True, verbose_name=_('Reservation date'))
     expiration_date = models.DateTimeField(blank=True, null=True, verbose_name=_('Expiration date'))  # Datum vypršení rezervace
+
+    objects = ReservationQuerySet.as_manager()
 
     def __str__(self):
         return f"Reservation of {self.quantity} units of {self.component.name}"

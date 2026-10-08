@@ -100,7 +100,7 @@ without this key.
 - `list_suppliers` — supplier list
 - `get_supplier` — single supplier
 - `list_component_suppliers` — supplier links for a component (`limit` default 50, max 200)
-- `list_reservations` — reservation list (filter by component or search)
+- `list_reservations` — manual reservation list (filter by component, warehouse, active only, or search)
 - `get_reservation` — single reservation
 - `get_packet` — single packet (stock batch)
 - `list_component_packets` — packets for a component (`limit` default 100, max 500)
@@ -115,7 +115,8 @@ without this key.
 
 Production BOM tools (`nextintranet_production`) are registered on the same server:
 `list_boms`, `get_bom`, `get_bom_availability`, `list_productions`, `get_production` (read) and
-`update_bom`, `set_bom_line_component`, `lock_bom`, `finalize_bom` (write).
+`update_bom`, `set_bom_line_component`, `lock_bom`, `finalize_bom`, `reserve_bom`, `unreserve_bom`,
+`request_bom_line`, `request_missing_bom_parts`, `transfer_bom_line` (write).
 
 ### Write (`mcp:write` scope, includes all read tools)
 
@@ -133,13 +134,14 @@ Production BOM tools (`nextintranet_production`) are registered on the same serv
 - `create_location` / `update_location` / `delete_location` — warehouse locations
 - `create_supplier` / `update_supplier` / `delete_supplier` — suppliers
 - `link_component_supplier` / `update_supplier_relation` / `delete_supplier_relation` — component–supplier links
-- `create_reservation` / `update_reservation` / `delete_reservation` — reservations
+- `create_reservation` / `update_reservation` / `delete_reservation` — manual reservations (with `warehouse_id` and `expiration_date`)
 - `create_print_queue` — create a queue owned by the token's user
 - `add_to_print_queue` — add a component, packet, or location label to a queue
 - `add_targets_to_print_queue` — add multiple labels in one call
 - `remove_print_queue_item` — remove an item from a queue
-- `create_purchase_request` / `update_purchase_request` / `delete_purchase_request` — purchase requests
+- `create_purchase_request` / `update_purchase_request` / `delete_purchase_request` — purchase requests (`create_purchase_request` takes an optional `target_location_id`)
 - `assign_purchase_requests` — attach requests to a purchase
+- `list_transfer_requests` / `create_transfer_request` / `update_transfer_request` — stock transfers between warehouses (mark done or cancel via `status`)
 - `create_purchase` / `set_purchase_items` / `set_purchase_item_location` — build the order
 - `transition_purchase` — move the order through its lifecycle
 - `receive_purchase_items` / `stock_purchase_deliveries` / `complete_purchase` — receiving and stocking

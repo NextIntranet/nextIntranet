@@ -114,7 +114,7 @@ class MCPComponentDetailSerializer(serializers.ModelSerializer):
 
 class MCPInventoryItemSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source="category.name", read_only=True, default=None)
-    quantity = serializers.FloatField(source="count", read_only=True)
+    quantity = serializers.SerializerMethodField()
     reserved = serializers.SerializerMethodField()
     locations = serializers.SerializerMethodField()
 
@@ -122,13 +122,28 @@ class MCPInventoryItemSerializer(serializers.ModelSerializer):
         model = Component
         fields = ["id", "name", "category_name", "quantity", "reserved", "locations", "internal_price"]
 
+    def _totals(self, obj):
+        # Callers listing many components pass {"totals": component_totals(ids)} to avoid per-row queries.
+        totals = self.context.get("totals")
+        if totals is None or obj.pk not in totals:
+            from .services.availability import component_totals
+
+            totals = component_totals([obj.pk])
+        return totals[obj.pk]
+
+    def get_quantity(self, obj):
+        """Available: stocked quantity minus everything reserved."""
+        totals = self._totals(obj)
+        return totals["on_hand"] - totals["reserved"]
+
     def get_reserved(self, obj):
-        return sum(r.quantity for r in obj.reservations.all())
+        return self._totals(obj)["reserved"]
 
     def get_locations(self, obj):
         return [
             {"name": p.location.full_path if p.location else None, "count": float(p.count)}
-            for p in obj.packets.filter(is_active=True)
+            for p in obj.packets.all()
+            if p.is_active
         ]
 
 
@@ -157,13 +172,18 @@ class MCPSupplierRelationSerializer(serializers.ModelSerializer):
 class MCPReservationSerializer(serializers.ModelSerializer):
     component_id = serializers.UUIDField(source="component.id", read_only=True)
     component_name = serializers.CharField(source="component.name", read_only=True)
+    warehouse_id = serializers.UUIDField(read_only=True, allow_null=True)
+    warehouse_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Reservation
         fields = [
-            "id", "component_id", "component_name", "quantity", "priority",
-            "description", "sources", "reserved_by", "reservation_date", "expiration_date",
+            "id", "component_id", "component_name", "quantity", "warehouse_id", "warehouse_name",
+            "priority", "description", "sources", "reserved_by", "reservation_date", "expiration_date",
         ]
+
+    def get_warehouse_name(self, obj):
+        return obj.warehouse.full_path if obj.warehouse_id else None
 
 
 class MCPCategoryFlatSerializer(serializers.ModelSerializer):
@@ -196,7 +216,7 @@ class MCPLocationFlatSerializer(serializers.ModelSerializer):
         model = Warehouse
         fields = [
             "id", "uuid", "name", "location", "description", "parent_id",
-            "full_path", "can_store_items",
+            "full_path", "can_store_items", "is_warehouse",
         ]
 
 
@@ -271,12 +291,14 @@ class MCPPrintQueueItemSerializer(serializers.ModelSerializer):
 class MCPPurchaseRequestSerializer(serializers.ModelSerializer):
     component_name = serializers.CharField(source="component.name", read_only=True, default=None)
     requested_by_name = serializers.SerializerMethodField()
+    target_location_name = serializers.CharField(source="target_location.full_path", read_only=True, default=None)
 
     class Meta:
         model = PurchaseRequest
         fields = [
             "id", "created_at", "quantity", "item_name", "description",
             "component", "component_name", "purchase", "requested_by_name",
+            "target_location", "target_location_name", "source",
         ]
 
     def get_requested_by_name(self, obj):

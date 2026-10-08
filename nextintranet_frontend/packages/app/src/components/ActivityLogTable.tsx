@@ -47,6 +47,11 @@ const ACTIVITY_TYPE_LABELS: Record<string, string> = {
   component_updated: "Component edited",
   identifier_added: "Identifier added",
   identifier_removed: "Identifier removed",
+  reservation_created: "Reserved",
+  reservation_updated: "Reservation edited",
+  reservation_deleted: "Reservation removed",
+  bom_reserved: "BOM reserved",
+  bom_unreserved: "BOM unreserved",
 }
 
 export function formatActivityType(activity: ActivityLogItem) {

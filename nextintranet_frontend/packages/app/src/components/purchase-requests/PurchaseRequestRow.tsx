@@ -1,4 +1,5 @@
 import { useDraggable } from "@dnd-kit/core"
+import { Link } from "react-router-dom"
 import { GripVertical, Trash2 } from "lucide-react"
 
 import { ComponentRef } from "@/components/ComponentRef"
@@ -60,6 +61,21 @@ export function PurchaseRequestRow({ request, depth, canEdit, deletePending, onO
         </div>
       </TableCell>
       <TableCell className="h-9 px-3 text-sm text-foreground">{request.quantity}</TableCell>
+      <TableCell className="px-3 py-2 text-sm text-muted-foreground align-top">
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <span className="truncate" title={request.target_location_name || undefined}>
+            {request.target_location_name || "-"}
+          </span>
+          {request.source?.type === "production" && request.source.bom_id ? (
+            <Link
+              to={`/production/bom/${request.source.bom_id}`}
+              className="truncate text-xs text-primary hover:underline underline-offset-2"
+            >
+              From BOM →
+            </Link>
+          ) : null}
+        </div>
+      </TableCell>
       <TableCell className="px-3 py-2 text-sm text-muted-foreground align-top">
         <div className="flex flex-col gap-0.5">
           <span className="truncate">{request.requested_by_name || "-"}</span>

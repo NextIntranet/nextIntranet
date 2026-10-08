@@ -1,3 +1,4 @@
+import datetime
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
@@ -7,6 +8,8 @@ from rest_framework.exceptions import PermissionDenied
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import Q, Sum
+from django.utils import timezone
+from django.utils.dateparse import parse_date, parse_datetime
 
 from nextintranet_backend.models.serviceToken import ServiceToken
 from nextintranet_backend.models.printList import PrintList, PrintItem
@@ -19,8 +22,11 @@ from nextintranet_warehouse.models.category import Category
 from nextintranet_warehouse.models.purchase import (
     Purchase, PurchaseDelivery, PurchaseItem, PurchaseItemType, PurchaseRequest, PurchaseStatus,
 )
+from nextintranet_warehouse.models.transfer import TransferRequest, TransferStatus
 from nextintranet_warehouse.models.warehouse import Warehouse
 from nextintranet_warehouse.services import purchase as purchase_service
+from nextintranet_warehouse.services.activity import log_reservation, reservation_snapshot
+from nextintranet_warehouse.services.availability import component_totals
 from nextintranet_warehouse.mcp_serializers import (
     MCPComponentListSerializer,
     MCPComponentDetailSerializer,
@@ -152,6 +158,61 @@ def _validate_reservation_sources(sources):
         if "type" not in item:
             raise ValueError(f"sources[{i}] must have a 'type' key.")
     return sources
+
+
+def _reservation_warehouse(warehouse_id, request):
+    """A warehouse for a reservation: the given one (must be flagged) or the default one."""
+    from .services.availability import default_warehouse_for_user
+
+    if not warehouse_id:
+        warehouse_id = default_warehouse_for_user(getattr(request, "user", None))
+        if warehouse_id is None:
+            raise ValueError("warehouse_id is required: there is more than one warehouse.")
+    warehouse = Warehouse.objects.get(id=warehouse_id)
+    if not warehouse.is_warehouse:
+        raise ValueError(f"Location '{warehouse.full_path}' is not a warehouse.")
+    return warehouse
+
+
+def _parse_expiration(value: str):
+    if not value:
+        return None
+    parsed = parse_datetime(value)
+    if parsed is None:
+        parsed_date = parse_date(value)
+        if parsed_date is None:
+            raise ValueError("expiration_date must be an ISO date or datetime.")
+        parsed = datetime.datetime.combine(parsed_date, datetime.time.max)
+    if timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed)
+    return parsed
+
+
+def _transfer_payload(transfer) -> dict:
+    return {
+        "id": str(transfer.id),
+        "component_id": str(transfer.component_id),
+        "component_name": transfer.component.name,
+        "quantity": transfer.quantity,
+        "source_warehouse_id": str(transfer.source_warehouse_id),
+        "source_warehouse_name": transfer.source_warehouse.full_path,
+        "target_location_id": str(transfer.target_location_id),
+        "target_location_name": transfer.target_location.full_path,
+        "status": transfer.status,
+        "note": transfer.note,
+        "source": transfer.source,
+        "created_at": transfer.created_at.isoformat() if transfer.created_at else None,
+        "completed_at": transfer.completed_at.isoformat() if transfer.completed_at else None,
+    }
+
+
+def _purchase_target_location(location_id: str):
+    if not location_id:
+        return None
+    location = Warehouse.objects.get(id=location_id)
+    if not (location.is_warehouse or location.can_store_items):
+        raise ValueError(f"Location '{location.full_path}' is neither a warehouse nor a storage position.")
+    return location
 
 
 def _get_parent(model, parent_id: str):
@@ -489,9 +550,7 @@ class WarehouseReadToolset(MCPToolset):
         """
         _require_read(self.request)
 
-        qs = Component.objects.select_related("category").prefetch_related(
-            "packets__location", "reservations",
-        ).all()
+        qs = Component.objects.select_related("category").prefetch_related("packets__location").all()
 
         if category:
             qs = qs.filter(category__abbreviation=category)
@@ -500,7 +559,9 @@ class WarehouseReadToolset(MCPToolset):
 
         row_limit = _clamp_list_limit(limit, default=200, maximum=500)
         offset = max(offset, 0)
-        results = MCPInventoryItemSerializer(qs[offset:offset + row_limit], many=True).data
+        page = list(qs[offset:offset + row_limit])
+        totals = component_totals([component.pk for component in page])
+        results = MCPInventoryItemSerializer(page, many=True, context={"totals": totals}).data
 
         if low_stock_only:
             results = [r for r in results if r["quantity"] <= 0]
@@ -637,20 +698,29 @@ class WarehouseReadToolset(MCPToolset):
         self,
         component_id: str = "",
         search: str = "",
+        warehouse_id: str = "",
+        active_only: bool = False,
         limit: int = 50,
     ) -> list[dict]:
-        """List component reservations.
+        """List manual component reservations (production BOMs hold stock without reservation rows;
+        see get_bom_availability).
 
         Args:
             component_id: Optional UUID to filter by component.
             search: Optional text search across component name, reserved_by, and description.
+            warehouse_id: Optional warehouse (location UUID with is_warehouse) to filter by.
+            active_only: If true, skip expired reservations.
             limit: Maximum number of results (default 50, max 200).
         """
         _require_read(self.request)
 
-        qs = Reservation.objects.select_related("component").order_by("-reservation_date")
+        qs = Reservation.objects.select_related("component", "warehouse").order_by("-reservation_date")
         if component_id:
             qs = qs.filter(component_id=component_id)
+        if warehouse_id:
+            qs = qs.filter(warehouse_id=warehouse_id)
+        if active_only:
+            qs = qs.active()
         if search:
             qs = qs.filter(
                 Q(component__name__icontains=search)
@@ -659,6 +729,35 @@ class WarehouseReadToolset(MCPToolset):
             )
         limit = min(max(limit, 1), 200)
         return MCPReservationSerializer(qs[:limit], many=True).data
+
+    def list_transfer_requests(
+        self,
+        status: str = "open",
+        component_id: str = "",
+        warehouse_id: str = "",
+        limit: int = 50,
+    ) -> list[dict]:
+        """List requests to move stock between warehouses. An open transfer holds its quantity in the
+        source warehouse and counts as incoming in the target.
+
+        Args:
+            status: open (default), done, cancelled or all.
+            component_id: Optional component UUID.
+            warehouse_id: Optional warehouse UUID (matches source or target).
+            limit: Maximum number of results (default 50, max 200).
+        """
+        _require_read(self.request)
+
+        qs = TransferRequest.objects.select_related("component", "source_warehouse", "target_location")
+        if status != "all":
+            qs = qs.filter(status=status)
+        if component_id:
+            qs = qs.filter(component_id=component_id)
+        if warehouse_id:
+            targets = Warehouse.objects.filter(id=warehouse_id).get_descendants(include_self=True)
+            qs = qs.filter(Q(source_warehouse_id=warehouse_id) | Q(target_location__in=targets))
+        limit = min(max(limit, 1), 200)
+        return [_transfer_payload(t) for t in qs.order_by("-created_at")[:limit]]
 
     def get_reservation(self, reservation_id: str) -> dict:
         """Get a single reservation by ID.
@@ -1531,6 +1630,7 @@ class WarehouseWriteToolset(MCPToolset):
         location: str = "",
         description: str = "",
         can_store_items: bool = False,
+        is_warehouse: bool = False,
     ) -> dict:
         """Create a warehouse location node.
 
@@ -1540,6 +1640,8 @@ class WarehouseWriteToolset(MCPToolset):
             location: Optional address or location label.
             description: Optional description.
             can_store_items: Whether components can be stored at this node.
+            is_warehouse: Mark the node as a warehouse; stock and reservations are scoped to
+                the nearest warehouse above a location.
         """
         _require_write(self.request)
 
@@ -1549,6 +1651,7 @@ class WarehouseWriteToolset(MCPToolset):
             location=location or None,
             description=description or None,
             can_store_items=can_store_items,
+            is_warehouse=is_warehouse,
         )
         return MCPLocationSerializer(node).data
 
@@ -1561,6 +1664,7 @@ class WarehouseWriteToolset(MCPToolset):
         location: str = "",
         description: str = "",
         can_store_items: bool | None = None,
+        is_warehouse: bool | None = None,
     ) -> dict:
         """Update a warehouse location.
 
@@ -1572,6 +1676,7 @@ class WarehouseWriteToolset(MCPToolset):
             location: New address/label (leave empty to keep current).
             description: New description (leave empty to keep current).
             can_store_items: Set storage flag (leave None to keep current).
+            is_warehouse: Set the warehouse flag (leave None to keep current).
         """
         _require_write(self.request)
 
@@ -1588,6 +1693,8 @@ class WarehouseWriteToolset(MCPToolset):
             node.description = description
         if can_store_items is not None:
             node.can_store_items = can_store_items
+        if is_warehouse is not None:
+            node.is_warehouse = is_warehouse
         node.save()
         return MCPLocationSerializer(node).data
 
@@ -1763,8 +1870,10 @@ class WarehouseWriteToolset(MCPToolset):
         priority: int = 3,
         description: str = "",
         sources: list[dict] | None = None,
+        warehouse_id: str = "",
+        expiration_date: str = "",
     ) -> dict:
-        """Create a component reservation.
+        """Create a manual component reservation. It holds stock only in its warehouse.
 
         Args:
             component_id: UUID of the component.
@@ -1772,6 +1881,9 @@ class WarehouseWriteToolset(MCPToolset):
             priority: Priority from 1 (highest) to 5 (lowest). Default 3.
             description: Optional description.
             sources: Optional list of source objects, each with a 'type' key.
+            warehouse_id: Warehouse location UUID (must have is_warehouse). Optional only when there is
+                a single warehouse.
+            expiration_date: Optional ISO date/datetime after which the reservation stops holding stock.
         """
         _require_write(self.request)
 
@@ -1785,7 +1897,10 @@ class WarehouseWriteToolset(MCPToolset):
             description=description,
             sources=_validate_reservation_sources(sources or []),
             reserved_by=_mcp_actor_name(self.request),
+            warehouse=_reservation_warehouse(warehouse_id, self.request),
+            expiration_date=_parse_expiration(expiration_date),
         )
+        log_reservation("reservation_created", reservation, _mcp_actor_user(self.request), source="api")
         return MCPReservationSerializer(reservation).data
 
     def update_reservation(
@@ -1795,6 +1910,8 @@ class WarehouseWriteToolset(MCPToolset):
         priority: int | None = None,
         description: str = "",
         sources: list[dict] | None = None,
+        warehouse_id: str = "",
+        expiration_date: str | None = None,
     ) -> dict:
         """Update a component reservation.
 
@@ -1804,10 +1921,13 @@ class WarehouseWriteToolset(MCPToolset):
             priority: New priority 1–5 (leave None to keep current).
             description: New description (leave empty to keep current).
             sources: New sources list (leave None to keep current).
+            warehouse_id: New warehouse location UUID (leave empty to keep current).
+            expiration_date: New ISO expiration (leave None to keep, empty string to clear).
         """
         _require_write(self.request)
 
         reservation = Reservation.objects.select_related("component").get(id=reservation_id)
+        before = reservation_snapshot(reservation)
         if quantity is not None:
             reservation.quantity = quantity
         if priority is not None:
@@ -1818,8 +1938,86 @@ class WarehouseWriteToolset(MCPToolset):
             reservation.description = description
         if sources is not None:
             reservation.sources = _validate_reservation_sources(sources)
+        if warehouse_id:
+            reservation.warehouse = _reservation_warehouse(warehouse_id, self.request)
+        if expiration_date is not None:
+            reservation.expiration_date = _parse_expiration(expiration_date)
         reservation.save()
+        log_reservation("reservation_updated", reservation, _mcp_actor_user(self.request), before=before)
         return MCPReservationSerializer(reservation).data
+
+    def create_transfer_request(
+        self,
+        component_id: str,
+        quantity: float,
+        source_warehouse_id: str,
+        target_location_id: str,
+        note: str = "",
+    ) -> dict:
+        """Request moving stock of a component from one warehouse to another (warehouse or position).
+
+        Args:
+            component_id: UUID of the component.
+            quantity: Quantity to move.
+            source_warehouse_id: Warehouse location UUID to take the parts from (must have is_warehouse).
+            target_location_id: Warehouse or storage position UUID to move them to.
+            note: Optional note.
+        """
+        _require_write(self.request)
+
+        if quantity <= 0:
+            raise ValueError("quantity must be greater than zero.")
+        source = Warehouse.objects.get(id=source_warehouse_id)
+        if not source.is_warehouse:
+            raise ValueError(f"Location '{source.full_path}' is not a warehouse.")
+        target = _purchase_target_location(target_location_id)
+        if target is None:
+            raise ValueError("target_location_id is required.")
+        transfer = TransferRequest.objects.create(
+            component=Component.objects.get(id=component_id),
+            quantity=quantity,
+            source_warehouse=source,
+            target_location=target,
+            note=note,
+            requested_by=_mcp_actor_user(self.request),
+        )
+        return _transfer_payload(transfer)
+
+    def update_transfer_request(
+        self,
+        transfer_id: str,
+        status: str = "",
+        quantity: float | None = None,
+        note: str | None = None,
+    ) -> dict:
+        """Update a transfer request; mark it done once the packets were moved, or cancel it.
+
+        Args:
+            transfer_id: UUID of the transfer request.
+            status: New status: open, done or cancelled (leave empty to keep).
+            quantity: New quantity (leave None to keep).
+            note: New note (leave None to keep).
+        """
+        _require_write(self.request)
+
+        transfer = TransferRequest.objects.select_related("component", "source_warehouse", "target_location").get(
+            id=transfer_id
+        )
+        if status:
+            if status not in TransferStatus.values:
+                raise ValueError("status must be open, done or cancelled.")
+            if status != transfer.status:
+                transfer.status = status
+                transfer.completed_at = None if status == TransferStatus.OPEN else timezone.now()
+                transfer.completed_by = None if status == TransferStatus.OPEN else _mcp_actor_user(self.request)
+        if quantity is not None:
+            if quantity <= 0:
+                raise ValueError("quantity must be greater than zero.")
+            transfer.quantity = quantity
+        if note is not None:
+            transfer.note = note
+        transfer.save()
+        return _transfer_payload(transfer)
 
     def delete_reservation(self, reservation_id: str) -> dict:
         """Delete a component reservation.
@@ -1831,6 +2029,7 @@ class WarehouseWriteToolset(MCPToolset):
 
         reservation = Reservation.objects.select_related("component").get(id=reservation_id)
         payload = MCPReservationSerializer(reservation).data
+        log_reservation("reservation_deleted", reservation, _mcp_actor_user(self.request))
         reservation.delete()
         return {"deleted": True, "reservation": payload}
 
@@ -1977,6 +2176,7 @@ class WarehouseWriteToolset(MCPToolset):
         component_id: str = "",
         item_name: str = "",
         description: str = "",
+        target_location_id: str = "",
     ) -> dict:
         """File a purchase request (a wish to buy something), optionally for a known component.
 
@@ -1985,6 +2185,8 @@ class WarehouseWriteToolset(MCPToolset):
             component_id: UUID of a warehouse component, when the wish is for a stocked item.
             item_name: Free-text item name, required when no component is given.
             description: Optional note.
+            target_location_id: Optional warehouse or storage position (location UUID) the parts
+                should end up in.
         """
         _require_write(self.request)
 
@@ -2002,6 +2204,7 @@ class WarehouseWriteToolset(MCPToolset):
             item_name=name or None,
             description=description,
             requested_by=_mcp_actor_user(self.request),
+            target_location=_purchase_target_location(target_location_id),
         )
         return MCPPurchaseRequestSerializer(obj).data
 

@@ -28,6 +28,20 @@ The URL pattern is `/store/component/<id>`.
   [Packet pricing](pricing.md).
 - `primary_image` — URL of the thumbnail shown in lists and detail pages.
 
+## Stock and reservations
+
+The **Summary** shows total stock, everything reserved, and what is available. Only
+stocked packets count; expected (ordered) and retired packets do not.
+
+**By warehouse** breaks this down per [warehouse](locations.md#warehouse): on hand,
+reserved and free, and below each warehouse the reservations holding its stock. Each
+reservation is labeled with its source (`manual` or `production`) and links to the
+reservation or the BOM.
+
+**Used in manufacturing** lists the BOMs that use the component. A reserved BOM shows
+how many pieces it still holds and in which warehouse. **On reservation list** shows the
+manual reservations, with their warehouse and whether they have expired.
+
 ## Parameters
 
 Parameters are typed key/value attributes (e.g. `Resistance = 10k`,

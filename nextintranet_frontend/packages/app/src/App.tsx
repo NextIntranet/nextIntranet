@@ -15,6 +15,7 @@ import { InventoryLocationStatusPage } from './pages/InventoryLocationStatusPage
 import { InventoryPacketListPage } from './pages/InventoryPacketListPage';
 import { InventoryPage } from './pages/InventoryPage';
 import { ReservationsPage } from './pages/ReservationsPage';
+import { TransfersPage } from './pages/TransfersPage';
 import { PurchaseRequestsPage } from './pages/PurchaseRequestsPage';
 import { PurchasesPage } from './pages/PurchasesPage';
 import { PurchaseDetailPage } from './pages/PurchaseDetailPage';
@@ -205,6 +206,14 @@ export function App() {
             element={
               <RequirePermission area="warehouse-operations" minLevel="read">
                 <ReservationsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="store/transfer"
+            element={
+              <RequirePermission area="warehouse-operations" minLevel="read">
+                <TransfersPage />
               </RequirePermission>
             }
           />

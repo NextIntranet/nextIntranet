@@ -457,6 +457,23 @@ class PurchaseRequest(models.Model):
         verbose_name=("Requested by"),
     )
 
+    target_location = models.ForeignKey(
+        'Warehouse',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='purchase_requests',
+        verbose_name=_('Target location'),
+        help_text=_('Warehouse or position the requested parts should end up in.'),
+    )
+
+    source = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name=_('Source'),
+        help_text=_('Where the request came from, e.g. {"type": "production", "bom_id": "...", "line_id": "..."}.'),
+    )
+
     class Meta:
         verbose_name = ("Purchase request")
         verbose_name_plural = ("Purchase requests")

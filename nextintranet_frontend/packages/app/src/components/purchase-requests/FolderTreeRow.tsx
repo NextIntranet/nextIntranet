@@ -90,7 +90,7 @@ export function FolderTreeRow({
           </button>
         )}
       </TableCell>
-      <TableCell colSpan={4} className="h-9 px-3" style={{ paddingLeft: depth * 20 + 12 }}>
+      <TableCell colSpan={5} className="h-9 px-3" style={{ paddingLeft: depth * 20 + 12 }}>
         <div className="flex items-center gap-1.5">
           <button
             onClick={() => onToggleExpand(node.id)}

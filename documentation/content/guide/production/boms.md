@@ -42,23 +42,69 @@ Each BOM line (`TemplateComponent`) groups one or more physical designators (e.g
 - Assigning a component that's already linked to another line in the same BOM
   **merges** the refs (and their scan history) into that existing line instead of
   creating a duplicate.
-- Unlinking a line clears its component and releases any BOM-specific stock
-  reservations for it, but does not reset its sourced/placed progress.
+- Unlinking a line clears its component, so a reserved BOM stops holding that
+  component for the line. Its sourced/placed progress is not reset.
+
+## Reserving a BOM
+
+A BOM can be planned without holding any stock. **Reserve BOM** makes it hold, in its
+warehouse, what each line still needs:
+
+`remaining = needed_total − placed_total` (zero for `dnp` lines).
+
+Nothing is copied when you reserve. The held quantity is recalculated from the BOM every
+time, so it follows changes to `qty_planned`, added or unlinked lines, and placed parts.
+A finished BOM holds nothing. **Unreserve BOM** releases the hold.
+
+- The BOM's warehouse (`stock_warehouse`) is chosen in the picker next to the button.
+  When it is not set, your home location's warehouse is used, or the only warehouse
+  if there is just one. Changing it moves the hold to the new warehouse.
+- Reserved BOMs carry a **Reserved** badge in the product's BOM list.
+- Only working series can be reserved; closed BOMs cannot be reserved.
 
 ## Availability
 
-Each line's stock availability is computed from:
+Each line's availability is computed for the BOM's warehouse:
 
 - `needed_total` — `qty_per_board × qty_planned` (or a manual `qty_override_total`
-  when set), unless the line is marked `dnp` (do-not-populate).
-- `in_stock` — total active stock across locations, minus stock
-  [reserved](../warehouse/reservations.md) by *other* BOMs (this BOM's own
-  reservations for itself don't count against its own availability).
-- `shortage` — true when `needed_total` exceeds `in_stock`.
+  when set). `remaining` is what is still to be placed.
+- `here` — in the BOM's warehouse: `on_hand` (stocked packets), `reserved_by_others`
+  (manual reservations, other BOMs, and other lines of this BOM) and `free`.
+  The line's own hold is not counted against it.
+- `in_stock` — what the line can use there (`free`, never below zero).
+- `elsewhere` — other warehouses with free stock. This is shown for information
+  only and never counted.
+- `incoming` (in `here`) — ordered purchases and open transfers on their way to the warehouse.
+- `status` — `ok` when the warehouse covers `remaining`, `incoming` when stock on its way
+  covers the rest, `elsewhere` when other warehouses could cover the shortage, `missing`
+  when nothing can, `unlinked` for lines without a component.
+- `shortage` — true when `remaining` exceeds `in_stock`.
+
+In the BOM table the **Warehouse** column leads with the number available for the line
+(box icon) and the number still needed (target icon). Below are icons for the warehouse,
+on hand, reserved in total, incoming and storage positions, then free stock in other
+warehouses, open transfers and purchase requests. Hover an icon for its meaning. Colours:
+green available, amber exact, orange covered by incoming stock or another warehouse, red
+missing.
 
 The same computation can include `total_in_home`, stock scoped to the signed-in
 user's home location subtree, useful for "do I personally have enough on my bench"
 checks.
+
+## Requesting missing parts
+
+When a line is short in the BOM's warehouse, its Warehouse cell offers **Request N**: it files a
+[purchase request](../warehouse/purchases.md#purchase-requests) for the missing quantity. You can
+change the quantity and the target warehouse or position, which defaults to the BOM's
+warehouse. **Request missing** in the toolbar does this for every short line at once.
+
+- The quantity is the shortage in the BOM's warehouse minus what is already ordered for the line.
+- Each line has one open request. Requesting again updates it ("Update request").
+- The cell shows what is requested (and where it goes) and what is already ordered.
+- When another warehouse has free stock, **Transfer N** creates a [transfer](../warehouse/reservations.md#transfers)
+  from the warehouse with the most free stock. It holds the parts there and shows them as
+  incoming here. Transferring again updates the open transfer.
+- Ordered requests and open transfers are subtracted from what still needs requesting.
 
 ## Sourcing and placing
 
@@ -106,5 +152,5 @@ The same read/write surface is available over MCP: `list_productions`,
 ## Related topics
 
 - [Live iBOM viewer](ibom.md) — an interactive board view with live stock overlay
-- [Reservations](../warehouse/reservations.md) — how a BOM's own stock holds work
+- [Reservations](../warehouse/reservations.md) — manual reservations and how stock holds are counted
 - [Packet pricing](../warehouse/pricing.md) — how placed-scan stock deductions are valued

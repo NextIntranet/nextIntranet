@@ -52,6 +52,17 @@ from nextintranet_backend.models.printList import PrintFile, PrintItem, PrintLis
 from nextintranet_backend.models.userSettings import UserSetting
 from nextintranet_warehouse.models.component import Component, Packet
 from nextintranet_warehouse.services.activity import actor_from_request, client_info_from_request, log_activity
+from nextintranet_warehouse.services.availability import (
+    default_warehouse_for_user,
+    warehouses as availability_warehouses,
+)
+from nextintranet_production.services.requests import RequestError, request_line, request_missing, transfer_line
+from nextintranet_production.services.reservations import (
+    ReservationError,
+    bom_reserved_quantities,
+    reserve_bom,
+    unreserve_bom,
+)
 from nextintranet_production.services.bom import (
     safe_float as _safe_float,
     safe_decimal as _safe_decimal,
@@ -747,17 +758,22 @@ class ProductionViewSet(viewsets.ModelViewSet):
 
         rows = (
             TemplateComponent.objects.filter(component_id=component_id)
-            .select_related("template", "template__production")
+            .select_related("template", "template__production", "template__stock_warehouse")
             .order_by("-template__planned_date", "-template__created_at")
         )
 
         seen = set()
-        payload = []
+        boms = []
         for row in rows:
             bom = row.template
             if bom.id in seen:
                 continue
             seen.add(bom.id)
+            boms.append(bom)
+
+        held = bom_reserved_quantities([bom.id for bom in boms], component_id)
+        payload = []
+        for bom in boms:
             payload.append(
                 {
                     "bom_id": str(bom.id),
@@ -766,6 +782,10 @@ class ProductionViewSet(viewsets.ModelViewSet):
                     "product_name": bom.production.name,
                     "status": bom.status,
                     "planned_date": bom.planned_date,
+                    "stock_warehouse": bom.stock_warehouse_id,
+                    "stock_warehouse_name": bom.stock_warehouse.full_path if bom.stock_warehouse else None,
+                    "reserved": bom.holds_stock,
+                    "reserved_quantity": held.get(str(bom.id), 0.0),
                 }
             )
 
@@ -913,7 +933,10 @@ class TemplateViewSet(viewsets.ModelViewSet):
         stock_by_line = {}
         if with_stock:
             home_location_ids, _ = _home_location_scope(request.user)
-            stock_by_line = {row["id"]: row for row in _bom_availability_rows(template, home_location_ids)}
+            warehouse_id = template.stock_warehouse_id or default_warehouse_for_user(request.user)
+            stock_by_line = {
+                row["id"]: row for row in _bom_availability_rows(template, home_location_ids, warehouse_id)
+            }
 
         components = []
         for line in template.components.select_related("component").all().order_by("position", "id"):
@@ -1191,17 +1214,48 @@ class TemplateViewSet(viewsets.ModelViewSet):
         template = self.get_object()
 
         home_location_ids, home_location_full_path = _home_location_scope(request.user)
+        warehouse_id = template.stock_warehouse_id or default_warehouse_for_user(request.user)
 
-        rows = _bom_availability_rows(template, home_location_ids)
+        rows = _bom_availability_rows(template, home_location_ids, warehouse_id)
 
         payload = {
             "bom_id": str(template.id),
             "qty_planned": template.qty_planned,
+            "warehouse_id": warehouse_id,
+            "warehouses": list(availability_warehouses().values()),
+            "reserved": template.holds_stock,
+            "reserved_at": template.reserved_at,
             "rows": rows,
         }
         if home_location_full_path is not None:
             payload["home_location_full_path"] = home_location_full_path
         return Response(payload)
+
+    @action(detail=True, methods=["post"], url_path="reserve")
+    def reserve(self, request, pk=None):
+        """Hold the BOM's remaining line demand in its warehouse (optional `stock_warehouse`)."""
+        template = self.get_object()
+        try:
+            reserve_bom(template, request.user, request.data.get("stock_warehouse"))
+        except ReservationError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_409_CONFLICT)
+        return Response(self.get_serializer(template).data)
+
+    @action(detail=True, methods=["post"], url_path="request-missing")
+    def request_missing_parts(self, request, pk=None):
+        """Request every line that is short in the BOM's warehouse."""
+        template = self.get_object()
+        try:
+            created = request_missing(template, request.user)
+        except RequestError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_409_CONFLICT)
+        return Response({"requested": len(created), "request_ids": [str(r.id) for r in created]})
+
+    @action(detail=True, methods=["post"], url_path="unreserve")
+    def unreserve(self, request, pk=None):
+        template = self.get_object()
+        unreserve_bom(template, request.user)
+        return Response(self.get_serializer(template).data)
 
     @action(detail=True, methods=["post"], url_path="scan")
     @transaction.atomic
@@ -1306,6 +1360,8 @@ class TemplateViewSet(viewsets.ModelViewSet):
                     "result": "found",
                     "line_id": str(line.id),
                     "message": "Found in BOM",
+                    # Lets the client highlight the scanned bag, whatever format the code was in.
+                    "resolved_packet_id": str(packet.id) if packet else None,
                 }
             )
 
@@ -1619,6 +1675,59 @@ class TemplateComponentViewSet(viewsets.ModelViewSet):
         if template_id:
             queryset = queryset.filter(template_id=template_id)
         return queryset.order_by("position")
+
+    @action(detail=True, methods=["post"], url_path="transfer")
+    def transfer_parts(self, request, pk=None):
+        """Create or update the open transfer of this line's component into the BOM's warehouse.
+
+        Optional `source_warehouse` (defaults to the warehouse with the most free stock) and
+        `quantity` (defaults to what is missing, capped by what is free there).
+        """
+        line = self.get_object()
+        try:
+            transfer = transfer_line(
+                line,
+                request.user,
+                source_warehouse_id=request.data.get("source_warehouse") or None,
+                quantity=request.data.get("quantity") or None,
+            )
+        except RequestError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_409_CONFLICT)
+        return Response(
+            {
+                "id": str(transfer.id),
+                "quantity": transfer.quantity,
+                "source_warehouse": str(transfer.source_warehouse_id),
+                "source_warehouse_name": transfer.source_warehouse.full_path,
+                "target_location_name": transfer.target_location.full_path,
+            }
+        )
+
+    @action(detail=True, methods=["post"], url_path="request")
+    def request_parts(self, request, pk=None):
+        """Create or update the open purchase request for what this line is missing.
+
+        Optional `quantity` (defaults to the shortage in the BOM's warehouse minus what is already
+        ordered) and `target_location` (defaults to the BOM's warehouse).
+        """
+        line = self.get_object()
+        try:
+            purchase_request = request_line(
+                line,
+                request.user,
+                quantity=request.data.get("quantity") or None,
+                target_location_id=request.data.get("target_location") or None,
+            )
+        except RequestError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_409_CONFLICT)
+        return Response(
+            {
+                "id": str(purchase_request.id),
+                "quantity": purchase_request.quantity,
+                "target_location": str(purchase_request.target_location_id) if purchase_request.target_location_id else None,
+                "target_location_name": purchase_request.target_location.full_path if purchase_request.target_location else None,
+            }
+        )
 
     def _ensure_editable(self, template: Template):
         if template.status in CLOSED_TEMPLATE_STATUSES:

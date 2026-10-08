@@ -6,7 +6,6 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronUp,
-  CircleSlash,
   CornerDownRight,
   Download,
   Eye,
@@ -20,12 +19,20 @@ import {
   Loader2,
   Lock,
   MapPin,
+  MoreHorizontal,
   Package,
   Pencil,
   RefreshCw,
   ScanLine,
+  Crosshair,
+  PackageCheck,
+  ArrowRightLeft,
+  Home,
+  Truck,
+  ShoppingCart,
   Trash2,
   Upload,
+  Warehouse,
 } from "lucide-react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { toast } from "sonner"
@@ -35,7 +42,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ComponentInfoPopover } from "@/components/ComponentInfoPopover"
 import { ComponentSearchSheet, type SearchComponentItem } from "@/components/ComponentSearchSheet"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { PacketRef } from "@/components/PacketRef"
+import { RequestComponentSheet } from "@/components/RequestComponentSheet"
 import { PacketSelectSheet, type PacketLineProgress, type PacketSelectItem } from "@/components/PacketSelectSheet"
 import { ScanActionDialog, type ScanActionTarget } from "@/components/ScanActionDialog"
 import { Input } from "@/components/ui/input"
@@ -177,6 +196,7 @@ type ScanResponse = {
     id: string
     name: string
   }
+  resolved_packet_id?: string | null
 }
 
 type BomItem = {
@@ -198,6 +218,10 @@ type BomItem = {
   ibom_updated_at?: string | null
   components_count?: number
   components?: BomRow[]
+  stock_warehouse?: string | null
+  stock_warehouse_name?: string | null
+  reserved?: boolean
+  reserved_at?: string | null
   created_at: string
 }
 
@@ -227,7 +251,29 @@ type AvailabilityRow = {
     location: string
     quantity: number
     in_home?: boolean
+    warehouse_id?: string | null
   }>
+  placed_total?: number
+  remaining?: number
+  here?: {
+    warehouse_id: string | null
+    on_hand: number
+    reserved_by_others: number
+    reserved_by_this_line: number
+    free: number
+    incoming?: number
+  } | null
+  elsewhere?: Array<{ warehouse_id: string; free: number }>
+  status?: "ok" | "incoming" | "elsewhere" | "missing" | "unlinked"
+  requested?: {
+    open_id: string | null
+    open_quantity: number
+    ordered_quantity: number
+    target_location_id: string | null
+    target_location_name: string | null
+    transfer_quantity?: number
+    transfers?: Array<{ id: string; quantity: number; source_warehouse_id: string; source_warehouse_name: string }>
+  } | null
   shortage: boolean
   unlinked: boolean
 }
@@ -236,6 +282,9 @@ type AvailabilityResponse = {
   bom_id: string
   qty_planned: number
   home_location_full_path?: string | null
+  warehouse_id?: string | null
+  warehouses?: Array<{ id: string; name: string; full_path: string }>
+  reserved?: boolean
   rows: AvailabilityRow[]
 }
 
@@ -287,26 +336,6 @@ type PendingNotInBomConfirmation = {
   barcode: string
   componentName?: string | null
   componentId?: string | null
-}
-
-type ReservationSource = {
-  type: string
-  bom_id?: string
-  line_id?: string
-  product_id?: string
-}
-
-type Reservation = {
-  id: string
-  component_id: string
-  component_name: string
-  quantity: number
-  priority?: number | null
-  description?: string | null
-  sources?: ReservationSource[] | null
-  reserved_by?: string | null
-  reservation_date: string
-  created_at: string
 }
 
 const unwrap = <T,>(data: T[] | Paginated<T> | undefined): T[] => {
@@ -799,6 +828,18 @@ function ImportSourceRow({
 }
 
 /** One icon button inside a BOM row's action group. */
+/** Small value with an explanatory tooltip, used in the BOM stock cell. */
+function StockTip({ tip, children }: { tip: ReactNode; children: ReactNode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="cursor-help">{children}</span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs text-xs">{tip}</TooltipContent>
+    </Tooltip>
+  )
+}
+
 function BomLineAction({
   title,
   onClick,
@@ -882,6 +923,13 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
   const [newLineValue, setNewLineValue] = useState("")
   const [newLineFootprint, setNewLineFootprint] = useState("")
   const [newLineQty, setNewLineQty] = useState("1")
+  const [requestTarget, setRequestTarget] = useState<{
+    lineId: string
+    componentId: string
+    componentName: string
+    quantity: number
+    targetLocation: string | null
+  } | null>(null)
   const [linkSheetOpen, setLinkSheetOpen] = useState(false)
   const [linkSheetTarget, setLinkSheetTarget] = useState<LinkSheetTarget | null>(null)
   const [refAssignTarget, setRefAssignTarget] = useState<RefAssignTarget | null>(null)
@@ -1025,29 +1073,6 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     staleTime: 5 * 60 * 1000,
   })
 
-  const { data: reservationsData } = useQuery<Reservation[] | { results: Reservation[] }>({
-    queryKey: ["reservations", "bom", bomId],
-    queryFn: () =>
-      apiFetch<Reservation[] | { results: Reservation[] }>(
-        `/api/v1/store/reservations/?page_size=500&source_type=production&bom_id=${bomId}`,
-      ),
-    enabled: isBomView && !!bomId,
-  })
-
-  const allReservations = useMemo(() => {
-    const raw = reservationsData
-    if (!raw) return []
-    return Array.isArray(raw) ? raw : raw.results || []
-  }, [reservationsData])
-
-  const reservationsForBom = useMemo(() => {
-    if (!bomId) return []
-    return allReservations.filter((r) =>
-      (r.sources || []).some(
-        (s) => s && s.type === "production" && s.bom_id === bomId,
-      ),
-    )
-  }, [bomId, allReservations])
 
 
   useEffect(() => {
@@ -1255,54 +1280,52 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     onError: () => toast.error("Failed to remove BOM line."),
   })
 
-  const invalidateReservations = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ["reservations"] })
-    queryClient.invalidateQueries({ queryKey: ["reservations", "bom", bomId] })
-  }, [queryClient, bomId])
+  const invalidateReservation = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["production-bom", bomId] })
+    queryClient.invalidateQueries({ queryKey: ["production-availability", bomId] })
+    queryClient.invalidateQueries({ queryKey: ["production-product", productId] })
+  }, [queryClient, bomId, productId])
+
+  const setStockWarehouseMutation = useMutation({
+    mutationFn: (stockWarehouse: string) =>
+      apiFetch<BomItem>(`/api/v1/production/templates/${bomId}/`, {
+        method: "PATCH",
+        body: JSON.stringify({ stock_warehouse: stockWarehouse }),
+      }),
+    onSuccess: (bom) => {
+      invalidateReservation()
+      toast.success(`BOM draws parts from ${bom.stock_warehouse_name || "the selected warehouse"}.`)
+    },
+    onError: () => toast.error("Failed to change the BOM warehouse."),
+  })
+
+  const reservationErrorMessage = (err: unknown, fallback: string) =>
+    (err as { data?: { error?: string } } | null)?.data?.error || fallback
 
   const reserveBomMutation = useMutation({
-    mutationFn: async (items: Array<{ component_id: string; quantity: number; lineId: string }>) => {
-      await Promise.all(
-        items.map(({ component_id, quantity, lineId }) =>
-          apiFetch<Reservation>("/api/v1/store/reservations/", {
-            method: "POST",
-            body: JSON.stringify({
-              component_id,
-              quantity,
-              priority: 3,
-              sources: [
-                {
-                  type: "production",
-                  bom_id: bomId,
-                  line_id: lineId,
-                  product_id: productId || undefined,
-                },
-              ],
-            }),
-          }),
-        ),
-      )
+    mutationFn: () =>
+      apiFetch<BomItem>(`/api/v1/production/templates/${bomId}/reserve/`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
+    onSuccess: (bom) => {
+      invalidateReservation()
+      toast.success(`BOM reserved in ${bom.stock_warehouse_name || "its warehouse"}.`)
     },
-    onSuccess: (_, items) => {
-      invalidateReservations()
-      toast.success(`BOM reserved (${items.length} item${items.length === 1 ? "" : "s"}).`)
-    },
-    onError: () => toast.error("Failed to reserve BOM."),
+    onError: (err) => toast.error(reservationErrorMessage(err, "Failed to reserve BOM.")),
   })
 
   const unreserveBomMutation = useMutation({
-    mutationFn: async (ids: string[]) => {
-      await Promise.all(
-        ids.map((id) =>
-          apiFetch(`/api/v1/store/reservation/${id}/`, { method: "DELETE" }),
-        ),
-      )
+    mutationFn: () =>
+      apiFetch<BomItem>(`/api/v1/production/templates/${bomId}/unreserve/`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
+    onSuccess: () => {
+      invalidateReservation()
+      toast.success("BOM unreserved.")
     },
-    onSuccess: (_, ids) => {
-      invalidateReservations()
-      toast.success(`BOM unreserved (${ids.length} item${ids.length === 1 ? "" : "s"} removed).`)
-    },
-    onError: () => toast.error("Failed to unreserve BOM."),
+    onError: (err) => toast.error(reservationErrorMessage(err, "Failed to unreserve BOM.")),
   })
 
   const addLineMutation = useMutation({
@@ -1848,6 +1871,71 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     return map
   }, [availabilityData?.rows])
 
+  /** Pieces a line still has to request: short in the BOM's warehouse and not yet ordered. */
+  const quantityToRequest = (row: AvailabilityRow | undefined) => {
+    if (!row || row.dnp || !row.linked_component || !row.shortage) return 0
+    const remaining = toNumber(row.remaining ?? row.needed_total)
+    const ordered = toNumber(row.requested?.ordered_quantity ?? 0)
+    const transferring = toNumber(row.requested?.transfer_quantity ?? 0)
+    return Math.max(0, Math.ceil(remaining - toNumber(row.in_stock) - ordered - transferring - 1e-9))
+  }
+
+  /** Pieces worth moving here from the warehouse with the most free stock. */
+  const quantityToTransfer = (row: AvailabilityRow | undefined) => {
+    if (!row || row.dnp || !row.linked_component || !row.shortage || !(row.elsewhere?.length)) return 0
+    const best = Math.max(...row.elsewhere.map((other) => toNumber(other.free)))
+    return Math.max(0, Math.min(quantityToRequest(row), best))
+  }
+
+  const transferMutation = useMutation({
+    mutationFn: (lineId: string) =>
+      apiFetch<{ quantity: number; source_warehouse_name: string }>(
+        `/api/v1/production/template-components/${lineId}/transfer/`,
+        { method: "POST", body: JSON.stringify({}) },
+      ),
+    onSuccess: (transfer) => {
+      queryClient.invalidateQueries({ queryKey: ["production-availability", bomId] })
+      queryClient.invalidateQueries({ queryKey: ["transfers"] })
+      toast.success(`Transfer of ${transfer.quantity} from ${transfer.source_warehouse_name} requested.`)
+    },
+    onError: (err) =>
+      toast.error((err as { data?: { error?: string } } | null)?.data?.error || "Failed to request the transfer."),
+  })
+
+  const linesToRequest = useMemo(
+    () =>
+      (availabilityData?.rows || []).filter(
+        (row) => quantityToRequest(row) > toNumber(row.requested?.open_quantity ?? 0),
+      ).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [availabilityData?.rows],
+  )
+
+  const requestMissingMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<{ requested: number }>(`/api/v1/production/templates/${bomId}/request-missing/`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["production-availability", bomId] })
+      queryClient.invalidateQueries({ queryKey: ["purchase-requests"] })
+      toast.success(
+        result.requested
+          ? `Requested ${result.requested} component${result.requested === 1 ? "" : "s"}.`
+          : "Nothing left to request.",
+      )
+    },
+    onError: (err) =>
+      toast.error((err as { data?: { error?: string } } | null)?.data?.error || "Failed to request components."),
+  })
+
+  const warehouseNameById = useMemo(() => {
+    const map = new Map<string, string>()
+    ;(availabilityData?.warehouses || []).forEach((warehouse) => map.set(warehouse.id, warehouse.full_path))
+    return map
+  }, [availabilityData?.warehouses])
+
 
   /**
    * Production rows are grouped per linked component: the backend resolves a scanned bag to a
@@ -2199,11 +2287,12 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
 
 
   const openScanAction = useCallback(
-    (lineId: string, barcode: string) => {
+    (lineId: string, barcode: string, scannedPacketId: string | null = null) => {
       const matchedRow = findScannerRow(lineId)
       focusScannedLine(lineId)
       setScanActionTarget({
         barcode,
+        scannedPacketId,
         lineId,
         componentId: matchedRow?.component || null,
         componentName: matchedRow?.component_name || matchedRow?.value || "Component",
@@ -2270,7 +2359,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
           return
         }
         if (lookup.result === "found" && lookup.line_id) {
-          openScanAction(lookup.line_id, barcode)
+          openScanAction(lookup.line_id, barcode, lookup.resolved_packet_id || null)
           return
         }
 
@@ -2549,6 +2638,14 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
           <span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold", statusBadgeClass(bom.status))}>
             {bom.status}
           </span>
+          {bom.reserved ? (
+            <span
+              className="ml-1 rounded-full bg-sky-100 px-2 py-0.5 text-xs font-semibold text-sky-800"
+              title="This BOM holds the parts it still needs"
+            >
+              Reserved
+            </span>
+          ) : null}
         </TableCell>
         <TableCell className="align-top">
           <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold text-muted-foreground">{bom.qty_planned}x</span>
@@ -3141,59 +3238,67 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                 <option value="component">By component</option>
                               </select>
                               <span className="mx-1 h-6 w-px bg-border" />
-                              {(() => {
-                                const linkedLines = selectedBomComponents.filter(
-                                  (line) => line.component && !line.dnp,
-                                )
-                                const reserveItems = linkedLines.map((line) => {
-                                  const neededTotal =
-                                    line.qty_override_total != null
-                                      ? toNumber(line.qty_override_total)
-                                      : toNumber(line.qty_per_board) * toNumber(selectedBom.qty_planned)
-                                  return {
-                                    component_id: line.component!,
-                                    quantity: neededTotal,
-                                    lineId: line.id,
+                              {(availabilityData?.warehouses?.length ?? 0) > 0 ? (
+                                <label className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+                                  <Warehouse className="h-4 w-4" />
+                                  <select
+                                    value={selectedBom.stock_warehouse || availabilityData?.warehouse_id || ""}
+                                    onChange={(e) => {
+                                      if (e.target.value) setStockWarehouseMutation.mutate(e.target.value)
+                                    }}
+                                    disabled={isBomClosed(selectedBom.status) || setStockWarehouseMutation.isPending}
+                                    className="h-8 rounded-md border border-input bg-background px-2 text-sm text-foreground"
+                                    title="Warehouse this BOM draws its parts from"
+                                  >
+                                    {!selectedBom.stock_warehouse && !availabilityData?.warehouse_id ? (
+                                      <option value="">Choose warehouse…</option>
+                                    ) : null}
+                                    {(availabilityData?.warehouses || []).map((warehouse) => (
+                                      <option key={warehouse.id} value={warehouse.id}>
+                                        {warehouse.full_path}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              ) : null}
+                              {selectedBom.reserved ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => unreserveBomMutation.mutate()}
+                                  disabled={unreserveBomMutation.isPending}
+                                  title="Release the parts this BOM holds"
+                                >
+                                  Unreserve BOM
+                                  {selectedBom.stock_warehouse_name ? ` (${selectedBom.stock_warehouse_name})` : ""}
+                                </Button>
+                              ) : (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => reserveBomMutation.mutate()}
+                                  disabled={
+                                    reserveBomMutation.isPending ||
+                                    isBomClosed(selectedBom.status) ||
+                                    selectedBom.series_kind === "template"
                                   }
-                                })
-                                const isBomReserved = reservationsForBom.length > 0
-                                return isBomReserved ? (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() =>
-                                      unreserveBomMutation.mutate(
-                                        reservationsForBom.map((r) => r.id),
-                                      )
-                                    }
-                                    disabled={
-                                      unreserveBomMutation.isPending ||
-                                      isBomClosed(selectedBom.status)
-                                    }
-                                  >
-                                    Unreserve BOM ({reservationsForBom.length} item
-                                    {reservationsForBom.length === 1 ? "" : "s"})
-                                  </Button>
-                                ) : (
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() =>
-                                      reserveBomMutation.mutate(reserveItems)
-                                    }
-                                    disabled={
-                                      reserveBomMutation.isPending ||
-                                      isBomClosed(selectedBom.status) ||
-                                      reserveItems.length === 0
-                                    }
-                                  >
-                                    Reserve BOM
-                                    {reserveItems.length > 0
-                                      ? ` (${reserveItems.length} item${reserveItems.length === 1 ? "" : "s"})`
-                                      : ""}
-                                  </Button>
-                                )
-                              })()}
+                                  title="Hold the parts this BOM still needs in its warehouse"
+                                >
+                                  Reserve BOM
+                                </Button>
+                              )}
+                              {linesToRequest > 0 && !isBomClosed(selectedBom.status) && selectedBom.series_kind !== "template" ? (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => requestMissingMutation.mutate()}
+                                  disabled={requestMissingMutation.isPending}
+                                  title="File purchase requests for every line short in the BOM's warehouse"
+                                >
+                                  <ShoppingCart className="mr-1.5 h-3.5 w-3.5" />
+                                  Request missing ({linesToRequest})
+                                </Button>
+                              ) : null}
                             </div>
 
                             <div className="grid gap-2 rounded-md border border-border/60 p-3 sm:grid-cols-[1fr_1fr_120px_auto]">
@@ -3214,7 +3319,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                     <TableHead className="h-10 w-[220px] px-3 py-2 align-top">Ref</TableHead>
                                     <TableHead className="h-10 w-[400px] px-3 py-2 align-top">BOM</TableHead>
                                     <TableHead className="h-10 w-[320px] px-3 py-2 align-top">Component</TableHead>
-                                    <TableHead className="h-10 px-3 py-2 align-top">Warehouse</TableHead>
+                                    <TableHead className="h-10 min-w-[220px] px-3 py-2 align-top">Warehouse</TableHead>
                                     <TableHead className="h-10 w-[180px] px-3 py-2 align-top">Actions</TableHead>
                                   </TableRow>
                                 </TableHeader>
@@ -3233,10 +3338,18 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                         : toNumber(line.qty_per_board) * toNumber(selectedBom.qty_planned)
                                     const availabilityRow = availabilityByLineId.get(lineId)
                                     const inStock = availabilityRow ? toNumber(availabilityRow.in_stock) : 0
-                                    const totalQty = availabilityRow ? toNumber(availabilityRow.total_quantity ?? 0) : 0
-                                    const shortageFromApi = availabilityRow ? availabilityRow.shortage : inStock < neededTotal
+                                    const remaining = availabilityRow?.remaining != null ? toNumber(availabilityRow.remaining) : neededTotal
+                                    const placedTotal = toNumber(availabilityRow?.placed_total ?? 0)
+                                    const here = availabilityRow?.here ?? null
+                                    const elsewhere = availabilityRow?.elsewhere ?? []
+                                    const shortageFromApi = availabilityRow ? availabilityRow.shortage : inStock < remaining
                                     const shortage = line.dnp ? false : shortageFromApi
-                                    const isExact = !line.dnp && Math.abs(inStock - neededTotal) < 0.000001
+                                    const coveredElsewhere = shortage && availabilityRow?.status === "elsewhere"
+                                    const coveredIncoming = shortage && availabilityRow?.status === "incoming"
+                                    const isExact = !line.dnp && remaining > 0 && Math.abs(inStock - remaining) < 0.000001
+                                    const hereName = here?.warehouse_id
+                                      ? warehouseNameById.get(here.warehouse_id) || "This warehouse"
+                                      : "All warehouses"
                                     const locations = availabilityRow?.locations || []
                                     return (
                                       <TableRow
@@ -3448,52 +3561,227 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                             "px-3 py-2 align-top",
                                             line.dnp
                                               ? "bg-muted/40"
-                                              : shortage
-                                                ? "bg-rose-100/70"
-                                                : isExact
-                                                  ? "bg-amber-100/70"
-                                                  : "bg-emerald-100/70",
+                                              : coveredElsewhere || coveredIncoming
+                                                ? "bg-orange-100/70"
+                                                : shortage
+                                                  ? "bg-rose-100/70"
+                                                  : isExact
+                                                    ? "bg-amber-100/70"
+                                                    : "bg-emerald-100/70",
                                           )}
                                         >
                                           <div className="space-y-1.5 text-[12px]">
-                                            <div className="flex items-center gap-1.5">
-                                              <Package className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                                              <span className={cn("font-semibold", line.dnp ? "text-muted-foreground" : shortage ? "text-rose-700" : isExact ? "text-amber-800" : "text-emerald-800")}>
-                                                {inStock} / {neededTotal}
-                                              </span>
-                                              <span className="text-muted-foreground">
-                                                {line.dnp ? "DNP" : shortage ? "Shortage" : isExact ? "Exact" : "In stock"}
+                                            <div className="flex items-center gap-3">
+                                              <StockTip tip={`Available for this line in ${hereName}: on hand minus what others reserve`}>
+                                                <span
+                                                  className={cn(
+                                                    "inline-flex items-center gap-1 text-lg font-bold leading-none",
+                                                    line.dnp
+                                                      ? "text-muted-foreground"
+                                                      : coveredElsewhere || coveredIncoming
+                                                        ? "text-orange-800"
+                                                        : shortage
+                                                          ? "text-rose-700"
+                                                          : isExact
+                                                            ? "text-amber-800"
+                                                            : "text-emerald-800",
+                                                  )}
+                                                >
+                                                  <PackageCheck className="h-4 w-4" />
+                                                  {inStock}
+                                                </span>
+                                              </StockTip>
+                                              <StockTip
+                                                tip={
+                                                  placedTotal > 0
+                                                    ? `Still needed (${placedTotal} of ${neededTotal} already placed)`
+                                                    : "Needed for this line"
+                                                }
+                                              >
+                                                <span className="inline-flex items-center gap-1 text-sm font-semibold text-foreground">
+                                                  <Crosshair className="h-3.5 w-3.5 text-muted-foreground" />
+                                                  {remaining}
+                                                </span>
+                                              </StockTip>
+                                              <span className="ml-auto text-[11px] text-muted-foreground">
+                                                {line.dnp
+                                                  ? "DNP"
+                                                  : coveredIncoming
+                                                    ? "Incoming"
+                                                    : coveredElsewhere
+                                                      ? "Other warehouse"
+                                                      : shortage
+                                                        ? "Missing"
+                                                        : isExact
+                                                          ? "Exact"
+                                                          : "OK"}
                                               </span>
                                             </div>
-                                            {availabilityData?.home_location_full_path != null && availabilityRow && availabilityRow.total_in_home != null ? (
-                                              <div className="flex items-start gap-1.5">
-                                                <MapPin className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />
-                                                <span className="text-muted-foreground">
-                                                  In <strong className="text-foreground">{availabilityData.home_location_full_path}</strong>: <strong className="text-foreground">{availabilityRow.total_in_home}</strong> total
-                                                </span>
+                                            {here ? (
+                                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground">
+                                                <StockTip tip="Warehouse this BOM draws from">
+                                                  <span className="inline-flex items-center gap-0.5 font-medium text-foreground">
+                                                    <Warehouse className="h-3 w-3" />
+                                                    {hereName}
+                                                  </span>
+                                                </StockTip>
+                                                <StockTip tip={`On hand in ${hereName}`}>
+                                                  <span className="inline-flex items-center gap-0.5">
+                                                    <Package className="h-3 w-3" />
+                                                    {here.on_hand}
+                                                  </span>
+                                                </StockTip>
+                                                {here.reserved_by_others + here.reserved_by_this_line > 0 ? (
+                                                  <StockTip
+                                                    tip={`Reserved in ${hereName} in total: ${here.reserved_by_others} by others (BOMs, manual reservations, transfers)${
+                                                      here.reserved_by_this_line > 0 ? `, ${here.reserved_by_this_line} by this BOM` : ""
+                                                    }`}
+                                                  >
+                                                    <span className="inline-flex items-center gap-0.5">
+                                                      <Lock className="h-3 w-3" />
+                                                      {here.reserved_by_others + here.reserved_by_this_line}
+                                                    </span>
+                                                  </StockTip>
+                                                ) : null}
+                                                {(here.incoming ?? 0) > 0 ? (
+                                                  <StockTip tip={`On its way to ${hereName}: ordered purchases and open transfers`}>
+                                                    <span className="inline-flex items-center gap-0.5 text-sky-800">
+                                                      <Truck className="h-3 w-3" />
+                                                      {here.incoming}
+                                                    </span>
+                                                  </StockTip>
+                                                ) : null}
+                                                {locations.length > 0 ? (
+                                                  <StockTip
+                                                    tip={
+                                                      <span className="block space-y-0.5">
+                                                        {locations.map((loc) => (
+                                                          <span key={loc.packet_id} className="block">
+                                                            {loc.location}: {loc.quantity}
+                                                          </span>
+                                                        ))}
+                                                      </span>
+                                                    }
+                                                  >
+                                                    <span className="inline-flex items-center gap-0.5">
+                                                      <MapPin className="h-3 w-3" />
+                                                      {locations.length}
+                                                    </span>
+                                                  </StockTip>
+                                                ) : null}
+                                              </div>
+                                            ) : line.component ? (
+                                              <p className="text-muted-foreground">No stock</p>
+                                            ) : null}
+                                            {elsewhere.length > 0 ? (
+                                              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground">
+                                                {elsewhere.map((other) => (
+                                                  <StockTip
+                                                    key={other.warehouse_id}
+                                                    tip="Free in another warehouse. Not counted here, needs a transfer."
+                                                  >
+                                                    <span className="inline-flex items-center gap-0.5">
+                                                      <ArrowRightLeft className="h-3 w-3" />
+                                                      {warehouseNameById.get(other.warehouse_id) || "Other"} {other.free}
+                                                    </span>
+                                                  </StockTip>
+                                                ))}
                                               </div>
                                             ) : null}
-                                            <div className="flex items-start gap-1.5">
-                                              <Package className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />
-                                              <span className="text-muted-foreground">
-                                                {totalQty > 0 ? (
-                                                  <>All: <strong className="text-foreground">{totalQty}</strong> total, <strong className="text-foreground">{inStock}</strong> available</>
-                                                ) : (
-                                                  "No stock"
-                                                )}
-                                              </span>
-                                            </div>
-                                            {locations.length > 0 ? (
-                                              <div className="flex items-start gap-1.5">
-                                                <MapPin className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />
-                                                <span className="text-muted-foreground">
-                                                  {locations.map((loc) => (
-                                                    <span key={loc.packet_id} className="block">
-                                                      {loc.location}: <strong className="text-foreground">{loc.quantity}</strong>
+                                            {availabilityRow?.requested &&
+                                            (availabilityRow.requested.open_quantity > 0 ||
+                                              availabilityRow.requested.ordered_quantity > 0 ||
+                                              (availabilityRow.requested.transfer_quantity ?? 0) > 0) ? (
+                                              <div className="flex flex-wrap items-center gap-x-2 text-sky-800">
+                                                {(availabilityRow.requested.transfers || []).map((transfer) => (
+                                                  <StockTip
+                                                    key={transfer.id}
+                                                    tip={`Open transfer from ${transfer.source_warehouse_name}. Mark it done on the Transfers page once the packets are moved.`}
+                                                  >
+                                                    <Link to="/store/transfer" className="inline-flex items-center gap-0.5 hover:underline">
+                                                      <ArrowRightLeft className="h-3 w-3" />
+                                                      {transfer.quantity}
+                                                    </Link>
+                                                  </StockTip>
+                                                ))}
+                                                {availabilityRow.requested.open_quantity > 0 ? (
+                                                  <StockTip
+                                                    tip={`Requested for purchase${
+                                                      availabilityRow.requested.target_location_name
+                                                        ? `, to ${availabilityRow.requested.target_location_name}`
+                                                        : ""
+                                                    }`}
+                                                  >
+                                                    <span className="inline-flex items-center gap-0.5">
+                                                      <ShoppingCart className="h-3 w-3" />
+                                                      {availabilityRow.requested.open_quantity}
                                                     </span>
-                                                  ))}
-                                                </span>
+                                                  </StockTip>
+                                                ) : null}
+                                                {availabilityRow.requested.ordered_quantity > 0 ? (
+                                                  <StockTip tip="Already on a purchase order">
+                                                    <span className="inline-flex items-center gap-0.5">
+                                                      <Truck className="h-3 w-3" />
+                                                      {availabilityRow.requested.ordered_quantity}
+                                                    </span>
+                                                  </StockTip>
+                                                ) : null}
                                               </div>
+                                            ) : null}
+                                            {availabilityData?.home_location_full_path != null &&
+                                            availabilityRow?.total_in_home != null ? (
+                                              <StockTip tip={`In your home location ${availabilityData.home_location_full_path}`}>
+                                                <span className="inline-flex items-center gap-0.5 text-muted-foreground">
+                                                  <Home className="h-3 w-3" />
+                                                  {availabilityRow.total_in_home}
+                                                </span>
+                                              </StockTip>
+                                            ) : null}
+                                            {quantityToTransfer(availabilityRow) > 0 &&
+                                            !isBomClosed(selectedBom.status) &&
+                                            selectedBom.series_kind !== "template" &&
+                                            selectedBom.stock_warehouse ? (
+                                              <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="mr-1 h-7 bg-background px-2 text-xs"
+                                                disabled={transferMutation.isPending}
+                                                onClick={() => transferMutation.mutate(lineId)}
+                                                title="Hold the parts in the other warehouse and list them on the Transfers page"
+                                              >
+                                                <ArrowRightLeft className="mr-1 h-3 w-3" />
+                                                Transfer {quantityToTransfer(availabilityRow)}
+                                              </Button>
+                                            ) : null}
+                                            {quantityToRequest(availabilityRow) >
+                                              toNumber(availabilityRow?.requested?.open_quantity ?? 0) &&
+                                            line.component &&
+                                            !isBomClosed(selectedBom.status) &&
+                                            selectedBom.series_kind !== "template" ? (
+                                              <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-7 bg-background px-2 text-xs"
+                                                onClick={() =>
+                                                  setRequestTarget({
+                                                    lineId,
+                                                    componentId: line.component!,
+                                                    componentName:
+                                                      line.component_detail?.name || line.component_name || "Component",
+                                                    quantity: quantityToRequest(availabilityRow),
+                                                    targetLocation:
+                                                      availabilityRow?.requested?.target_location_id ||
+                                                      selectedBom.stock_warehouse ||
+                                                      availabilityData?.warehouse_id ||
+                                                      null,
+                                                  })
+                                                }
+                                              >
+                                                <ShoppingCart className="mr-1 h-3 w-3" />
+                                                {availabilityRow?.requested?.open_id
+                                                  ? "Update request"
+                                                  : `Request ${quantityToRequest(availabilityRow)}`}
+                                              </Button>
                                             ) : null}
                                           </div>
                                         </TableCell>
@@ -3528,78 +3816,91 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                             >
                                               <Link2 className="h-3.5 w-3.5" />
                                             </BomLineAction>
-                                            {line.component ? (
-                                              <BomLineAction
-                                                title="Unlink the component"
-                                                disabled={isBomClosed(selectedBom.status)}
-                                                onClick={() =>
-                                                  updateLineMutation.mutate({
-                                                    lineId,
-                                                    payload: { component: null },
-                                                  })
-                                                }
-                                              >
-                                                <Link2Off className="h-3.5 w-3.5" />
-                                              </BomLineAction>
-                                            ) : null}
-                                            <BomLineAction
-                                              title={line.dnp ? "Marked DNP — click to clear" : "Mark as DNP"}
-                                              active={line.dnp}
-                                              disabled={isBomClosed(selectedBom.status)}
-                                              onClick={() =>
-                                                updateLineMutation.mutate({
-                                                  lineId,
-                                                  payload: { dnp: !line.dnp },
-                                                })
-                                              }
-                                            >
-                                              <CircleSlash className="h-3.5 w-3.5" />
-                                            </BomLineAction>
-                                            <BomLineAction
-                                              title={
-                                                line.exclude_from_bom
-                                                  ? "Excluded from BOM — click to include"
-                                                  : "Exclude from BOM"
-                                              }
-                                              active={line.exclude_from_bom}
-                                              disabled={isBomClosed(selectedBom.status)}
-                                              onClick={() =>
-                                                updateLineMutation.mutate({
-                                                  lineId,
-                                                  payload: { exclude_from_bom: !line.exclude_from_bom },
-                                                })
-                                              }
-                                            >
-                                              <EyeOff className="h-3.5 w-3.5" />
-                                            </BomLineAction>
-                                            <BomLineAction
-                                              title={`PCB side: ${line.side === "both" ? "both" : line.side} — click to change`}
-                                              active={line.side !== "both"}
-                                              disabled={isBomClosed(selectedBom.status)}
-                                              onClick={() => {
-                                                const next = line.side === "both" ? "top" : line.side === "top" ? "bottom" : "both"
-                                                updateLineMutation.mutate({
-                                                  lineId,
-                                                  payload: { side: next },
-                                                })
-                                              }}
-                                            >
-                                              <span className="text-[10px] font-semibold leading-none">
-                                                {line.side === "top" ? "T" : line.side === "bottom" ? "B" : "—"}
-                                              </span>
-                                            </BomLineAction>
-                                            <BomLineAction
-                                              title="Delete this BOM line"
-                                              destructive
-                                              disabled={isBomClosed(selectedBom.status)}
-                                              onClick={() => {
-                                                if (!window.confirm("Delete this BOM line?")) return
-                                                deleteLineMutation.mutate(lineId)
-                                              }}
-                                            >
-                                              <Trash2 className="h-3.5 w-3.5" />
-                                            </BomLineAction>
+                                            <DropdownMenu>
+                                              <DropdownMenuTrigger asChild>
+                                                <button
+                                                  type="button"
+                                                  title="More actions"
+                                                  aria-label="More actions"
+                                                  disabled={isBomClosed(selectedBom.status)}
+                                                  className="inline-flex h-7 w-7 items-center justify-center rounded-r-[5px] hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+                                                >
+                                                  <MoreHorizontal className="h-3.5 w-3.5" />
+                                                </button>
+                                              </DropdownMenuTrigger>
+                                              <DropdownMenuContent align="end" className="w-52">
+                                                {line.component ? (
+                                                  <DropdownMenuItem
+                                                    onSelect={() =>
+                                                      updateLineMutation.mutate({ lineId, payload: { component: null } })
+                                                    }
+                                                  >
+                                                    <Link2Off className="mr-2 h-3.5 w-3.5" />
+                                                    Unlink component
+                                                  </DropdownMenuItem>
+                                                ) : null}
+                                                <DropdownMenuCheckboxItem
+                                                  checked={line.dnp}
+                                                  onCheckedChange={(checked) =>
+                                                    updateLineMutation.mutate({ lineId, payload: { dnp: checked === true } })
+                                                  }
+                                                >
+                                                  Do not populate (DNP)
+                                                </DropdownMenuCheckboxItem>
+                                                <DropdownMenuCheckboxItem
+                                                  checked={line.exclude_from_bom}
+                                                  onCheckedChange={(checked) =>
+                                                    updateLineMutation.mutate({
+                                                      lineId,
+                                                      payload: { exclude_from_bom: checked === true },
+                                                    })
+                                                  }
+                                                >
+                                                  Exclude from BOM
+                                                </DropdownMenuCheckboxItem>
+                                                <DropdownMenuSeparator />
+                                                <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                                                  PCB side
+                                                </DropdownMenuLabel>
+                                                <DropdownMenuRadioGroup
+                                                  value={line.side || "both"}
+                                                  onValueChange={(side) =>
+                                                    updateLineMutation.mutate({ lineId, payload: { side } })
+                                                  }
+                                                >
+                                                  <DropdownMenuRadioItem value="both">Both</DropdownMenuRadioItem>
+                                                  <DropdownMenuRadioItem value="top">Top</DropdownMenuRadioItem>
+                                                  <DropdownMenuRadioItem value="bottom">Bottom</DropdownMenuRadioItem>
+                                                </DropdownMenuRadioGroup>
+                                                <DropdownMenuSeparator />
+                                                <DropdownMenuItem
+                                                  className="text-rose-700 focus:text-rose-700"
+                                                  onSelect={() => {
+                                                    if (!window.confirm("Delete this BOM line?")) return
+                                                    deleteLineMutation.mutate(lineId)
+                                                  }}
+                                                >
+                                                  <Trash2 className="mr-2 h-3.5 w-3.5" />
+                                                  Delete line
+                                                </DropdownMenuItem>
+                                              </DropdownMenuContent>
+                                            </DropdownMenu>
                                           </div>
+                                          {line.dnp || line.exclude_from_bom || (line.side && line.side !== "both") ? (
+                                            <div className="mt-1.5 flex flex-wrap gap-1">
+                                              {line.dnp ? (
+                                                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">DNP</span>
+                                              ) : null}
+                                              {line.exclude_from_bom ? (
+                                                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">Excluded</span>
+                                              ) : null}
+                                              {line.side && line.side !== "both" ? (
+                                                <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                                                  {line.side === "top" ? "Top" : "Bottom"}
+                                                </span>
+                                              ) : null}
+                                            </div>
+                                          ) : null}
                                         </TableCell>
                                       </TableRow>
                                     )
@@ -4192,6 +4493,19 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
           )}
         </div>
       </div>
+
+      <RequestComponentSheet
+        open={requestTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setRequestTarget(null)
+        }}
+        bomLineId={requestTarget?.lineId}
+        componentId={requestTarget?.componentId}
+        componentName={requestTarget?.componentName}
+        defaultQuantity={requestTarget?.quantity}
+        defaultTargetLocation={requestTarget?.targetLocation}
+        context={selectedBom ? `Missing parts for ${selectedBom.name}. Requesting again updates the open request.` : null}
+      />
 
       <ComponentSearchSheet
         open={linkSheetOpen}

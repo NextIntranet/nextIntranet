@@ -15,6 +15,9 @@ export interface PurchaseRequest {
   requested_by_name?: string | null
   purchase_id?: string | null
   folder_id?: string | null
+  target_location?: string | null
+  target_location_name?: string | null
+  source?: { type?: string; bom_id?: string; line_id?: string; production_id?: string } | null
   suppliers?: SupplierSummary[]
   mfpn?: string | null
   matching_supplier_relation_id?: string | null

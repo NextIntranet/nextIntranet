@@ -56,6 +56,16 @@ Purchase requests are wishes to buy something, filed independently of any order.
 a purchase for a supplier, open requests can be attached to it so the wish is tracked through to
 delivery.
 
+A request can name a **target location** — the warehouse or storage position where the parts
+should end up. The **Target** column of the request list shows it, and it can be changed in the
+request detail.
+
+Requests can come straight from a production BOM: **Request** on a line that is short in the
+BOM's warehouse (or **Request missing** for the whole BOM) files a request for the missing
+quantity, targeted at the BOM's warehouse. Such requests link back to the BOM. A line keeps a
+single open request, so requesting again updates it. Requests already attached to a purchase
+count as ordered and are not requested again. See [BOMs](../production/boms.md#requesting-missing-parts).
+
 ## Automation
 
 The whole flow is available over MCP — see [MCP integration](../settings/mcp.md).

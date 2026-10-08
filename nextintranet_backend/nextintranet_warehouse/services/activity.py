@@ -165,3 +165,34 @@ def log_stock_operation_activity(operation):
         before=before,
         after=after,
     )
+
+
+def reservation_snapshot(reservation) -> dict[str, Any]:
+    return {
+        "quantity": reservation.quantity,
+        "warehouse": reservation.warehouse.full_path if reservation.warehouse_id else None,
+        "priority": reservation.priority,
+        "expiration_date": reservation.expiration_date.isoformat() if reservation.expiration_date else None,
+        "description": reservation.description,
+    }
+
+
+def log_reservation(activity_type: str, reservation, user=None, before=None, source: str = "api"):
+    """Record a manual reservation change on the component's activity log."""
+    after = reservation_snapshot(reservation) if activity_type != "reservation_deleted" else {}
+    if before is not None and activity_type == "reservation_updated":
+        before, after = compact_changes(before, after)
+        if not before and not after:
+            return None
+    warehouse = reservation.warehouse.full_path if reservation.warehouse_id else "all warehouses"
+    return log_activity(
+        activity_type=activity_type,
+        source=source,
+        component=reservation.component,
+        user=user if user is not None and getattr(user, "is_authenticated", False) else None,
+        description=f"{reservation.quantity:g} reserved in {warehouse}",
+        metadata={"reservation_id": str(reservation.id)},
+        before=before,
+        after=after,
+    )
+

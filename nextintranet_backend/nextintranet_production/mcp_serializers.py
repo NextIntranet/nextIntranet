@@ -48,13 +48,14 @@ class MCPBomListSerializer(serializers.ModelSerializer):
     production_id = serializers.UUIDField(source="production.id", read_only=True)
     production_name = serializers.CharField(source="production.name", read_only=True)
     lines_count = serializers.SerializerMethodField()
+    reserved = serializers.BooleanField(source="holds_stock", read_only=True)
 
     class Meta:
         model = Template
         fields = [
             "id", "production_id", "production_name", "name", "version",
             "series_kind", "status", "qty_planned", "planned_date",
-            "locked_at", "lines_count", "created_at",
+            "locked_at", "stock_warehouse_id", "reserved", "reserved_at", "lines_count", "created_at",
         ]
 
     def get_lines_count(self, obj):

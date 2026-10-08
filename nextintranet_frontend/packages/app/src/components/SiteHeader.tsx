@@ -22,6 +22,7 @@ const segmentTitleMap: Record<string, string> = {
   supplier: "Suppliers",
   purchase: "Purchases",
   reservations: "Reservations",
+  transfer: "Transfers",
   "purchase-requests": "Requests",
   categories: "Categories",
   component: "Component",
