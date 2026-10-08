@@ -6,7 +6,6 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronUp,
-  CircleSlash,
   CornerDownRight,
   Download,
   Eye,
@@ -20,6 +19,7 @@ import {
   Loader2,
   Lock,
   MapPin,
+  MoreHorizontal,
   Package,
   Pencil,
   RefreshCw,
@@ -36,6 +36,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ComponentInfoPopover } from "@/components/ComponentInfoPopover"
 import { ComponentSearchSheet, type SearchComponentItem } from "@/components/ComponentSearchSheet"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { PacketRef } from "@/components/PacketRef"
 import { PacketSelectSheet, type PacketLineProgress, type PacketSelectItem } from "@/components/PacketSelectSheet"
 import { ScanActionDialog, type ScanActionTarget } from "@/components/ScanActionDialog"
@@ -3577,78 +3588,91 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                             >
                                               <Link2 className="h-3.5 w-3.5" />
                                             </BomLineAction>
-                                            {line.component ? (
-                                              <BomLineAction
-                                                title="Unlink the component"
-                                                disabled={isBomClosed(selectedBom.status)}
-                                                onClick={() =>
-                                                  updateLineMutation.mutate({
-                                                    lineId,
-                                                    payload: { component: null },
-                                                  })
-                                                }
-                                              >
-                                                <Link2Off className="h-3.5 w-3.5" />
-                                              </BomLineAction>
-                                            ) : null}
-                                            <BomLineAction
-                                              title={line.dnp ? "Marked DNP — click to clear" : "Mark as DNP"}
-                                              active={line.dnp}
-                                              disabled={isBomClosed(selectedBom.status)}
-                                              onClick={() =>
-                                                updateLineMutation.mutate({
-                                                  lineId,
-                                                  payload: { dnp: !line.dnp },
-                                                })
-                                              }
-                                            >
-                                              <CircleSlash className="h-3.5 w-3.5" />
-                                            </BomLineAction>
-                                            <BomLineAction
-                                              title={
-                                                line.exclude_from_bom
-                                                  ? "Excluded from BOM — click to include"
-                                                  : "Exclude from BOM"
-                                              }
-                                              active={line.exclude_from_bom}
-                                              disabled={isBomClosed(selectedBom.status)}
-                                              onClick={() =>
-                                                updateLineMutation.mutate({
-                                                  lineId,
-                                                  payload: { exclude_from_bom: !line.exclude_from_bom },
-                                                })
-                                              }
-                                            >
-                                              <EyeOff className="h-3.5 w-3.5" />
-                                            </BomLineAction>
-                                            <BomLineAction
-                                              title={`PCB side: ${line.side === "both" ? "both" : line.side} — click to change`}
-                                              active={line.side !== "both"}
-                                              disabled={isBomClosed(selectedBom.status)}
-                                              onClick={() => {
-                                                const next = line.side === "both" ? "top" : line.side === "top" ? "bottom" : "both"
-                                                updateLineMutation.mutate({
-                                                  lineId,
-                                                  payload: { side: next },
-                                                })
-                                              }}
-                                            >
-                                              <span className="text-[10px] font-semibold leading-none">
-                                                {line.side === "top" ? "T" : line.side === "bottom" ? "B" : "—"}
-                                              </span>
-                                            </BomLineAction>
-                                            <BomLineAction
-                                              title="Delete this BOM line"
-                                              destructive
-                                              disabled={isBomClosed(selectedBom.status)}
-                                              onClick={() => {
-                                                if (!window.confirm("Delete this BOM line?")) return
-                                                deleteLineMutation.mutate(lineId)
-                                              }}
-                                            >
-                                              <Trash2 className="h-3.5 w-3.5" />
-                                            </BomLineAction>
+                                            <DropdownMenu>
+                                              <DropdownMenuTrigger asChild>
+                                                <button
+                                                  type="button"
+                                                  title="More actions"
+                                                  aria-label="More actions"
+                                                  disabled={isBomClosed(selectedBom.status)}
+                                                  className="inline-flex h-7 w-7 items-center justify-center rounded-r-[5px] hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+                                                >
+                                                  <MoreHorizontal className="h-3.5 w-3.5" />
+                                                </button>
+                                              </DropdownMenuTrigger>
+                                              <DropdownMenuContent align="end" className="w-52">
+                                                {line.component ? (
+                                                  <DropdownMenuItem
+                                                    onSelect={() =>
+                                                      updateLineMutation.mutate({ lineId, payload: { component: null } })
+                                                    }
+                                                  >
+                                                    <Link2Off className="mr-2 h-3.5 w-3.5" />
+                                                    Unlink component
+                                                  </DropdownMenuItem>
+                                                ) : null}
+                                                <DropdownMenuCheckboxItem
+                                                  checked={line.dnp}
+                                                  onCheckedChange={(checked) =>
+                                                    updateLineMutation.mutate({ lineId, payload: { dnp: checked === true } })
+                                                  }
+                                                >
+                                                  Do not populate (DNP)
+                                                </DropdownMenuCheckboxItem>
+                                                <DropdownMenuCheckboxItem
+                                                  checked={line.exclude_from_bom}
+                                                  onCheckedChange={(checked) =>
+                                                    updateLineMutation.mutate({
+                                                      lineId,
+                                                      payload: { exclude_from_bom: checked === true },
+                                                    })
+                                                  }
+                                                >
+                                                  Exclude from BOM
+                                                </DropdownMenuCheckboxItem>
+                                                <DropdownMenuSeparator />
+                                                <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                                                  PCB side
+                                                </DropdownMenuLabel>
+                                                <DropdownMenuRadioGroup
+                                                  value={line.side || "both"}
+                                                  onValueChange={(side) =>
+                                                    updateLineMutation.mutate({ lineId, payload: { side } })
+                                                  }
+                                                >
+                                                  <DropdownMenuRadioItem value="both">Both</DropdownMenuRadioItem>
+                                                  <DropdownMenuRadioItem value="top">Top</DropdownMenuRadioItem>
+                                                  <DropdownMenuRadioItem value="bottom">Bottom</DropdownMenuRadioItem>
+                                                </DropdownMenuRadioGroup>
+                                                <DropdownMenuSeparator />
+                                                <DropdownMenuItem
+                                                  className="text-rose-700 focus:text-rose-700"
+                                                  onSelect={() => {
+                                                    if (!window.confirm("Delete this BOM line?")) return
+                                                    deleteLineMutation.mutate(lineId)
+                                                  }}
+                                                >
+                                                  <Trash2 className="mr-2 h-3.5 w-3.5" />
+                                                  Delete line
+                                                </DropdownMenuItem>
+                                              </DropdownMenuContent>
+                                            </DropdownMenu>
                                           </div>
+                                          {line.dnp || line.exclude_from_bom || (line.side && line.side !== "both") ? (
+                                            <div className="mt-1.5 flex flex-wrap gap-1">
+                                              {line.dnp ? (
+                                                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">DNP</span>
+                                              ) : null}
+                                              {line.exclude_from_bom ? (
+                                                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">Excluded</span>
+                                              ) : null}
+                                              {line.side && line.side !== "both" ? (
+                                                <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                                                  {line.side === "top" ? "Top" : "Bottom"}
+                                                </span>
+                                              ) : null}
+                                            </div>
+                                          ) : null}
                                         </TableCell>
                                       </TableRow>
                                     )
