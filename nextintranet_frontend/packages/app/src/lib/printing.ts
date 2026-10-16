@@ -46,23 +46,22 @@ export const resolveFileUrl = (fileUrl: string) => {
   return `${base}${suffix}`
 }
 
-// Presigned S3 URLs carry their own signature; an extra Authorization
-// header makes the object store reject the request.
-const isPresignedUrl = (fileUrl: string) => /[?&](X-Amz-Signature|X-Amz-Credential|Signature)=/i.test(fileUrl)
-
+// Only Django API URLs take the bearer token. Object storage (/s3/...) must
+// not get an Authorization header, otherwise it rejects the request.
 export const isInternalUrl = (fileUrl: string) => {
-  if (isPresignedUrl(fileUrl)) {
-    return false
-  }
-  if (!fileUrl.startsWith("http")) {
-    return true
-  }
-  const apiBaseUrl = getApiConfig().baseUrl
-  if (!apiBaseUrl) {
-    return false
-  }
+  const apiBaseUrl = getApiConfig().baseUrl || window.location.origin
   const base = apiBaseUrl.endsWith("/") ? apiBaseUrl.slice(0, -1) : apiBaseUrl
-  return fileUrl.startsWith(base)
+  let path: string
+  if (fileUrl.startsWith("http")) {
+    if (!fileUrl.startsWith(base)) {
+      return false
+    }
+    path = fileUrl.slice(base.length)
+  } else {
+    path = fileUrl
+  }
+  path = path.startsWith("/") ? path : `/${path}`
+  return path.startsWith("/api/")
 }
 
 export const pollRenderJob = async (jobId: string) => {
