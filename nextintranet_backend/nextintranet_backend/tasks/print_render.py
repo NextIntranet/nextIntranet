@@ -132,7 +132,7 @@ def _build_format_params(payload):
     defaults = FORMAT_DEFAULTS.get(format_type, FORMAT_DEFAULTS["single"])
     params = {
         "skip_labels": int(payload.get("skip_labels", 0)),
-        "show_borders": bool(payload.get("show_borders", True)),
+        "show_borders": bool(payload.get("show_borders", False)),
         "color_mode": payload.get("color_mode", "color"),
     }
     for key, default in defaults.items():

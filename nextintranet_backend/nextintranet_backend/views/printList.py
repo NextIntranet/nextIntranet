@@ -42,10 +42,10 @@ class PrintApi(APIView):
         print(f"Received data: {data}")
         items = data.get('items', [])
         
-        # Get format parameters - default show_borders to True
+        # Get format parameters - borders are off by default
         format_type = data.get('format', 'single')
         skip_labels = data.get('skip_labels', 0)
-        show_borders = data.get('show_borders', True)  # Default to showing borders
+        show_borders = data.get('show_borders', False)
         color_mode = data.get('color_mode', 'color')
 
         print(f"Format type: {format_type}")

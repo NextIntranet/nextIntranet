@@ -42,7 +42,7 @@ class LabelGeneratorFactory:
         # Get common parameters with explicit default for show_borders
         color_mode = kwargs.get('color_mode', 'color')
         skip_labels = kwargs.get('skip_labels', 0)
-        show_borders = kwargs.get('show_borders', True) # Default to True to ensure borders are visible
+        show_borders = kwargs.get('show_borders', False)
         
         # Page margins
         page_margin_left = kwargs.get('page_margin_left', 0)

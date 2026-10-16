@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { apiFetch, getApiConfig, nextIO, tokenStorage } from "@nextintranet/core"
+import { apiFetch, nextIO } from "@nextintranet/core"
 import type { AgentConfig } from "@nextintranet/core"
 import { toast } from "sonner"
 
@@ -24,6 +24,7 @@ import { ExtensionPoint } from "@/plugins/ExtensionPoint"
 import { PdfPrintDialog } from "@/components/PdfPrintDialog"
 import { QueueItemTarget } from "@/components/QueueItemTarget"
 import { cn } from "@/lib/utils"
+import { fileAuthHeaders, resolveFileUrl } from "@/lib/printing"
 
 interface AgentPrinter {
   name: string
@@ -272,19 +273,6 @@ export function PrintQueuePage() {
     },
   })
 
-  const resolveFileUrl = (fileUrl: string) => {
-    if (fileUrl.startsWith("http")) {
-      return fileUrl
-    }
-    const apiBaseUrl = getApiConfig().baseUrl
-    if (!apiBaseUrl) {
-      return fileUrl
-    }
-    const base = apiBaseUrl.endsWith("/") ? apiBaseUrl.slice(0, -1) : apiBaseUrl
-    const suffix = fileUrl.startsWith("/") ? fileUrl : `/${fileUrl}`
-    return `${base}${suffix}`
-  }
-
   const pollRenderJob = async (jobId: string) => {
     const maxAttempts = 24
     const delayMs = 1000
@@ -332,8 +320,7 @@ export function PrintQueuePage() {
       const resolvedFileUrl = resolveFileUrl(fileUrl)
       setPrintStatus("Sending job to printer...")
 
-      const token = tokenStorage.getToken()
-      const headers = token ? { Authorization: `Bearer ${token}` } : undefined
+      const headers = fileAuthHeaders(fileUrl)
       const printOptions =
         agentConfig?.print?.options
           && typeof agentConfig.print.options === "object"

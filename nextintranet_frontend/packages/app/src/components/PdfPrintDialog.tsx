@@ -58,7 +58,7 @@ export function PdfPrintDialog({
   const [templateId, setTemplateId] = useState("")
   const [copies, setCopies] = useState(1)
   const [skipLabels, setSkipLabels] = useState(0)
-  const [showBorders, setShowBorders] = useState(true)
+  const [showBorders, setShowBorders] = useState(false)
   const [showLogo, setShowLogo] = useState(true)
   const [colorMode, setColorMode] = useState<"color" | "bw">("color")
   const [generating, setGenerating] = useState(false)

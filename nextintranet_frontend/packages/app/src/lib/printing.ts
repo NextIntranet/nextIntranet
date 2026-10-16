@@ -46,7 +46,14 @@ export const resolveFileUrl = (fileUrl: string) => {
   return `${base}${suffix}`
 }
 
+// Presigned S3 URLs carry their own signature; an extra Authorization
+// header makes the object store reject the request.
+const isPresignedUrl = (fileUrl: string) => /[?&](X-Amz-Signature|X-Amz-Credential|Signature)=/i.test(fileUrl)
+
 export const isInternalUrl = (fileUrl: string) => {
+  if (isPresignedUrl(fileUrl)) {
+    return false
+  }
   if (!fileUrl.startsWith("http")) {
     return true
   }
@@ -75,14 +82,19 @@ export const pollRenderJob = async (jobId: string) => {
 }
 
 /**
+ * Auth headers for fetching a file: only internal API URLs get the bearer token.
+ */
+export const fileAuthHeaders = (fileUrl: string) => {
+  const token = tokenStorage.getToken()
+  return token && isInternalUrl(fileUrl) ? { Authorization: `Bearer ${token}` } : undefined
+}
+
+/**
  * Fetch a (possibly auth-protected) file URL and return it as a Blob.
  */
 export const fetchFileBlob = async (fileUrl: string) => {
   const resolvedUrl = resolveFileUrl(fileUrl)
-  const token = tokenStorage.getToken()
-  const headers =
-    token && isInternalUrl(fileUrl) ? { Authorization: `Bearer ${token}` } : undefined
-  const response = await fetch(resolvedUrl, { headers })
+  const response = await fetch(resolvedUrl, { headers: fileAuthHeaders(fileUrl) })
   if (!response.ok) {
     throw new Error(`Failed to fetch file (${response.status}).`)
   }

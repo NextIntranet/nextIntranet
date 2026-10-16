@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { apiFetch, getApiConfig, nextIO, tokenStorage } from "@nextintranet/core"
+import { apiFetch, nextIO } from "@nextintranet/core"
 import { ChevronDown, FileText, ListPlus, Printer } from "lucide-react"
 import { toast } from "sonner"
 
@@ -18,7 +18,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { cn } from "@/lib/utils"
 import { useAddToPrintQueue } from "@/hooks/useAddToPrintQueue"
 import { PdfPrintDialog } from "@/components/PdfPrintDialog"
-import { fetchLabelTemplates, templatesForFormat } from "@/lib/printing"
+import {
+  fetchLabelTemplates,
+  fileAuthHeaders,
+  resolveFileUrl,
+  templatesForFormat,
+} from "@/lib/printing"
 
 import type { AgentConfig } from "@nextintranet/core"
 
@@ -50,31 +55,6 @@ type PrintActionsProps = {
   label?: string
   className?: string
   compact?: boolean
-}
-
-const resolveFileUrl = (fileUrl: string) => {
-  if (fileUrl.startsWith("http")) {
-    return fileUrl
-  }
-  const apiBaseUrl = getApiConfig().baseUrl
-  if (!apiBaseUrl) {
-    return fileUrl
-  }
-  const base = apiBaseUrl.endsWith("/") ? apiBaseUrl.slice(0, -1) : apiBaseUrl
-  const suffix = fileUrl.startsWith("/") ? fileUrl : `/${fileUrl}`
-  return `${base}${suffix}`
-}
-
-const isInternalUrl = (fileUrl: string) => {
-  if (!fileUrl.startsWith("http")) {
-    return true
-  }
-  const apiBaseUrl = getApiConfig().baseUrl
-  if (!apiBaseUrl) {
-    return false
-  }
-  const base = apiBaseUrl.endsWith("/") ? apiBaseUrl.slice(0, -1) : apiBaseUrl
-  return fileUrl.startsWith(base)
 }
 
 const inferFileName = (url: string, fallback: string) => {
@@ -240,10 +220,7 @@ export function PrintActions({
     setQueuePending(true)
     try {
       const resolvedUrl = resolveFileUrl(documentUrl)
-      const token = tokenStorage.getToken()
-      const headers =
-        token && isInternalUrl(documentUrl) ? { Authorization: `Bearer ${token}` } : undefined
-      const response = await fetch(resolvedUrl, { headers })
+      const response = await fetch(resolvedUrl, { headers: fileAuthHeaders(documentUrl) })
       if (!response.ok) {
         throw new Error(`Failed to fetch document (${response.status}).`)
       }
@@ -327,7 +304,6 @@ export function PrintActions({
     setPrinting(true)
     let itemId = ""
     try {
-      const token = tokenStorage.getToken()
       const printOptions =
         agentConfig?.print?.options
           && typeof agentConfig.print.options === "object"
@@ -342,8 +318,7 @@ export function PrintActions({
           return
         }
         const resolvedFileUrl = resolveFileUrl(documentUrl)
-        const headers =
-          token && isInternalUrl(documentUrl) ? { Authorization: `Bearer ${token}` } : undefined
+        const headers = fileAuthHeaders(documentUrl)
         await nextIO.print.submitJob({
           agentId: selectedAgentId,
           printer: selectedPrinter,
@@ -388,7 +363,7 @@ export function PrintActions({
 
         const fileUrl = await pollRenderJob(renderJob.id)
         const resolvedFileUrl = resolveFileUrl(fileUrl)
-        const headers = token ? { Authorization: `Bearer ${token}` } : undefined
+        const headers = fileAuthHeaders(fileUrl)
 
         const titlePrefix =
           targetType === "location"
