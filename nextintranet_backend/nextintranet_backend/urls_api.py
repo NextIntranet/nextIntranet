@@ -26,6 +26,7 @@ from .views.serviceToken import ServiceTokenRouter
 from .views.branding import BrandingSettingsView, pwa_manifest_view
 from .views.labelTemplate import LabelTemplateRouter, LabelTemplatePreviewView
 from .views.version import VersionView
+from .views.notes import AttachmentViewSet, NoteViewSet, UserLookupView
 
 
 from .schema import schema
@@ -41,6 +42,8 @@ from nextintranet_production import urls_api as production_api_urls
 
 CoreRouter = DefaultRouter()
 CoreRouter.register(r'users', user.UserAdminViewSet, basename='core-users')
+CoreRouter.register(r'notes', NoteViewSet, basename='core-notes')
+CoreRouter.register(r'attachments', AttachmentViewSet, basename='core-attachments')
 
 
 kicad_urlpatterns = [
@@ -67,6 +70,7 @@ urlpatterns = [
     path('v1/dashboard/', DashboardMetricsAPIView.as_view(), name='api-dashboard'),
     path('v1/search/', SearchApiView.as_view(), name='api-search'),
     path('v1/core/identifier/', identifier.IdentifierApiView.as_view(), name='identifier'),
+    path('v1/core/users/lookup/', UserLookupView.as_view(), name='core-users-lookup'),
     path('v1/core/', include(CoreRouter.urls)),
     path('v1/store/', include(warehouse_api_urls)),
     path('v1/production/', include(production_api_urls)),

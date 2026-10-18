@@ -18,6 +18,7 @@ Each user can have at most one permission row per area:
 | `warehouse` | Catalog browsing, reservations, purchase requests, component documents |
 | `warehouse-operations` | Purchases (viewing/building orders) |
 | `user` | Managing other users' accounts and permissions |
+| `production` | `admin` lets a user edit the name, description and planned date of a locked or finished BOM series |
 
 Levels, from lowest to highest:
 

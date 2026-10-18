@@ -50,3 +50,28 @@ class PluginInstanceAdmin(admin.ModelAdmin):
 
 
 admin.site.register(PluginInstance, PluginInstanceAdmin)
+
+
+from ..models.note import Note, NoteMention, Attachment
+
+
+class NoteMentionInline(admin.TabularInline):
+    model = NoteMention
+    extra = 0
+
+
+class NoteAdmin(admin.ModelAdmin):
+    list_display = ("id", "content_type", "object_id", "author", "created_at", "edited_at")
+    list_filter = ("content_type",)
+    search_fields = ("body", "object_id", "author__username")
+    inlines = (NoteMentionInline,)
+
+
+class AttachmentAdmin(admin.ModelAdmin):
+    list_display = ("original_name", "kind", "content_type", "object_id", "uploaded_by", "created_at")
+    list_filter = ("kind", "content_type")
+    search_fields = ("original_name", "caption", "object_id")
+
+
+admin.site.register(Note, NoteAdmin)
+admin.site.register(Attachment, AttachmentAdmin)

@@ -167,6 +167,7 @@ function ProductionRow({ item, depth, active, canEdit, onNavigate, onRenameProdu
   return (
     <div
       ref={setNodeRef}
+      data-production-id={item.id}
       className={cn(
         "group flex items-center gap-1 rounded-md py-1 pr-1 hover:bg-muted",
         active && "bg-muted font-medium",
