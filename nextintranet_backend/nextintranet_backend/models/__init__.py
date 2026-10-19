@@ -17,3 +17,6 @@ class NIModel(models.Model):
 
     class Meta:
         abstract = True
+
+
+from .note import Note, NoteMention, Attachment  # noqa: E402,F401

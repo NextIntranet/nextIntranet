@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-17T14:23:02.832Z",
+  "generatedAt": "2026-10-18T13:08:55.261Z",
   "pages": [
     {
       "path": "",
@@ -384,8 +384,18 @@
         },
         {
           "level": 2,
+          "text": "Reserving a BOM",
+          "id": "reserving-a-bom"
+        },
+        {
+          "level": 2,
           "text": "Availability",
           "id": "availability"
+        },
+        {
+          "level": 2,
+          "text": "Requesting missing parts",
+          "id": "requesting-missing-parts"
         },
         {
           "level": 2,
@@ -450,6 +460,50 @@
           "level": 2,
           "text": "Related topics",
           "id": "related-topics"
+        }
+      ]
+    },
+    {
+      "path": "guide/production/overview",
+      "file": "guide/production/overview.md",
+      "title": "Production overview",
+      "description": "The Overview tab of a BOM series — statistics, material cost, source files, photos, notes and PDF exports.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "Production overview",
+          "id": "production-overview"
+        },
+        {
+          "level": 2,
+          "text": "Statistics",
+          "id": "statistics"
+        },
+        {
+          "level": 2,
+          "text": "Source files",
+          "id": "source-files"
+        },
+        {
+          "level": 2,
+          "text": "Photos & files",
+          "id": "photos--files"
+        },
+        {
+          "level": 2,
+          "text": "Notes",
+          "id": "notes"
+        },
+        {
+          "level": 2,
+          "text": "PDF exports",
+          "id": "pdf-exports"
+        },
+        {
+          "level": 2,
+          "text": "Editing a locked series",
+          "id": "editing-a-locked-series"
         }
       ]
     },
@@ -785,6 +839,11 @@
         },
         {
           "level": 2,
+          "text": "Stock and reservations",
+          "id": "stock-and-reservations"
+        },
+        {
+          "level": 2,
           "text": "Parameters",
           "id": "parameters"
         },
@@ -875,6 +934,11 @@
           "level": 2,
           "text": "Picking a parent location",
           "id": "picking-a-parent-location"
+        },
+        {
+          "level": 2,
+          "text": "Warehouse",
+          "id": "warehouse"
         },
         {
           "level": 2,
@@ -1103,8 +1167,13 @@
         },
         {
           "level": 2,
-          "text": "Interaction with BOM availability",
-          "id": "interaction-with-bom-availability"
+          "text": "Transfers",
+          "id": "transfers"
+        },
+        {
+          "level": 2,
+          "text": "Incoming stock",
+          "id": "incoming-stock"
         },
         {
           "level": 2,

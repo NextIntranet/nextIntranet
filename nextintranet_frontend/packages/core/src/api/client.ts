@@ -76,10 +76,14 @@ function tryRefreshToken(cfg: ApiConfig): Promise<boolean> {
   return refreshPromise;
 }
 
-export async function apiFetch<T = unknown>(
+/**
+ * Authenticated fetch returning the raw Response (token refresh + ApiError on failure).
+ * Use for non-JSON payloads such as PDF downloads; JSON callers use `apiFetch`.
+ */
+export async function apiFetchResponse(
   path: string,
   init?: RequestInit
-): Promise<T> {
+): Promise<Response> {
   const cfg = getApiConfig();
 
   const isFormData = typeof FormData !== 'undefined' && init?.body instanceof FormData;
@@ -130,6 +134,15 @@ export async function apiFetch<T = unknown>(
       errorData
     );
   }
+
+  return response;
+}
+
+export async function apiFetch<T = unknown>(
+  path: string,
+  init?: RequestInit
+): Promise<T> {
+  const response = await apiFetchResponse(path, init);
 
   // Handle empty responses (204, etc)
   if (response.status === 204 || response.headers.get('Content-Length') === '0') {

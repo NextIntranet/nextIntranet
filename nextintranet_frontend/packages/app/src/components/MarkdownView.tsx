@@ -1,5 +1,6 @@
+import type { ReactNode } from "react"
 import { Link } from "react-router-dom"
-import ReactMarkdown from "react-markdown"
+import ReactMarkdown, { type UrlTransform } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import rehypeSlug from "rehype-slug"
 import rehypeAutolinkHeadings from "rehype-autolink-headings"
@@ -11,9 +12,19 @@ type MarkdownViewProps = {
   content: string
   className?: string
   onDocumentationNavigate?: (page: string, hash?: string) => void
+  /** Custom URL sanitizer (e.g. to keep `mention:` links); defaults to react-markdown's safe one. */
+  urlTransform?: UrlTransform
+  /** Render a link yourself; return `undefined` to fall back to the default link handling. */
+  renderLink?: (href: string | undefined, children: ReactNode) => ReactNode | undefined
 }
 
-export function MarkdownView({ content, className, onDocumentationNavigate }: MarkdownViewProps) {
+export function MarkdownView({
+  content,
+  className,
+  onDocumentationNavigate,
+  urlTransform,
+  renderLink,
+}: MarkdownViewProps) {
   return (
     <div
       className={cn(
@@ -38,6 +49,7 @@ export function MarkdownView({ content, className, onDocumentationNavigate }: Ma
     >
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        urlTransform={urlTransform}
         rehypePlugins={[
           rehypeSlug,
           [
@@ -50,6 +62,8 @@ export function MarkdownView({ content, className, onDocumentationNavigate }: Ma
         ]}
         components={{
           a: ({ href, children, ...props }) => {
+            const custom = renderLink?.(href, children)
+            if (custom !== undefined) return custom
             if (href?.startsWith("/docs") || href?.endsWith(".md")) {
               const parsed = parseDocumentationHref(href)
               if (parsed && onDocumentationNavigate) {
