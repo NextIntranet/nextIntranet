@@ -31,7 +31,20 @@ for arg in "$@"; do
 done
 
 # Zkrácený alias pro docker compose příkaz
-DC="docker compose -f $COMPOSE_DIR/dev/docker-compose.yml -f $COMPOSE_DIR/docker-compose.dev.yml --env-file $COMPOSE_DIR/.env"
+# Dvě podporovaná rozložení:
+#  1) dev:  <COMPOSE_DIR>/dev/docker-compose.yml + <COMPOSE_DIR>/docker-compose.dev.yml + <COMPOSE_DIR>/.env
+#     (repozitář je podadresář nadřazeného adresáře)
+#  2) stack přímo v repozitáři (např. /data/nextintranet): docker-compose.yml,
+#     docker-compose.override.yml a .env leží v PROJECT_DIR
+if [ -f "$COMPOSE_DIR/dev/docker-compose.yml" ]; then
+    DC="docker compose -f $COMPOSE_DIR/dev/docker-compose.yml -f $COMPOSE_DIR/docker-compose.dev.yml --env-file $COMPOSE_DIR/.env"
+elif [ -f "$PROJECT_DIR/docker-compose.yml" ]; then
+    COMPOSE_DIR="$PROJECT_DIR"
+    DC="docker compose --project-directory $PROJECT_DIR"
+else
+    echo "Nenalezen docker-compose.yml ani v $COMPOSE_DIR/dev, ani v $PROJECT_DIR." >&2
+    exit 1
+fi
 
 run_manage() {
     $DC run --rm --entrypoint "" web python manage.py "$@"
@@ -123,7 +136,8 @@ fi
 # --- Stažení image z GHCR ---
 echo ""
 echo "[2/4] Stahování image z GHCR..."
-$DC pull
+# služby s `build:` se nestahují, ty vyžadují update_with_build.sh
+$DC pull --ignore-buildable
 
 # --- Restart kontejnerů s novými image ---
 echo ""
