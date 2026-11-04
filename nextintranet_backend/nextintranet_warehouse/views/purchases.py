@@ -28,7 +28,12 @@ from nextintranet_warehouse.models.purchase import (
 )
 from nextintranet_warehouse.models.currency import Currency
 from nextintranet_warehouse.models.warehouse import Warehouse
-from nextintranet_warehouse.services.mouser import create_mouser_cart, supplier_has_mouser_cart
+from nextintranet_warehouse.services.mouser import (
+    fetch_mouser_cart,
+    supplier_has_mouser_cart,
+    sync_mouser_cart,
+    unlink_mouser_cart,
+)
 from nextintranet_warehouse.services.purchase import (
     ReceiveLine,
     assign_requests_to_purchase,
@@ -163,7 +168,9 @@ class PurchaseListSerializer(serializers.ModelSerializer):
             'created_at',
             'created_by_name',
             'items_count',
+            'metadata',
         ]
+        read_only_fields = ['metadata']
 
     def get_created_by_name(self, obj):
         if not obj.created_by:
@@ -777,11 +784,24 @@ class PurchaseExportCSVAPIView(APIView):
 
 
 class PurchaseMouserCartAPIView(APIView):
-    """Create a cart at Mouser from the purchase items via the Mouser order API."""
+    """The purchase's cart at Mouser (cart key kept in Purchase.metadata).
+
+    GET reads the cart and compares it with the purchase, POST creates it or
+    overwrites it with the current items, DELETE only forgets the link.
+    """
     permission_classes = [IsAuthenticated, AreaAccessPermission]
     required_permission_area = 'warehouse-operations'
     required_level = 'write'
 
+    def _purchase(self, pk):
+        return get_object_or_404(Purchase.objects.select_related('supplier'), pk=pk)
+
+    def get(self, request, pk):
+        return Response(fetch_mouser_cart(self._purchase(pk)))
+
     def post(self, request, pk):
-        purchase = get_object_or_404(Purchase.objects.select_related('supplier'), pk=pk)
-        return Response(create_mouser_cart(purchase))
+        return Response(sync_mouser_cart(self._purchase(pk)))
+
+    def delete(self, request, pk):
+        unlink_mouser_cart(self._purchase(pk))
+        return Response(status=status.HTTP_204_NO_CONTENT)
