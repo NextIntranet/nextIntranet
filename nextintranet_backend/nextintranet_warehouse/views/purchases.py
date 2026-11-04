@@ -26,7 +26,9 @@ from nextintranet_warehouse.models.purchase import (
     PurchaseRequest,
     PurchaseStatus,
 )
+from nextintranet_warehouse.models.currency import Currency
 from nextintranet_warehouse.models.warehouse import Warehouse
+from nextintranet_warehouse.services.mouser import create_mouser_cart, supplier_has_mouser_cart
 from nextintranet_warehouse.services.purchase import (
     ReceiveLine,
     assign_requests_to_purchase,
@@ -42,7 +44,12 @@ from nextintranet_warehouse.services.purchase import (
 class SupplierSummarySerializer(serializers.ModelSerializer):
     class Meta:
         model = Supplier
-        fields = ['id', 'name', 'website']
+        fields = ['id', 'name', 'website', 'has_mouser_cart']
+
+    has_mouser_cart = serializers.SerializerMethodField()
+
+    def get_has_mouser_cart(self, obj):
+        return supplier_has_mouser_cart(obj)
 
 
 class PurchaseDeliverySerializer(serializers.ModelSerializer):
@@ -286,6 +293,14 @@ class PurchaseWriteSerializer(PurchaseListSerializer):
             'purchase_request_ids',
             'transition_to',
         ]
+
+    def validate_currency(self, value):
+        if value in (None, ''):
+            return None
+        value = value.strip().upper()
+        if not Currency.objects.filter(code=value).exists():
+            raise serializers.ValidationError(f'Unknown currency "{value}". Add it in the currency list first.')
+        return value
 
     def _normalize_item(self, item_data, supplier):
         item_type = item_data.get('item_type', PurchaseItemType.COMPONENT)
@@ -759,3 +774,14 @@ class PurchaseExportCSVAPIView(APIView):
         short_id = str(purchase.id).replace('-', '')[:8]
         response['Content-Disposition'] = f'attachment; filename="purchase-{short_id}-supplier.csv"'
         return response
+
+
+class PurchaseMouserCartAPIView(APIView):
+    """Create a cart at Mouser from the purchase items via the Mouser order API."""
+    permission_classes = [IsAuthenticated, AreaAccessPermission]
+    required_permission_area = 'warehouse-operations'
+    required_level = 'write'
+
+    def post(self, request, pk):
+        purchase = get_object_or_404(Purchase.objects.select_related('supplier'), pk=pk)
+        return Response(create_mouser_cart(purchase))

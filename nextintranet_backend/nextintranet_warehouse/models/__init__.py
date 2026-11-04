@@ -5,3 +5,4 @@ from .purchase import *
 from .category import *
 from .packet_recalc_job import *
 from .transfer import *
+from .currency import *
