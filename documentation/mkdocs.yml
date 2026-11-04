@@ -67,6 +67,7 @@ nav:
       - Reservations: guide/warehouse/reservations.md
       - Inventory (stocktaking): guide/warehouse/inventory.md
     - Production:
+      - Overview, notes & exports: guide/production/overview.md
       - BOMs: guide/production/boms.md
       - Live iBOM viewer: guide/production/ibom.md
     - Printing:

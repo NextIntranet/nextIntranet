@@ -27,6 +27,11 @@ import {
   Crosshair,
   PackageCheck,
   ArrowRightLeft,
+  ArrowLeft,
+  PackageOpen,
+  ExternalLink,
+  LayoutDashboard,
+  ShieldAlert,
   Home,
   Truck,
   ShoppingCart,
@@ -59,6 +64,10 @@ import { PacketSelectSheet, type PacketLineProgress, type PacketSelectItem } fro
 import { ScanActionDialog, type ScanActionTarget } from "@/components/ScanActionDialog"
 import { Input } from "@/components/ui/input"
 import { ProductionTree } from "@/components/production/ProductionTree"
+import { ExportPdfButton } from "@/components/production/ExportPdfButton"
+import { ProductionOverviewTab, bomSummaryQueryKey } from "@/components/production/ProductionOverviewTab"
+import { hasAreaLevel, useMe } from "@/hooks/useMe"
+import { readLastProductId, rememberLastProductId, useProductionTreeState } from "@/hooks/useProductionTreeState"
 import {
   FOLDER_DRAG_PREFIX,
   PRODUCTION_DRAG_PREFIX,
@@ -76,6 +85,7 @@ import { Switch } from "@/components/ui/switch"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
+import { toSameOriginS3Url } from "@/lib/s3"
 import type { ScanSourceContext } from "@/lib/resolveScannedIdentifier"
 
 type Paginated<T> = {
@@ -123,6 +133,7 @@ type BomRow = {
     name: string
     description?: string | null
     primary_image_url?: string | null
+    internal_price?: number | null
     category?: {
       id: string
       name: string
@@ -288,10 +299,10 @@ type AvailabilityResponse = {
   rows: AvailabilityRow[]
 }
 
-type TabKey = "bom" | "production" | "finalize"
+type TabKey = "overview" | "bom" | "production" | "finalize"
 
 /** Each BOM section is its own URL segment so it can be linked and reached with back/forward. */
-const TAB_KEYS: TabKey[] = ["bom", "production", "finalize"]
+const TAB_KEYS: TabKey[] = ["overview", "bom", "production", "finalize"]
 
 type LinkSheetTarget = {
   lineId: string
@@ -433,22 +444,8 @@ const reportScanStock = (stock: ScanStockInfo | undefined, fallback = "Scan save
   }
 }
 
-const toSameOriginS3Url = (value: string | null | undefined) => {
-  if (!value) return null
-  if (typeof window === "undefined") return value
-  try {
-    const parsed = new URL(value, window.location.origin)
-    const isLocalMinio =
-      (parsed.hostname === "localhost" || parsed.hostname === window.location.hostname) &&
-      parsed.port === "9003"
-    if (isLocalMinio) {
-      return `/s3${parsed.pathname}${parsed.search}${parsed.hash}`
-    }
-    return value
-  } catch {
-    return value
-  }
-}
+const priceFormatter = new Intl.NumberFormat("cs-CZ", { style: "currency", currency: "CZK", maximumFractionDigits: 4 })
+const formatPrice = (value: number) => priceFormatter.format(value)
 
 const formatQty = (value: number) => {
   if (!Number.isFinite(value)) return "0"
@@ -537,6 +534,78 @@ function BarSegment({ colorClass, totalPct, otherPct = 0 }: { colorClass: string
   )
 }
 
+/** Need / sourced / placed counters with the two-colour progress bar, shared by the table and tree views. */
+function LineProgress({ row }: { row: ScannerRow }) {
+  const segments = buildProgressSegments(toNumber(row.needed), toNumber(row.sourced), toNumber(row.placed))
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 leading-tight">
+        <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
+          Per product: {toNumber(row.qty_per_board)}
+        </span>
+        <span className="text-[11px] text-muted-foreground">
+          Need: <span className="font-medium text-foreground">{toNumber(row.needed)}</span>
+        </span>
+        <span className="text-[11px] text-amber-700">
+          Sourced: <span className="font-medium">{toNumber(row.sourced)}</span>
+        </span>
+        <span className="text-[11px] text-emerald-700">
+          Placed: <span className="font-medium">{toNumber(row.placed)}</span>
+        </span>
+      </div>
+      <div className="mt-1 flex items-center gap-1.5">
+        <div className="flex h-1.5 w-full flex-1 overflow-hidden rounded-full bg-muted">
+          <div className="bg-amber-400" style={{ width: `${segments.sourcedPct}%` }} />
+          <div className="bg-emerald-500" style={{ width: `${segments.placedPct}%` }} />
+          <div className="bg-muted" style={{ width: `${segments.emptyPct}%` }} />
+        </div>
+        {segments.sourcedOverflow > 0 ? (
+          <span className="inline-flex rounded border border-amber-300 bg-amber-100 px-1 py-0.5 text-[10px] font-medium text-amber-800">
+            (+{formatQty(segments.sourcedOverflow)})
+          </span>
+        ) : null}
+        {segments.placedOverflow > 0 ? (
+          <span className="inline-flex rounded border border-emerald-300 bg-emerald-100 px-1 py-0.5 text-[10px] font-medium text-emerald-800">
+            (+{formatQty(segments.placedOverflow)})
+          </span>
+        ) : null}
+      </div>
+    </>
+  )
+}
+
+/** Source / Place / Change actions of a production line. */
+function LineActionButtons({
+  disabled,
+  onSource,
+  onPlace,
+  onChange,
+}: {
+  disabled: boolean
+  onSource: () => void
+  onPlace: () => void
+  onChange: () => void
+}) {
+  const segment =
+    "inline-flex h-6 items-center gap-1 px-1.5 text-[10px] font-medium transition-colors hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
+  return (
+    <div className="inline-flex shrink-0 divide-x divide-border overflow-hidden rounded-md border border-border bg-background" role="group">
+      <button type="button" className={segment} disabled={disabled} title="Source parts from a bag" onClick={onSource}>
+        <PackageOpen className="h-3 w-3" />
+        Source
+      </button>
+      <button type="button" className={segment} disabled={disabled} title="Place parts from a bag" onClick={onPlace}>
+        <PackageCheck className="h-3 w-3" />
+        Place
+      </button>
+      <button type="button" className={segment} disabled={disabled} title="Change the linked component" onClick={onChange}>
+        <Link2 className="h-3 w-3" />
+        Change
+      </button>
+    </div>
+  )
+}
+
 type LocationPacketItem = {
   lineId: string
   componentId: string | null
@@ -575,12 +644,16 @@ function LocationsTreeView({
   findScannerRow,
   highlightInIbom,
   openScanAction,
+  onChangeComponent,
+  disabled,
 }: {
   locations: LocationNode[]
   availabilityByLineId: Map<string, AvailabilityRow>
   findScannerRow: (lineId: string) => ScannerRow | undefined
   highlightInIbom: (ref: string) => void
-  openScanAction: (lineId: string, barcode: string) => void
+  openScanAction: (lineId: string, barcode: string, scannedPacketId?: string | null, operation?: "SOURCED" | "PLACED") => void
+  onChangeComponent: (row: ScannerRow) => void
+  disabled: boolean
 }) {
   const packetsByLocation = useMemo(() => buildPacketsByLocation(availabilityByLineId), [availabilityByLineId])
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set())
@@ -628,62 +701,48 @@ function LocationsTreeView({
             {items.map((item) => {
               const row = findScannerRow(item.lineId)
               const needed = row ? toNumber(row.needed) : 0
-              const sourced = row ? toNumber(row.sourced) : 0
               const placed = row ? toNumber(row.placed) : 0
-              const segments = buildProgressSegments(needed, sourced, placed)
               const firstRef = row?.refs?.[0]
+              const done = needed > 0 && placed >= needed
               return (
                 <div
                   key={item.packetId}
-                  className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border/40 py-1.5 text-xs last:border-b-0"
+                  className={cn(
+                    "grid grid-cols-1 items-center gap-x-4 gap-y-1.5 border-b border-border/40 py-1.5 pr-1 text-xs last:border-b-0 md:grid-cols-[minmax(0,1fr)_minmax(220px,1.2fr)_auto]",
+                    done && "bg-emerald-50/40 text-muted-foreground opacity-60 hover:opacity-100",
+                  )}
                   style={{ paddingLeft: `${depth * 16 + 22}px` }}
                 >
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
-                      {item.componentId ? (
-                        <Link to={`/store/component/${item.componentId}`} className="text-primary hover:underline">
-                          {item.componentName || item.componentId}
-                        </Link>
-                      ) : (
-                        <span className="text-muted-foreground">Unlinked</span>
-                      )}
-                      <span className="text-muted-foreground">×{formatQty(item.quantity)}</span>
-                      <PacketRef packetId={item.packetId} className="text-[11px] text-muted-foreground" />
-                    </div>
-                    {row ? (
-                      <div className="flex items-center gap-1.5">
-                        <div className="flex h-1.5 w-32 overflow-hidden rounded-full bg-muted">
-                          <BarSegment colorClass="bg-amber-400" totalPct={segments.sourcedPct} />
-                          <BarSegment colorClass="bg-emerald-500" totalPct={segments.placedPct} />
-                          <BarSegment colorClass="bg-muted" totalPct={segments.emptyPct} />
-                        </div>
-                        <span className="text-[10px] text-muted-foreground">
-                          {formatQty(placed)}/{formatQty(needed)} placed
-                        </span>
-                      </div>
-                    ) : null}
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5">
+                    {item.componentId ? (
+                      <Link to={`/store/component/${item.componentId}`} className="text-primary hover:underline">
+                        {item.componentName || item.componentId}
+                      </Link>
+                    ) : (
+                      <span className="text-muted-foreground">Unlinked</span>
+                    )}
+                    <span className="text-muted-foreground">×{formatQty(item.quantity)}</span>
+                    <PacketRef packetId={item.packetId} className="text-[11px] text-muted-foreground" />
                   </div>
-                  <div className="flex shrink-0 items-center gap-1.5">
+                  <div>{row ? <LineProgress row={row} /> : null}</div>
+                  <div className="flex shrink-0 items-center gap-1 md:justify-end">
                     <Button
                       type="button"
-                      size="sm"
-                      variant="outline"
-                      className="h-7 px-2 text-[11px]"
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7"
                       disabled={!firstRef}
-                      title="Highlight this component in the iBOM"
+                      title="Show in iBOM"
                       onClick={() => firstRef && highlightInIbom(firstRef)}
                     >
-                      Show in iBOM
+                      <Crosshair className="h-3.5 w-3.5" />
                     </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="h-7 px-2 text-[11px]"
-                      title="Open the place dialog for this bag"
-                      onClick={() => openScanAction(item.lineId, item.packetId)}
-                    >
-                      Place
-                    </Button>
+                    <LineActionButtons
+                      disabled={disabled || !row}
+                      onSource={() => openScanAction(item.lineId, item.packetId, item.packetId, "SOURCED")}
+                      onPlace={() => openScanAction(item.lineId, item.packetId, item.packetId, "PLACED")}
+                      onChange={() => row && onChangeComponent(row)}
+                    />
                   </div>
                 </div>
               )
@@ -888,7 +947,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
   const queryClient = useQueryClient()
   const isBomView = mode === "bom"
 
-  const activeTab: TabKey = TAB_KEYS.includes(tab as TabKey) ? (tab as TabKey) : "bom"
+  const activeTab: TabKey = TAB_KEYS.includes(tab as TabKey) ? (tab as TabKey) : "overview"
   const goToTab = useCallback(
     (next: TabKey, options?: { replace?: boolean }) => {
       if (!bomId) return
@@ -974,9 +1033,26 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
 
   useEffect(() => {
     if (!isBomView && !routeProductId && products.length > 0) {
-      navigate(`/production/${products[0].id}`, { replace: true })
+      const lastProductId = readLastProductId()
+      const target = products.find((product) => product.id === lastProductId) ?? products[0]
+      navigate(`/production/${target.id}`, { replace: true })
     }
   }, [isBomView, routeProductId, products, navigate])
+
+  useEffect(() => {
+    if (productId) rememberLastProductId(productId)
+  }, [productId])
+
+  // Coming back from a BOM remounts the page; bring the selected product row into view.
+  useEffect(() => {
+    if (isBomView || !productId || products.length === 0) return
+    const frame = requestAnimationFrame(() => {
+      document
+        .querySelector(`[data-production-id="${productId}"]`)
+        ?.scrollIntoView({ block: "nearest" })
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [isBomView, productId, products.length])
 
   useEffect(() => {
     if (productId) {
@@ -1003,6 +1079,10 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
 
   const selectedBom = bomDetail || selectedBomFromProduct
   const isTemplateSeries = selectedBom?.series_kind === "template"
+  const { data: me } = useMe()
+  const isProductionAdmin = hasAreaLevel(me, "production", "admin")
+  const bomClosed = isBomClosed(selectedBom?.status)
+  const canEditBomHeader = !bomClosed || isProductionAdmin
   const selectedBomComponents = useMemo(() => {
     return Array.isArray(selectedBom?.components) ? selectedBom.components : []
   }, [selectedBom?.components])
@@ -1103,11 +1183,11 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     }
   }, [isBomView, bomId])
 
-  // Give every section a canonical URL: a bare /bom/<id> and an unknown segment land on "bom".
+  // Give every section a canonical URL: a bare /bom/<id> and an unknown segment land on "overview".
   useEffect(() => {
     if (!isBomView) return
     if (!TAB_KEYS.includes(tab as TabKey)) {
-      goToTab("bom", { replace: true })
+      goToTab("overview", { replace: true })
     }
   }, [goToTab, isBomView, tab])
 
@@ -1235,9 +1315,12 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["production-bom", bomId] })
       queryClient.invalidateQueries({ queryKey: ["production-product", productId] })
+      queryClient.invalidateQueries({ queryKey: bomSummaryQueryKey(bomId ?? "") })
+      queryClient.invalidateQueries({ queryKey: ["notes"] })
       toast.success("BOM updated.")
     },
-    onError: () => toast.error("Failed to update BOM."),
+    onError: (error) =>
+      toast.error((error as { data?: { error?: string } })?.data?.error || "Failed to update BOM."),
   })
 
   const updateLineMutation = useMutation({
@@ -1564,26 +1647,14 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
 
   const flatFolderOptions = useMemo(() => flattenFolders(folders), [folders])
 
-  const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(new Set())
-  const hasSeededFolderExpand = useRef(false)
-
-  useEffect(() => {
-    if (hasSeededFolderExpand.current || folders.length === 0) return
-    hasSeededFolderExpand.current = true
-    setExpandedFolderIds(new Set(folders.map((folder) => folder.id)))
-  }, [folders])
-
-  const toggleFolderExpand = (folderId: string) => {
-    setExpandedFolderIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(folderId)) {
-        next.delete(folderId)
-      } else {
-        next.add(folderId)
-      }
-      return next
-    })
-  }
+  const activeProductFolderId = useMemo(
+    () => products.find((product) => product.id === productId)?.folder ?? null,
+    [products, productId],
+  )
+  const { expandedIds: expandedFolderIds, toggle: toggleFolderExpand } = useProductionTreeState(
+    folders,
+    activeProductFolderId,
+  )
 
   const productionTreeRows = useMemo(
     () => buildProductionTreeRows(folders, productsByFolder, expandedFolderIds),
@@ -2287,7 +2358,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
 
 
   const openScanAction = useCallback(
-    (lineId: string, barcode: string, scannedPacketId: string | null = null) => {
+    (lineId: string, barcode: string, scannedPacketId: string | null = null, operation?: "SOURCED" | "PLACED") => {
       const matchedRow = findScannerRow(lineId)
       focusScannedLine(lineId)
       setScanActionTarget({
@@ -2301,10 +2372,13 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
         needed: matchedRow ? Math.max(0, toNumber(matchedRow.needed)) : 0,
         sourced: matchedRow ? toNumber(matchedRow.sourced) : 0,
         placed: matchedRow ? toNumber(matchedRow.placed) : 0,
+        perBoard: matchedRow ? toNumber(matchedRow.qty_per_board) : null,
+        boards: selectedBom ? toNumber(selectedBom.qty_planned) : null,
+        operation,
       })
       setScanInput("")
     },
-    [findScannerRow, focusScannedLine],
+    [findScannerRow, focusScannedLine, selectedBom],
   )
 
   const handleConfirmNotInBom = useCallback(async () => {
@@ -2695,6 +2769,15 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     >
       <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
         <div>
+          {isBomView && productId ? (
+            <Link
+              to={`/production/${productId}`}
+              className="mb-1 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              {productDetail?.name || "Back to product"}
+            </Link>
+          ) : null}
           <h1 className="text-2xl font-semibold text-foreground">
             Productions
             {productDetail?.name ? (
@@ -2708,6 +2791,16 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                 {" · "}
                 {selectedBom.name}
                 {headerSeriesDate ? ` (${headerSeriesDate})` : ""}
+              </span>
+            ) : null}
+            {isBomView && selectedBom ? (
+              <span
+                className={cn(
+                  "ml-2 rounded-full px-2 py-0.5 align-middle text-xs font-semibold",
+                  statusBadgeClass(selectedBom.status),
+                )}
+              >
+                {selectedBom.status.replace("_", " ")}
               </span>
             ) : null}
           </h1>
@@ -3023,10 +3116,25 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                           <CardTitle className="text-lg">BOM detail</CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-4">
+                          {bomClosed ? (
+                            <div
+                              className={cn(
+                                "flex items-start gap-2 rounded-md border px-3 py-2 text-sm",
+                                isProductionAdmin
+                                  ? "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200"
+                                  : "border-border bg-muted/40 text-muted-foreground",
+                              )}
+                            >
+                              <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />
+                              {isProductionAdmin
+                                ? `This series is ${selectedBom.status}. As a production administrator you can still change its name, description and planned date; each change is recorded as a note.`
+                                : `This series is ${selectedBom.status}. Only production administrators can edit it.`}
+                            </div>
+                          ) : null}
                           <div className="grid gap-3 sm:grid-cols-[1fr_130px_170px_auto]">
                             <Input
                               value={selectedBom.name}
-                              disabled={isTemplateSeries}
+                              disabled={(isTemplateSeries && !bomClosed) || !canEditBomHeader}
                               onChange={(e) =>
                                 queryClient.setQueryData<BomItem>(["production-bom", bomId], {
                                   ...selectedBom,
@@ -3036,7 +3144,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                             />
                             <Input
                               value={String(selectedBom.qty_planned)}
-                              disabled={isTemplateSeries}
+                              disabled={isTemplateSeries || bomClosed}
                               onChange={(e) =>
                                 queryClient.setQueryData<BomItem>(["production-bom", bomId], {
                                   ...selectedBom,
@@ -3047,7 +3155,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                             <Input
                               type="date"
                               value={selectedBom.planned_date || ""}
-                              disabled={isTemplateSeries}
+                              disabled={(isTemplateSeries && !bomClosed) || !canEditBomHeader}
                               onChange={(e) =>
                                 queryClient.setQueryData<BomItem>(["production-bom", bomId], {
                                   ...selectedBom,
@@ -3056,30 +3164,40 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                               }
                             />
                             <Button
-                              onClick={() =>
+                              onClick={() => {
+                                if (bomClosed) {
+                                  if (!window.confirm(`This series is ${selectedBom.status}. Save the changes anyway?`)) return
+                                  updateBomMutation.mutate({
+                                    name: selectedBom.name,
+                                    planned_date: selectedBom.planned_date || null,
+                                    description: selectedBom.description || "",
+                                  })
+                                  return
+                                }
                                 updateBomMutation.mutate({
                                   name: selectedBom.name,
                                   qty_planned: selectedBom.qty_planned,
                                   planned_date: selectedBom.planned_date || null,
                                   description: selectedBom.description || "",
                                 })
-                              }
-                              disabled={updateBomMutation.isPending || isBomClosed(selectedBom.status)}
+                              }}
+                              disabled={updateBomMutation.isPending || !canEditBomHeader}
                             >
                               Save BOM
                             </Button>
                           </div>
 
                           <textarea
-                            className="min-h-[90px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                            className="min-h-[90px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-60"
                             value={selectedBom.description || ""}
+                            disabled={!canEditBomHeader}
                             onChange={(e) =>
                               queryClient.setQueryData<BomItem>(["production-bom", bomId], {
                                 ...selectedBom,
                                 description: e.target.value,
                               })
                             }
-                            placeholder="BOM notes (Markdown allowed)"
+                            placeholder="Description (Markdown allowed)"
                           />
                         </CardContent>
                       </Card>
@@ -3089,6 +3207,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                       <div className="border-b border-border/70">
                           <div className="-mb-px flex flex-wrap items-center gap-4" role="tablist" aria-label="BOM sections">
                           {([
+                            { key: "overview", label: "Overview", icon: LayoutDashboard },
                             { key: "bom", label: "BOM", icon: FileText },
                             ...(!isTemplateSeries
                               ? [
@@ -3121,8 +3240,18 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                           </div>
                         </div>
 
+                        {activeTab === "overview" ? (
+                          <ProductionOverviewTab series={selectedBom} isTemplateSeries={isTemplateSeries} />
+                        ) : null}
+
                         {activeTab === "bom" ? (
                           <div className="space-y-4">
+                            <div className="flex flex-wrap justify-end gap-2">
+                              <ExportPdfButton bomId={selectedBom.id} kind="bom" label="BOM PDF" />
+                              {!isTemplateSeries ? (
+                                <ExportPdfButton bomId={selectedBom.id} kind="sourcing" label="Sourcing list PDF" />
+                              ) : null}
+                            </div>
                             <div className="rounded-md border border-border/60">
                               <button
                                 type="button"
@@ -3520,6 +3649,21 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                               <div className="grid grid-cols-[96px_1fr] gap-x-2">
                                                 <span className="font-semibold text-foreground">ID:</span>
                                                 <span className="truncate font-mono text-xs text-muted-foreground">{line.component}</span>
+                                              </div>
+                                              <div className="grid grid-cols-[96px_1fr] gap-x-2">
+                                                <span className="font-semibold text-foreground" title="Internal price per piece">Price:</span>
+                                                {line.component_detail?.internal_price != null ? (
+                                                  <span className="tabular-nums">
+                                                    <span className="whitespace-nowrap">{formatPrice(line.component_detail.internal_price)}</span>
+                                                    {neededTotal > 0 ? (
+                                                      <span className="whitespace-nowrap text-muted-foreground">
+                                                        {" "}· Σ {formatPrice(line.component_detail.internal_price * neededTotal)}
+                                                      </span>
+                                                    ) : null}
+                                                  </span>
+                                                ) : (
+                                                  <span className="text-muted-foreground">not set</span>
+                                                )}
                                               </div>
                                               {line.component_kicad_footprint ? (
                                                 <div className="grid grid-cols-[96px_1fr] gap-x-2">
@@ -3921,6 +4065,21 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
 
                         {activeTab === "production" ? (
                           <div className="space-y-3">
+                            <div className="flex flex-wrap justify-end gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                disabled={!ibomIframeSrc}
+                                title={ibomIframeSrc ? "Open the interactive BOM in a new tab" : "No iBOM uploaded for this series"}
+                                onClick={openIbomInNewTab}
+                              >
+                                <ExternalLink className="mr-1.5 h-4 w-4" />
+                                Open iBOM
+                              </Button>
+                              <ExportPdfButton bomId={selectedBom.id} kind="sourcing" label="Sourcing list PDF" />
+                              <ExportPdfButton bomId={selectedBom.id} kind="production" label="Progress PDF" />
+                            </div>
                             <form onSubmit={handleScanSubmit} className="grid gap-2 sm:grid-cols-[1fr_auto_auto]">
                               <Input
                                 ref={scanInputRef}
@@ -4068,6 +4227,8 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                 findScannerRow={findScannerRow}
                                 highlightInIbom={highlightInIbom}
                                 openScanAction={openScanAction}
+                                onChangeComponent={openLinkSheet}
+                                disabled={isBomClosed(selectedBom.status)}
                               />
                             ) : (
                             <>
@@ -4117,6 +4278,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                       // DNP / BOM-excluded rows are kept visible but greyed out at the end.
                                       const notAssembled = row.dnp || row.exclude_from_bom
                                       const dimmedBySide = isDimmedBySide(row)
+                                      const lineDone = !notAssembled && row.needed > 0 && row.placed >= row.needed
                                       return (
                                       <Fragment key={row.id}>
                                         {notAssembled && rowIndex === displayAssemblyRows.length ? (
@@ -4131,7 +4293,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                             scannerRowRefs.current[row.id] = element
                                           }}
                                           tabIndex={-1}
-                                          className={cn("text-xs", highlightedLineId === row.id ? "bg-amber-100/50" : undefined, ibomHighlighted ? "ring-2 ring-inset ring-blue-400/60" : undefined, notAssembled ? "text-muted-foreground opacity-60" : dimmedBySide ? "text-muted-foreground/70" : undefined)}
+                                          className={cn("text-xs", highlightedLineId === row.id ? "bg-amber-100/50" : undefined, ibomHighlighted ? "ring-2 ring-inset ring-blue-400/60" : undefined, notAssembled ? "text-muted-foreground opacity-60" : lineDone ? "bg-emerald-50/40 text-muted-foreground opacity-60 hover:opacity-100" : dimmedBySide ? "text-muted-foreground/70" : undefined)}
                                           onMouseEnter={() => {
                                             if (rowRefs.length > 0) {
                                               sendIbomHover(rowRefs, row.id)
@@ -4206,76 +4368,15 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                             )}
                                           </TableCell>
                                           <TableCell>
-                                            {(() => {
-                                              const segments = buildProgressSegments(
-                                                toNumber(row.needed),
-                                                toNumber(row.sourced),
-                                                toNumber(row.placed),
-                                              )
-                                              return (
-                                                <>
-                                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 leading-tight">
-                                              <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
-                                                Per product: {toNumber(row.qty_per_board)}
-                                              </span>
-                                              <span className="text-[11px] text-muted-foreground">
-                                                Need: <span className="font-medium text-foreground">{toNumber(row.needed)}</span>
-                                              </span>
-                                              <span className="text-[11px] text-amber-700">
-                                                Sourced: <span className="font-medium">{toNumber(row.sourced)}</span>
-                                              </span>
-                                              <span className="text-[11px] text-emerald-700">
-                                                Placed: <span className="font-medium">{toNumber(row.placed)}</span>
-                                              </span>
-                                            </div>
-                                            <div className="mt-1 flex items-center gap-1.5">
-                                              <div className="flex h-1.5 w-full flex-1 overflow-hidden rounded-full bg-muted">
-                                                <div className="bg-amber-400" style={{ width: `${segments.sourcedPct}%` }} />
-                                                <div className="bg-emerald-500" style={{ width: `${segments.placedPct}%` }} />
-                                                <div className="bg-muted" style={{ width: `${segments.emptyPct}%` }} />
-                                              </div>
-                                              {segments.sourcedOverflow > 0 ? (
-                                                <span className="inline-flex rounded border border-amber-300 bg-amber-100 px-1 py-0.5 text-[10px] font-medium text-amber-800">
-                                                  (+{formatQty(segments.sourcedOverflow)})
-                                                </span>
-                                              ) : null}
-                                              {segments.placedOverflow > 0 ? (
-                                                <span className="inline-flex rounded border border-emerald-300 bg-emerald-100 px-1 py-0.5 text-[10px] font-medium text-emerald-800">
-                                                  (+{formatQty(segments.placedOverflow)})
-                                                </span>
-                                              ) : null}
-                                            </div>
-                                                </>
-                                              )
-                                            })()}
+                                            <LineProgress row={row} />
                                           </TableCell>
                                           <TableCell>
-                                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-                                              <button
-                                                type="button"
-                                                className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
-                                                disabled={isBomClosed(selectedBom.status)}
-                                                onClick={() => openPacketSheet(row, "SOURCED")}
-                                              >
-                                                Source bag
-                                              </button>
-                                              <button
-                                                type="button"
-                                                className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
-                                                disabled={isBomClosed(selectedBom.status)}
-                                                onClick={() => openPacketSheet(row, "PLACED")}
-                                              >
-                                                Place from bag
-                                              </button>
-                                              <button
-                                                type="button"
-                                                className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
-                                                disabled={isBomClosed(selectedBom.status)}
-                                                onClick={() => openLinkSheet(row)}
-                                              >
-                                                Change
-                                              </button>
-                                            </div>
+                                            <LineActionButtons
+                                              disabled={isBomClosed(selectedBom.status)}
+                                              onSource={() => openPacketSheet(row, "SOURCED")}
+                                              onPlace={() => openPacketSheet(row, "PLACED")}
+                                              onChange={() => openLinkSheet(row)}
+                                            />
                                           </TableCell>
                                         </TableRow>
                                         {notAssembled ? null : (
@@ -4466,6 +4567,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                               <Button onClick={() => printMutation.mutate()} disabled={printMutation.isPending}>
                                 Print A4 (queue)
                               </Button>
+                              <ExportPdfButton bomId={selectedBom.id} kind="finalize" label="Finalization PDF" />
                               <Button
                                 variant="outline"
                                 onClick={() => finalizeMutation.mutate()}

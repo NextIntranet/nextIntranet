@@ -34,6 +34,18 @@ from nextintranet_production.models import (
     TemplateComponentScan,
 )
 from nextintranet_production.models.production import CLOSED_TEMPLATE_STATUSES
+from nextintranet_production.permissions import ADMIN_EDITABLE_WHEN_CLOSED, is_production_admin
+from nextintranet_production.pdf_exports import (
+    EXPORT_KINDS,
+    build_bom,
+    build_finalize,
+    build_overview,
+    build_production,
+    build_sourcing,
+    export_filename,
+)
+from nextintranet_production.services.summary import template_summary
+from nextintranet_backend.reports.pdf import pdf_response
 from nextintranet_production.serializers import (
     ProductionFolderSerializer,
     ProductionFolderListSerializer,
@@ -806,6 +818,29 @@ class ProductionViewSet(viewsets.ModelViewSet):
         return super().destroy(request, *args, **kwargs)
 
 
+def _log_closed_edit(template: Template, before: dict, user) -> None:
+    """Leave an audit note on the series when an admin edits it after lock/finish."""
+    from nextintranet_backend.models import Note
+
+    changes = []
+    for field in sorted(before):
+        old, new = before[field], getattr(template, field)
+        if (old or "") == (new or ""):
+            continue
+        if field == "description":
+            changes.append("- **description** changed")
+        else:
+            changes.append(f"- **{field}**: `{old or '-'}` → `{new or '-'}`")
+    if not changes:
+        return
+    Note.objects.create(
+        content_type=ContentType.objects.get_for_model(Template),
+        object_id=str(template.id),
+        author=user,
+        body=f"Edited after the series was {template.status}:\n\n" + "\n".join(changes),
+    )
+
+
 class TemplateViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     queryset = (
@@ -832,6 +867,45 @@ class TemplateViewSet(viewsets.ModelViewSet):
         if production_id:
             queryset = queryset.filter(production_id=production_id)
         return queryset.order_by("-created_at")
+
+    def update(self, request, *args, **kwargs):
+        template = self.get_object()
+        if template.status not in CLOSED_TEMPLATE_STATUSES:
+            return super().update(request, *args, **kwargs)
+        denied = self._closed_update_error(request, template)
+        if denied is not None:
+            return denied
+        before = {field: getattr(template, field) for field in ADMIN_EDITABLE_WHEN_CLOSED}
+        response = super().update(request, *args, **kwargs)
+        template.refresh_from_db()
+        _log_closed_edit(template, before, request.user)
+        return response
+
+    def _closed_update_error(self, request, template):
+        """A closed BOM only takes header edits (name/description/date), and only from production admins."""
+        serializer = self.get_serializer(template)
+        current = serializer.data
+        changed = {
+            field
+            for field, value in request.data.items()
+            if field in serializer.fields
+            and not serializer.fields[field].read_only
+            and str(value if value is not None else "") != str(current.get(field) if current.get(field) is not None else "")
+        }
+        if not changed:
+            return None
+        if not is_production_admin(request.user):
+            return Response(
+                {"error": "BOM is locked. Only production administrators can edit it."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        blocked = sorted(changed - ADMIN_EDITABLE_WHEN_CLOSED)
+        if blocked:
+            return Response(
+                {"error": f"BOM is locked; only {', '.join(sorted(ADMIN_EDITABLE_WHEN_CLOSED))} can be edited.", "fields": blocked},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return None
 
     def destroy(self, request, *args, **kwargs):
         template = self.get_object()
@@ -1230,6 +1304,34 @@ class TemplateViewSet(viewsets.ModelViewSet):
         if home_location_full_path is not None:
             payload["home_location_full_path"] = home_location_full_path
         return Response(payload)
+
+    @action(detail=True, methods=["get"], url_path="summary")
+    def summary(self, request, pk=None):
+        template = self.get_object()
+        home_location_ids, _ = _home_location_scope(request.user)
+        warehouse_id = template.stock_warehouse_id or default_warehouse_for_user(request.user)
+        payload = template_summary(template, home_location_ids, warehouse_id)
+        payload["can_admin_edit"] = is_production_admin(request.user)
+        return Response(payload)
+
+    @action(detail=True, methods=["get"], url_path=r"export/(?P<kind>[a-z]+)")
+    def export(self, request, pk=None, kind=None):
+        template = self.get_object()
+        if kind not in EXPORT_KINDS:
+            return Response({"error": f"Unknown export '{kind}'."}, status=status.HTTP_404_NOT_FOUND)
+        home_location_ids, _ = _home_location_scope(request.user)
+        warehouse_id = template.stock_warehouse_id or default_warehouse_for_user(request.user)
+        if kind == "overview":
+            pdf = build_overview(template, home_location_ids, warehouse_id)
+        elif kind == "sourcing":
+            pdf = build_sourcing(template, home_location_ids, warehouse_id)
+        elif kind == "bom":
+            pdf = build_bom(template)
+        elif kind == "production":
+            pdf = build_production(template)
+        else:
+            pdf = build_finalize(template)
+        return pdf_response(pdf, export_filename(template, kind))
 
     @action(detail=True, methods=["post"], url_path="reserve")
     def reserve(self, request, pk=None):

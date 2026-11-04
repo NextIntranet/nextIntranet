@@ -22,7 +22,10 @@ A BOM (`Template`) moves through:
 | `finished` | Finalized; a summary of what was and wasn't fully placed has been captured. |
 
 `locked` and `finished` are both **closed**: every edit, scan, split/merge, or
-finalize action is rejected once a BOM is closed.
+finalize action is rejected once a BOM is closed. The one exception is the series
+header: users with the `production` area at level `admin` (and superusers) can still
+change its **name**, **description** and **planned date**. Each such edit is recorded as
+a note on the series. See [Production overview](overview.md).
 
 ## BOM lines
 

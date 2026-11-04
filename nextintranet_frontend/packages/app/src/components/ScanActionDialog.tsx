@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { apiFetch } from "@nextintranet/core"
-import { Loader2 } from "lucide-react"
+import { AlertTriangle, Loader2 } from "lucide-react"
 
 import {
   Dialog,
@@ -29,6 +29,12 @@ export type ScanActionTarget = {
   needed: number
   sourced: number
   placed: number
+  /** Pieces of this part on one board. */
+  perBoard?: number | null
+  /** Boards planned in the series. */
+  boards?: number | null
+  /** Preselected action (e.g. when opened from a Source/Place button); falls back to `defaultOperation`. */
+  operation?: ScanOperation
 }
 
 type PacketItem = {
@@ -93,13 +99,8 @@ export function ScanActionDialog({
 
   useEffect(() => {
     if (!target) return
-    setOperation(defaultOperation)
+    setOperation(target.operation ?? defaultOperation)
   }, [target, defaultOperation])
-
-  useEffect(() => {
-    if (!target) return
-    setQtyInput(formatQty(remaining > 0 ? remaining : 1))
-  }, [target, operation, remaining])
 
   const { data, isLoading } = useQuery<PacketItem[] | Paginated<PacketItem>>({
     queryKey: ["scan-action-bags", target?.componentId],
@@ -130,6 +131,26 @@ export function ScanActionDialog({
       })
       .map((entry) => entry.packet)
   }, [data, homePath, scannedId])
+
+  // Only a code that resolved to a concrete bag limits the quantity; a component barcode doesn't.
+  const scannedBag = useMemo(
+    () => (target?.scannedPacketId ? bags.find((packet) => packet.id === target.scannedPacketId) ?? null : null),
+    [bags, target?.scannedPacketId],
+  )
+  const scannedBagCount = scannedBag ? toNumber(scannedBag.count) : null
+  const bagShort = operation !== "FIND" && scannedBagCount !== null && scannedBagCount < remaining
+
+  // Prefill what is left to do, capped by what the scanned bag actually holds.
+  useEffect(() => {
+    if (!target) return
+    const wanted = remaining > 0 ? remaining : 1
+    const capped = scannedBagCount !== null && scannedBagCount > 0 ? Math.min(wanted, scannedBagCount) : wanted
+    setQtyInput(formatQty(capped))
+  }, [target, operation, remaining, scannedBagCount])
+
+  const enteredQty = Number(qtyInput)
+  const exceedsBag =
+    operation !== "FIND" && scannedBagCount !== null && Number.isFinite(enteredQty) && enteredQty > scannedBagCount
 
   const scannedBagRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
@@ -163,6 +184,24 @@ export function ScanActionDialog({
         </DialogHeader>
 
         <div className="space-y-3">
+          <div className="grid grid-cols-4 divide-x divide-border/60 rounded-md border border-border/60 text-center">
+            {[
+              { label: "Per board", value: target.perBoard },
+              { label: "Boards", value: target.boards },
+              { label: "Needed total", value: target.needed },
+              {
+                label: operation === "SOURCED" ? "Sourced" : "Placed",
+                value: operation === "SOURCED" ? target.sourced : target.placed,
+              },
+            ].map((item) => (
+              <div key={item.label} className="px-2 py-1.5">
+                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{item.label}</div>
+                <div className="text-lg font-semibold tabular-nums">
+                  {item.value != null ? formatQty(item.value) : "–"}
+                </div>
+              </div>
+            ))}
+          </div>
           <div className="flex gap-2">
             {(["FIND", "SOURCED", "PLACED"] as const).map((op) => (
               <Button
@@ -179,10 +218,35 @@ export function ScanActionDialog({
 
           {operation !== "FIND" ? (
             <div className="space-y-2">
-              <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground">
-                Remaining to {operation === "SOURCED" ? "source" : "place"}:{" "}
-                <span className="font-medium text-foreground">{formatQty(remaining)}</span>
+              <div className="flex items-baseline justify-between gap-3 rounded-md border border-border/60 bg-muted/30 px-4 py-2">
+                <span className="text-sm font-medium text-muted-foreground">
+                  Remaining to {operation === "SOURCED" ? "source" : "place"}
+                </span>
+                <span
+                  className={cn(
+                    "text-4xl font-bold tabular-nums leading-none",
+                    remaining > 0 ? "text-foreground" : "text-emerald-600",
+                  )}
+                >
+                  {formatQty(remaining)}
+                </span>
               </div>
+              {bagShort ? (
+                <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>
+                    The scanned bag holds only <strong>{formatQty(scannedBagCount ?? 0)}</strong> pcs —{" "}
+                    <strong>{formatQty(remaining - (scannedBagCount ?? 0))}</strong> short. Quantity is set to the bag
+                    content; scan another bag for the rest.
+                  </span>
+                </div>
+              ) : null}
+              {exceedsBag && !bagShort ? (
+                <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>More than the scanned bag holds ({formatQty(scannedBagCount ?? 0)} pcs) — the bag will go negative.</span>
+                </div>
+              ) : null}
               <label className="grid gap-1">
                 <span className="text-sm font-medium text-foreground">Quantity</span>
                 <Input

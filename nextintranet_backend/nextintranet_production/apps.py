@@ -13,3 +13,9 @@ class NextintranetProductionConfig(AppConfig):
         from .services.reservations import ProductionReservationProvider
 
         register_reservation_provider(ProductionReservationProvider())
+
+        from nextintranet_backend.notes_registry import register_target
+
+        from .models import Template
+
+        register_target('production.template', Template, module='manufacturing')

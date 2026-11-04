@@ -464,6 +464,50 @@
       ]
     },
     {
+      "path": "guide/production/overview",
+      "file": "guide/production/overview.md",
+      "title": "Production overview",
+      "description": "The Overview tab of a BOM series — statistics, material cost, source files, photos, notes and PDF exports.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "Production overview",
+          "id": "production-overview"
+        },
+        {
+          "level": 2,
+          "text": "Statistics",
+          "id": "statistics"
+        },
+        {
+          "level": 2,
+          "text": "Source files",
+          "id": "source-files"
+        },
+        {
+          "level": 2,
+          "text": "Photos & files",
+          "id": "photos--files"
+        },
+        {
+          "level": 2,
+          "text": "Notes",
+          "id": "notes"
+        },
+        {
+          "level": 2,
+          "text": "PDF exports",
+          "id": "pdf-exports"
+        },
+        {
+          "level": 2,
+          "text": "Editing a locked series",
+          "id": "editing-a-locked-series"
+        }
+      ]
+    },
+    {
       "path": "guide/search",
       "file": "guide/search.md",
       "title": "Search",
