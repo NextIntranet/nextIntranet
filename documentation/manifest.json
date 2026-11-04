@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-18T13:08:55.261Z",
+  "generatedAt": "2026-11-04T11:26:59.364Z",
   "pages": [
     {
       "path": "",
@@ -1066,6 +1066,11 @@
           "level": 2,
           "text": "Lifecycle",
           "id": "lifecycle"
+        },
+        {
+          "level": 2,
+          "text": "Supplier, currency and Mouser cart",
+          "id": "supplier-currency-and-mouser-cart"
         },
         {
           "level": 2,

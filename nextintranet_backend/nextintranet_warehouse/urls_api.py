@@ -45,14 +45,20 @@ from .views.purchase_requests import PurchaseRequestListAPIView, PurchaseRequest
 from .views.purchases import (
     PurchaseDetailAPIView,
     PurchaseExportCSVAPIView,
+    PurchaseMouserCartAPIView,
     PurchaseListAPIView,
     PurchaseReceiveAPIView,
     PurchaseStockAPIView,
 )
 from .views.document_api import ComponentDocumentListCreateAPIView, ComponentDocumentDetailAPIView, DocumentDetailAPIView
 from .views.reservations import ReservationListAPIView, ReservationDetailAPIView
+from .views.currency import CurrencyViewSet
 from .views.supplier_api import SupplierRelationApplyAPIView, SupplierRelationSyncAPIView
 from .views.api_create import ComponentCreateFromSupplierAPIView
+
+from rest_framework.routers import DefaultRouter as _DR
+CurrencyRouter = _DR(trailing_slash=True)
+CurrencyRouter.register(r'', CurrencyViewSet)
 
 # /api/v1/warehouse/
 urlpatterns = [
@@ -102,6 +108,7 @@ urlpatterns = [
     path('supplier/relation/', include(SupplierRelationRouter.urls), name='api_warehouse_supplier_relations'),
     path('supplier/relation/<uuid:pk>/sync/', SupplierRelationSyncAPIView.as_view(), name='api_warehouse_supplier_relation_sync'),
     path('supplier/relation/<uuid:pk>/apply/', SupplierRelationApplyAPIView.as_view(), name='api_warehouse_supplier_relation_apply'),
+    path('currency/', include(CurrencyRouter.urls), name='api_warehouse_currencies'),
     path('supplier/', include(SupplierRouter.urls), name='api_warehouse_suppliers'),
     path('category/<uuid:category_pk>/rules/', include(CategoryRuleRouter.urls)),
     path('category/', include(CategoryRouter.urls), name='api_warehouse_categories'),
@@ -115,6 +122,7 @@ urlpatterns = [
     path('purchase/<uuid:pk>/', PurchaseDetailAPIView.as_view(), name='api_warehouse_purchase_detail'),
     path('purchase/<uuid:pk>/receive/', PurchaseReceiveAPIView.as_view(), name='api_warehouse_purchase_receive'),
     path('purchase/<uuid:pk>/stock/', PurchaseStockAPIView.as_view(), name='api_warehouse_purchase_stock'),
+    path('purchase/<uuid:pk>/mouser-cart/', PurchaseMouserCartAPIView.as_view(), name='api_warehouse_purchase_mouser_cart'),
     path('purchase/<uuid:pk>/export-csv/', PurchaseExportCSVAPIView.as_view(), name='api_warehouse_purchase_export_csv'),
     path('reservations/', ReservationListAPIView.as_view(), name='api_warehouse_reservations'),
     path('reservation/<uuid:pk>/', ReservationDetailAPIView.as_view(), name='api_warehouse_reservation_detail'),

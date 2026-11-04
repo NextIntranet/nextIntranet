@@ -19,6 +19,7 @@ from nextintranet_warehouse.models.component import (
     Supplier, SupplierRelation, Reservation, Document,
 )
 from nextintranet_warehouse.models.category import Category
+from nextintranet_warehouse.models.currency import Currency
 from nextintranet_warehouse.models.purchase import (
     Purchase, PurchaseDelivery, PurchaseItem, PurchaseItemType, PurchaseRequest, PurchaseStatus,
 )
@@ -669,6 +670,44 @@ class WarehouseReadToolset(MCPToolset):
             qs = qs.filter(name__icontains=query)
         limit = min(max(limit, 1), 200)
         return MCPSupplierSerializer(qs[:limit], many=True).data
+
+    def list_currencies(self) -> list[dict]:
+        """List currencies and their exchange rates to the base currency."""
+        _require_read(self.request)
+        return [
+            {
+                "code": c.code,
+                "name": c.name,
+                "rate_to_base": str(c.rate_to_base),
+                "is_base": c.is_base,
+                "updated_at": c.updated_at.isoformat(),
+            }
+            for c in Currency.objects.all()
+        ]
+
+    def set_currency_rate(self, code: str, rate_to_base: str, name: str = "") -> dict:
+        """Create a currency or update its exchange rate.
+
+        Args:
+            code: Currency code, e.g. EUR.
+            rate_to_base: Value of 1 unit of this currency in the base currency (e.g. "25.1" for EUR when CZK is base).
+            name: Optional display name.
+        """
+        _require_write(self.request)
+        try:
+            rate = Decimal(str(rate_to_base))
+        except InvalidOperation:
+            raise ValueError("rate_to_base must be a number.")
+        if rate <= 0:
+            raise ValueError("rate_to_base must be positive.")
+        currency, _created = Currency.objects.get_or_create(code=code.strip().upper())
+        if currency.is_base:
+            raise ValueError("The base currency rate is fixed at 1.")
+        currency.rate_to_base = rate
+        if name:
+            currency.name = name
+        currency.save()
+        return {"code": currency.code, "name": currency.name, "rate_to_base": str(currency.rate_to_base)}
 
     def get_supplier(self, supplier_id: str) -> dict:
         """Get a single supplier by ID.

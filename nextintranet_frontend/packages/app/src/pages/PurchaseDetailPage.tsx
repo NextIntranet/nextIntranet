@@ -82,6 +82,24 @@ interface Supplier {
   id: string
   name: string
   website?: string | null
+  has_mouser_cart?: boolean
+}
+
+interface CurrencyOption {
+  id: number
+  code: string
+  name: string
+  rate_to_base: string
+  is_base: boolean
+}
+
+interface MouserCartResult {
+  cart_key?: string | null
+  currency_code?: string | null
+  total_item_count?: number | null
+  merchandise_total?: number | null
+  errors: string[]
+  cart_url: string
 }
 
 interface LocationNode {
@@ -351,6 +369,7 @@ export function PurchaseDetailPage() {
   const queryClient = useQueryClient()
 
   const [metaForm, setMetaForm] = useState({
+    supplierId: "",
     currency: "",
     note: "",
     exportMode: "list" as PurchaseExportMode,
@@ -381,6 +400,18 @@ export function PurchaseDetailPage() {
     queryKey: ["me"],
     queryFn: () => apiFetch<User>("/api/v1/me/"),
   })
+
+  const { data: suppliersData } = useQuery<Supplier[] | PaginatedResponse<Supplier>>({
+    queryKey: ["suppliers", "all"],
+    queryFn: () => apiFetch<Supplier[] | PaginatedResponse<Supplier>>("/api/v1/store/supplier/?page_size=1000"),
+  })
+  const supplierOptions = Array.isArray(suppliersData) ? suppliersData : suppliersData?.results || []
+
+  const { data: currenciesData } = useQuery<CurrencyOption[]>({
+    queryKey: ["currencies"],
+    queryFn: () => apiFetch<CurrencyOption[]>("/api/v1/store/currency/"),
+  })
+  const currencyOptions = currenciesData || []
 
   const { data: purchaseDetail, isLoading: purchaseDetailLoading } = useQuery<Purchase>({
     queryKey: ["purchase", id],
@@ -448,6 +479,7 @@ export function PurchaseDetailPage() {
     }
 
     setMetaForm({
+      supplierId: purchaseDetail.supplier?.id || "",
       currency: purchaseDetail.currency || "",
       note: purchaseDetail.note || "",
       exportMode: purchaseDetail.export_mode || "list",
@@ -537,6 +569,20 @@ export function PurchaseDetailPage() {
     || receiveMutation.isPending
     || stockMutation.isPending
 
+  const mouserCartMutation = useMutation({
+    mutationFn: () => apiFetch<MouserCartResult>(`/api/v1/store/purchase/${id}/mouser-cart/`, { method: "POST" }),
+    onSuccess: (result) => {
+      const total = result.merchandise_total != null ? ` (${result.merchandise_total} ${result.currency_code || ""})` : ""
+      if (result.errors.length) {
+        toast.warning(`Mouser cart created with issues: ${result.errors.join("; ")}`)
+      } else {
+        toast.success(`Mouser cart created: ${result.total_item_count ?? 0} items${total}.`)
+      }
+      window.open(result.cart_url, "_blank", "noopener")
+    },
+    onError: (error) => toast.error(errorMessage(error, "Failed to create Mouser cart.")),
+  })
+
   const handleSaveMeta = async () => {
     if (!id) {
       return
@@ -544,6 +590,7 @@ export function PurchaseDetailPage() {
 
     try {
       await patchPurchaseMutation.mutateAsync({
+        supplier_id: metaForm.supplierId,
         currency: metaForm.currency.trim() || null,
         note: metaForm.note,
         export_mode: metaForm.exportMode,
@@ -1049,16 +1096,42 @@ export function PurchaseDetailPage() {
               <h3 className="text-sm font-semibold text-foreground">Purchase settings</h3>
             </div>
 
-            <div className="mt-3 grid gap-3 md:grid-cols-3">
+            <div className="mt-3 grid gap-3 md:grid-cols-4">
+              <div className="space-y-2">
+                <label className="text-xs font-semibold uppercase text-muted-foreground">Supplier</label>
+                <select
+                  value={metaForm.supplierId}
+                  onChange={(event) => setMetaForm((prev) => ({ ...prev, supplierId: event.target.value }))}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  disabled={!canEdit || mutationBusy}
+                >
+                  {!supplierOptions.some((supplier) => supplier.id === metaForm.supplierId) && purchaseDetail.supplier && (
+                    <option value={purchaseDetail.supplier.id}>{purchaseDetail.supplier.name}</option>
+                  )}
+                  {supplierOptions.map((supplier) => (
+                    <option key={supplier.id} value={supplier.id}>{supplier.name}</option>
+                  ))}
+                </select>
+              </div>
+
               <div className="space-y-2">
                 <label className="text-xs font-semibold uppercase text-muted-foreground">Currency</label>
-                <Input
+                <select
                   value={metaForm.currency}
-                  onChange={(event) =>
-                    setMetaForm((prev) => ({ ...prev, currency: event.target.value }))
-                  }
+                  onChange={(event) => setMetaForm((prev) => ({ ...prev, currency: event.target.value }))}
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                   disabled={!canEdit || mutationBusy}
-                />
+                >
+                  <option value="">—</option>
+                  {metaForm.currency && !currencyOptions.some((currency) => currency.code === metaForm.currency) && (
+                    <option value={metaForm.currency}>{metaForm.currency} (unknown)</option>
+                  )}
+                  {currencyOptions.map((currency) => (
+                    <option key={currency.code} value={currency.code}>
+                      {currency.code}{currency.name ? ` · ${currency.name}` : ""}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="space-y-2">
@@ -1105,6 +1178,18 @@ export function PurchaseDetailPage() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-sm font-semibold text-foreground">Items</h3>
               {purchaseDetail.items?.length ? (
+                <div className="flex flex-wrap gap-2">
+                {purchaseDetail.supplier?.has_mouser_cart && canEdit && (
+                  <Button
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => mouserCartMutation.mutate()}
+                    disabled={mouserCartMutation.isPending}
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    {mouserCartMutation.isPending ? "Creating cart…" : "Create cart at Mouser"}
+                  </Button>
+                )}
                 <Button
                   size="sm"
                   variant="outline"
@@ -1136,6 +1221,7 @@ export function PurchaseDetailPage() {
                   <Download className="h-4 w-4" />
                   Download CSV for supplier
                 </Button>
+                </div>
               ) : null}
             </div>
 
