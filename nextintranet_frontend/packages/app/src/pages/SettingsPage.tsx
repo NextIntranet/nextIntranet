@@ -5,6 +5,7 @@ import { apiFetch, getRealtimeClient, type RealtimeEvent } from "@nextintranet/c
 import {
   ChevronDown,
   Cpu,
+  Coins,
   Download,
   ImageIcon,
   KeyRound,
@@ -33,6 +34,7 @@ import { HardwarePage } from "@/pages/HardwarePage"
 import { ServiceTokensPage } from "@/pages/ServiceTokensPage"
 import { SoftwareSettingsPage } from "@/pages/SoftwareSettingsPage"
 import { LabelTemplatesPage } from "@/pages/LabelTemplatesPage"
+import { CurrenciesPage } from "@/pages/CurrenciesPage"
 
 interface BrandingSettings {
   company_name: string
@@ -365,6 +367,18 @@ export function SettingsPage() {
               </div>
             ) : null}
           </div>
+        </SettingsSection>
+
+        <SettingsSection
+          id="currencies"
+          icon={Coins}
+          title="Currencies"
+          description="Currencies available on purchases and their exchange rates."
+          open={openSections.has("currencies")}
+          onToggle={() => toggleSection("currencies")}
+          registerRef={(el) => (sectionRefs.current["currencies"] = el)}
+        >
+          <CurrenciesPage embedded />
         </SettingsSection>
 
         <SettingsSection
