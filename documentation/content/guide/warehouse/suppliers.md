@@ -18,7 +18,8 @@ A supplier is a vendor you buy components from. Manage them at
 - `api_plugin_instance` / `api_config` / `api_mapping` — optional connection to a
   supplier API plugin for fetching live price/stock/description data. See
   [Supplier API mapping](../../developer/supplier-api-mapping.md) for the full
-  fetch/apply mechanics.
+  fetch/apply mechanics. `api_config.order_api` holds the separate order/cart API key
+  (currently Mouser), see [Purchases](purchases.md).
 
 ## Linking a component to a supplier
 

@@ -21,6 +21,25 @@ and each status unlocks the next part of the workflow.
 | `stocking` | Received deliveries are being booked into stock. |
 | `completed` | Everything is delivered and stocked. |
 
+## Supplier, currency and Mouser cart
+
+In **Purchase settings** you can change the order's **supplier** (only while its
+component lines belong to that supplier) and pick the **currency** from the currency
+list. The list and exchange rates (value of 1 unit in the base currency, CZK) are
+managed at `/api/v1/store/currency/` or through the MCP tools `list_currencies` and
+`set_currency_rate`. The bundled rates are only rough starting values; update them.
+
+For Mouser the cart/order API uses a different key than the search API. Put it into
+the supplier's `api_config` under `order_api`:
+
+```json
+{"order_api": {"provider": "mouser", "api_key": "...", "country_code": "CZ", "currency_code": "EUR"}}
+```
+
+Then the order shows **Create cart at Mouser** next to the CSV download. It sends the
+component lines (supplier symbol and quantity) to the Mouser cart API (v1) and opens
+your Mouser cart. `currency_code` is optional; the purchase currency is used otherwise.
+
 ## Stock locations and expected packets
 
 Every component line has a **stock location** — where the goods will end up. It is set while

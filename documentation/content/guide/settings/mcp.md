@@ -98,6 +98,7 @@ without this key.
 - `get_location` — single location (`include_nested` default true; by id or legacy uuid)
 - `list_parameter_types` — parameter types (`limit` default 500, max 2000)
 - `list_suppliers` — supplier list
+- `list_currencies` — currencies and exchange rates to the base currency
 - `get_supplier` — single supplier
 - `list_component_suppliers` — supplier links for a component (`limit` default 50, max 200)
 - `list_reservations` — manual reservation list (filter by component, warehouse, active only, or search)
@@ -120,6 +121,7 @@ Production BOM tools (`nextintranet_production`) are registered on the same serv
 
 ### Write (`mcp:write` scope, includes all read tools)
 
+- `set_currency_rate` — create a currency or update its exchange rate
 - `update_component_description` — update a component's description (alias for description-only updates)
 - `update_component` — update name, description, category, tags, selling/internal prices
 - `set_component_parameters` — set/update component parameters

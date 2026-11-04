@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-17T14:23:02.832Z",
+  "generatedAt": "2026-11-04T11:26:59.364Z",
   "pages": [
     {
       "path": "",
@@ -384,8 +384,18 @@
         },
         {
           "level": 2,
+          "text": "Reserving a BOM",
+          "id": "reserving-a-bom"
+        },
+        {
+          "level": 2,
           "text": "Availability",
           "id": "availability"
+        },
+        {
+          "level": 2,
+          "text": "Requesting missing parts",
+          "id": "requesting-missing-parts"
         },
         {
           "level": 2,
@@ -785,6 +795,11 @@
         },
         {
           "level": 2,
+          "text": "Stock and reservations",
+          "id": "stock-and-reservations"
+        },
+        {
+          "level": 2,
           "text": "Parameters",
           "id": "parameters"
         },
@@ -875,6 +890,11 @@
           "level": 2,
           "text": "Picking a parent location",
           "id": "picking-a-parent-location"
+        },
+        {
+          "level": 2,
+          "text": "Warehouse",
+          "id": "warehouse"
         },
         {
           "level": 2,
@@ -1005,6 +1025,11 @@
         },
         {
           "level": 2,
+          "text": "Supplier, currency and Mouser cart",
+          "id": "supplier-currency-and-mouser-cart"
+        },
+        {
+          "level": 2,
           "text": "Stock locations and expected packets",
           "id": "stock-locations-and-expected-packets"
         },
@@ -1103,8 +1128,13 @@
         },
         {
           "level": 2,
-          "text": "Interaction with BOM availability",
-          "id": "interaction-with-bom-availability"
+          "text": "Transfers",
+          "id": "transfers"
+        },
+        {
+          "level": 2,
+          "text": "Incoming stock",
+          "id": "incoming-stock"
         },
         {
           "level": 2,
