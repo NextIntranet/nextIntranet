@@ -13,9 +13,10 @@ from rest_framework.exceptions import ValidationError
 
 from nextintranet_warehouse.models.purchase import Purchase, PurchaseItemType
 
-MOUSER_CART_URL = "https://api.mouser.com/api/v1/cart"
-# CartKey is required in the body; the empty GUID asks Mouser to create a new cart.
-NEW_CART_KEY = "00000000-0000-0000-0000-000000000000"
+# POST /cart replaces an existing cart and demands a real CartKey. Inserting items
+# without a CartKey is what makes Mouser create a new cart and return its key.
+MOUSER_CART_URL = "https://api.mouser.com/api/v1/cart/items/insert"
+EMPTY_CART_KEY = "00000000-0000-0000-0000-000000000000"
 
 
 def get_order_api_config(supplier) -> Optional[Dict[str, Any]]:
@@ -54,7 +55,7 @@ def create_mouser_cart(purchase: Purchase) -> Dict[str, Any]:
         response = requests.post(
             MOUSER_CART_URL,
             params=params,
-            json={"CartKey": NEW_CART_KEY, "CartItems": cart_items},
+            json={"CartItems": cart_items},
             timeout=30,
         )
         response.raise_for_status()
@@ -67,8 +68,15 @@ def create_mouser_cart(purchase: Purchase) -> Dict[str, Any]:
     except ValueError:
         raise ValidationError({"detail": "Mouser returned invalid JSON."})
 
-    errors = [e.get("Message") or e.get("Code") or "Unknown error" for e in (data.get("Errors") or [])]
-    if not data.get("CartKey") or data.get("CartKey") == NEW_CART_KEY:
+    errors = [
+        f'{e.get("PropertyName")}: {e.get("Message")}' if e.get("PropertyName") else (e.get("Message") or "Unknown error")
+        for e in (data.get("Errors") or [])
+    ]
+    # Per-line problems (unknown part number, ...) come back on the cart items.
+    for line in data.get("CartItems") or []:
+        for e in line.get("Errors") or []:
+            errors.append(f'{line.get("MouserPartNumber")}: {e.get("Message") or e.get("Code")}')
+    if not data.get("CartKey") or data.get("CartKey") == EMPTY_CART_KEY:
         detail = "; ".join(errors) if errors else "no cart was created"
         raise ValidationError({"detail": f"Mouser did not create the cart: {detail}"})
 

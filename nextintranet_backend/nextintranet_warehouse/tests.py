@@ -38,8 +38,9 @@ class MouserCartTests(TestCase):
         post.return_value.json.return_value = {"CartKey": "abc", "TotalItemCount": 1, "Errors": []}
         result = create_mouser_cart(self.purchase)
         self.assertEqual(result["cart_key"], "abc")
+        self.assertTrue(post.call_args.args[0].endswith("/cart/items/insert"))
         kwargs = post.call_args.kwargs
-        self.assertEqual(kwargs["json"], {"CartKey": "00000000-0000-0000-0000-000000000000", "CartItems": [{"MouserPartNumber": "603-RC0603", "Quantity": 10}]})
+        self.assertEqual(kwargs["json"], {"CartItems": [{"MouserPartNumber": "603-RC0603", "Quantity": 10}]})
         self.assertEqual(kwargs["params"]["currencyCode"], "EUR")
 
     @mock.patch("nextintranet_warehouse.services.mouser.requests.post")
