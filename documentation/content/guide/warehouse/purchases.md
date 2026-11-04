@@ -36,9 +36,20 @@ the supplier's `api_config` under `order_api`:
 {"order_api": {"provider": "mouser", "api_key": "...", "country_code": "CZ", "currency_code": "EUR"}}
 ```
 
-Then the order shows **Create cart at Mouser** next to the CSV download. It sends the
-component lines (supplier symbol and quantity) to the Mouser cart API (v1) and opens
-your Mouser cart. `currency_code` is optional; the purchase currency is used otherwise.
+Then the order shows a **Mouser cart** block above the items:
+
+- **Create cart at Mouser** sends the component lines (supplier symbol and quantity) to the
+  Mouser cart API (v1). The returned cart key is stored with the purchase.
+- **Update Mouser cart** (once a cart is linked) overwrites that cart with the current items.
+  Lines that are no longer in the purchase are removed from the cart.
+- **Check cart changes** reads the cart back from Mouser and lists differences against the
+  purchase (different quantity, only in the cart, only in the purchase). Nothing is changed
+  automatically.
+- **Unlink** forgets the cart key; the cart itself stays at Mouser.
+
+The cart is created through the API and identified by its cart key. It may not show up in the
+cart of your logged-in mouser.com session, so use **Check cart changes** to see what is in it.
+`currency_code` is optional; the purchase currency is used otherwise.
 
 ## Stock locations and expected packets
 

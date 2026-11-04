@@ -100,6 +100,22 @@ interface MouserCartResult {
   merchandise_total?: number | null
   errors: string[]
   cart_url: string
+  created?: boolean
+}
+
+interface MouserCartLine {
+  part_number: string
+  quantity: number | null
+  purchase_quantity?: number
+  unit_price?: number | null
+}
+
+interface MouserCartCheck extends MouserCartResult {
+  in_sync: boolean
+  only_in_cart: MouserCartLine[]
+  only_in_purchase: MouserCartLine[]
+  quantity_differs: MouserCartLine[]
+  synced_at?: string | null
 }
 
 interface LocationNode {
@@ -156,6 +172,7 @@ interface PurchaseItem {
 interface Purchase {
   id: string
   supplier: Supplier
+  metadata?: { mouser_cart?: { cart_key?: string; synced_at?: string } } | null
   status: PurchaseStatus
   currency?: string | null
   total_price_original?: string | number | null
@@ -569,18 +586,39 @@ export function PurchaseDetailPage() {
     || receiveMutation.isPending
     || stockMutation.isPending
 
+  const mouserCart = purchaseDetail?.metadata?.mouser_cart
+  const [mouserCheck, setMouserCheck] = useState<MouserCartCheck | null>(null)
+
   const mouserCartMutation = useMutation({
     mutationFn: () => apiFetch<MouserCartResult>(`/api/v1/store/purchase/${id}/mouser-cart/`, { method: "POST" }),
     onSuccess: (result) => {
       const total = result.merchandise_total != null ? ` (${result.merchandise_total} ${result.currency_code || ""})` : ""
+      const verb = result.created ? "created" : "updated"
       if (result.errors.length) {
-        toast.warning(`Mouser cart created with issues: ${result.errors.join("; ")}`)
+        toast.warning(`Mouser cart ${verb} with issues: ${result.errors.join("; ")}`)
       } else {
-        toast.success(`Mouser cart created: ${result.total_item_count ?? 0} items${total}. Cart key: ${result.cart_key}`)
+        toast.success(`Mouser cart ${verb}: ${result.total_item_count ?? 0} items${total}.`)
       }
-      window.open(result.cart_url, "_blank", "noopener")
+      setMouserCheck(null)
+      invalidatePurchaseQueries()
     },
-    onError: (error) => toast.error(errorMessage(error, "Failed to create Mouser cart.")),
+    onError: (error) => toast.error(errorMessage(error, "Failed to sync Mouser cart.")),
+  })
+
+  const mouserCheckMutation = useMutation({
+    mutationFn: () => apiFetch<MouserCartCheck>(`/api/v1/store/purchase/${id}/mouser-cart/`),
+    onSuccess: (result) => setMouserCheck(result),
+    onError: (error) => toast.error(errorMessage(error, "Failed to read Mouser cart.")),
+  })
+
+  const mouserUnlinkMutation = useMutation({
+    mutationFn: () => apiFetch(`/api/v1/store/purchase/${id}/mouser-cart/`, { method: "DELETE" }),
+    onSuccess: () => {
+      setMouserCheck(null)
+      invalidatePurchaseQueries()
+      toast.success("Mouser cart unlinked.")
+    },
+    onError: (error) => toast.error(errorMessage(error, "Failed to unlink Mouser cart.")),
   })
 
   const handleSaveMeta = async () => {
@@ -1179,17 +1217,6 @@ export function PurchaseDetailPage() {
               <h3 className="text-sm font-semibold text-foreground">Items</h3>
               {purchaseDetail.items?.length ? (
                 <div className="flex flex-wrap gap-2">
-                {purchaseDetail.supplier?.has_mouser_cart && canEdit && (
-                  <Button
-                    size="sm"
-                    className="gap-2"
-                    onClick={() => mouserCartMutation.mutate()}
-                    disabled={mouserCartMutation.isPending}
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                    {mouserCartMutation.isPending ? "Creating cart…" : "Create cart at Mouser"}
-                  </Button>
-                )}
                 <Button
                   size="sm"
                   variant="outline"
@@ -1224,6 +1251,104 @@ export function PurchaseDetailPage() {
                 </div>
               ) : null}
             </div>
+
+            {purchaseDetail.supplier?.has_mouser_cart && canEdit && (
+              <div className="mt-3 rounded-lg border border-border/70 bg-muted/20 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium text-foreground">Mouser cart</span>
+                  <Button
+                    size="sm"
+                    className="gap-2"
+                    onClick={() => mouserCartMutation.mutate()}
+                    disabled={mouserCartMutation.isPending || !purchaseDetail.items?.length}
+                  >
+                    {mouserCartMutation.isPending
+                      ? "Syncing…"
+                      : mouserCart?.cart_key ? "Update Mouser cart" : "Create cart at Mouser"}
+                  </Button>
+                  {mouserCart?.cart_key && (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => mouserCheckMutation.mutate()}
+                        disabled={mouserCheckMutation.isPending}
+                      >
+                        {mouserCheckMutation.isPending ? "Checking…" : "Check cart changes"}
+                      </Button>
+                      <Button size="sm" variant="outline" className="gap-2" asChild>
+                        <a href="https://www.mouser.com/Cart/" target="_blank" rel="noreferrer">
+                          <ExternalLink className="h-4 w-4" />
+                          Open Mouser
+                        </a>
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          if (window.confirm("Forget the linked Mouser cart? The cart itself stays at Mouser.")) {
+                            mouserUnlinkMutation.mutate()
+                          }
+                        }}
+                        disabled={mouserUnlinkMutation.isPending}
+                      >
+                        Unlink
+                      </Button>
+                    </>
+                  )}
+                </div>
+                {mouserCart?.cart_key && (
+                  <p className="mt-2 break-all text-xs text-muted-foreground">
+                    Cart key: <span className="font-mono">{mouserCart.cart_key}</span>
+                    {mouserCart.synced_at ? ` · last synced ${new Date(mouserCart.synced_at).toLocaleString()}` : ""}
+                  </p>
+                )}
+                {mouserCheck && (
+                  <div className="mt-3 space-y-2 text-sm">
+                    <p className={mouserCheck.in_sync ? "text-emerald-700" : "text-amber-700"}>
+                      {mouserCheck.in_sync
+                        ? "The cart matches this purchase."
+                        : "The cart differs from this purchase."}
+                      {" "}
+                      {mouserCheck.total_item_count ?? 0} items
+                      {mouserCheck.merchandise_total != null
+                        ? ` · ${mouserCheck.merchandise_total} ${mouserCheck.currency_code || ""}`
+                        : ""}
+                    </p>
+                    {mouserCheck.errors.length > 0 && (
+                      <p className="text-destructive">{mouserCheck.errors.join("; ")}</p>
+                    )}
+                    {mouserCheck.quantity_differs.length > 0 && (
+                      <ul className="list-disc pl-5">
+                        {mouserCheck.quantity_differs.map((line) => (
+                          <li key={`q-${line.part_number}`}>
+                            {line.part_number}: {line.quantity} in cart, {line.purchase_quantity} in purchase
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {mouserCheck.only_in_cart.length > 0 && (
+                      <ul className="list-disc pl-5">
+                        {mouserCheck.only_in_cart.map((line) => (
+                          <li key={`c-${line.part_number}`}>
+                            {line.part_number}: only in the Mouser cart ({line.quantity} pcs)
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {mouserCheck.only_in_purchase.length > 0 && (
+                      <ul className="list-disc pl-5">
+                        {mouserCheck.only_in_purchase.map((line) => (
+                          <li key={`p-${line.part_number}`}>
+                            {line.part_number}: only in this purchase ({line.quantity} pcs)
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="mt-3 overflow-hidden rounded-lg border border-border/70">
               <TooltipProvider>

@@ -101,6 +101,8 @@ class Purchase(NIModel):
     )
 
     note = models.TextField(blank=True, verbose_name=_("Note"))
+    # Free-form integration data, e.g. {"mouser_cart": {"cart_key": "...", ...}}.
+    metadata = models.JSONField(blank=True, null=True, default=dict, verbose_name=_("Metadata"))
 
     STATUS_TRANSITIONS = {
         PurchaseStatus.DRAFT: {PurchaseStatus.ITEMS_DEFINED},
