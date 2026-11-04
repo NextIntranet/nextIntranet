@@ -14,6 +14,8 @@ from rest_framework.exceptions import ValidationError
 from nextintranet_warehouse.models.purchase import Purchase, PurchaseItemType
 
 MOUSER_CART_URL = "https://api.mouser.com/api/v1/cart"
+# CartKey is required in the body; the empty GUID asks Mouser to create a new cart.
+NEW_CART_KEY = "00000000-0000-0000-0000-000000000000"
 
 
 def get_order_api_config(supplier) -> Optional[Dict[str, Any]]:
@@ -52,22 +54,29 @@ def create_mouser_cart(purchase: Purchase) -> Dict[str, Any]:
         response = requests.post(
             MOUSER_CART_URL,
             params=params,
-            json={"CartItems": cart_items},
+            json={"CartKey": NEW_CART_KEY, "CartItems": cart_items},
             timeout=30,
         )
         response.raise_for_status()
         data = response.json()
-    except requests.RequestException as exc:
+    except requests.HTTPError as exc:
         # Never echo the URL: it carries the API key.
+        raise ValidationError({"detail": f"Mouser request failed: HTTP {exc.response.status_code}: {exc.response.text[:300]}"})
+    except requests.RequestException as exc:
         raise ValidationError({"detail": f"Mouser request failed: {exc.__class__.__name__}"})
     except ValueError:
         raise ValidationError({"detail": "Mouser returned invalid JSON."})
+
+    errors = [e.get("Message") or e.get("Code") or "Unknown error" for e in (data.get("Errors") or [])]
+    if not data.get("CartKey") or data.get("CartKey") == NEW_CART_KEY:
+        detail = "; ".join(errors) if errors else "no cart was created"
+        raise ValidationError({"detail": f"Mouser did not create the cart: {detail}"})
 
     return {
         "cart_key": data.get("CartKey"),
         "currency_code": data.get("CurrencyCode"),
         "total_item_count": data.get("TotalItemCount"),
         "merchandise_total": data.get("MerchandiseTotal"),
-        "errors": [e.get("Message") for e in (data.get("Errors") or [])],
+        "errors": errors,
         "cart_url": "https://www.mouser.com/Cart/",
     }

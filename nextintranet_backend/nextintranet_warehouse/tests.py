@@ -39,8 +39,18 @@ class MouserCartTests(TestCase):
         result = create_mouser_cart(self.purchase)
         self.assertEqual(result["cart_key"], "abc")
         kwargs = post.call_args.kwargs
-        self.assertEqual(kwargs["json"], {"CartItems": [{"MouserPartNumber": "603-RC0603", "Quantity": 10}]})
+        self.assertEqual(kwargs["json"], {"CartKey": "00000000-0000-0000-0000-000000000000", "CartItems": [{"MouserPartNumber": "603-RC0603", "Quantity": 10}]})
         self.assertEqual(kwargs["params"]["currencyCode"], "EUR")
+
+    @mock.patch("nextintranet_warehouse.services.mouser.requests.post")
+    def test_empty_cart_key_is_an_error(self, post):
+        post.return_value.json.return_value = {
+            "CartKey": "00000000-0000-0000-0000-000000000000",
+            "Errors": [{"Message": "Required"}],
+        }
+        with self.assertRaises(ValidationError) as ctx:
+            create_mouser_cart(self.purchase)
+        self.assertIn("Required", str(ctx.exception.detail))
 
     def test_requires_config(self):
         self.supplier.api_config = {}

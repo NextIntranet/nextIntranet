@@ -576,7 +576,7 @@ export function PurchaseDetailPage() {
       if (result.errors.length) {
         toast.warning(`Mouser cart created with issues: ${result.errors.join("; ")}`)
       } else {
-        toast.success(`Mouser cart created: ${result.total_item_count ?? 0} items${total}.`)
+        toast.success(`Mouser cart created: ${result.total_item_count ?? 0} items${total}. Cart key: ${result.cart_key}`)
       }
       window.open(result.cart_url, "_blank", "noopener")
     },
