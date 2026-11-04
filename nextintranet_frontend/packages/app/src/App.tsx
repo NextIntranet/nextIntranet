@@ -30,6 +30,7 @@ import { QrRedirectPage } from './pages/QrRedirectPage';
 import { PrintQueuePage } from './pages/PrintQueuePage';
 import { HardwarePage } from './pages/HardwarePage';
 import { SettingsPage } from './pages/SettingsPage';
+import { CurrenciesPage } from './pages/CurrenciesPage';
 import { ServiceTokensPage } from './pages/ServiceTokensPage';
 import { SoftwareSettingsPage } from './pages/SoftwareSettingsPage';
 import { LabelTemplatesPage } from './pages/LabelTemplatesPage';
@@ -292,6 +293,7 @@ export function App() {
           />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="settings/service-token" element={<ServiceTokensPage />} />
+          <Route path="settings/currency" element={<CurrenciesPage />} />
           <Route path="settings/software" element={<SoftwareSettingsPage />} />
           <Route path="settings/label-template" element={<LabelTemplatesPage />} />
           <Route path="setting/hardware" element={<HardwarePage />} />

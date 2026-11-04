@@ -26,7 +26,7 @@ and each status unlocks the next part of the workflow.
 In **Purchase settings** you can change the order's **supplier** (only while its
 component lines belong to that supplier) and pick the **currency** from the currency
 list. The list and exchange rates (value of 1 unit in the base currency, CZK) are
-managed at `/api/v1/store/currency/` or through the MCP tools `list_currencies` and
+managed in **Settings → Currencies**, or through the MCP tools `list_currencies` and
 `set_currency_rate`. The bundled rates are only rough starting values; update them.
 
 For Mouser the cart/order API uses a different key than the search API. Put it into
