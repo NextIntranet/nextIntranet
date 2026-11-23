@@ -606,6 +606,80 @@ function LineActionButtons({
   )
 }
 
+/** How lines that are already fully placed are shown in the production views. */
+type PlacedRowsMode = "inline" | "end" | "hidden"
+
+const PLACED_ROWS_MODE_STORAGE_KEY = "ni.production.placedRowsMode"
+
+const readPlacedRowsMode = (): PlacedRowsMode => {
+  try {
+    const stored = window.localStorage.getItem(PLACED_ROWS_MODE_STORAGE_KEY)
+    if (stored === "inline" || stored === "end" || stored === "hidden") return stored
+  } catch {
+    // Storage unavailable (private mode etc.) — fall back to the default.
+  }
+  return "end"
+}
+
+/** A line counts as done once everything it needs has been placed. */
+const isLinePlaced = (row: Pick<ScannerRow, "needed" | "placed"> | undefined) =>
+  Boolean(row) && toNumber(row!.needed) > 0 && toNumber(row!.placed) >= toNumber(row!.needed)
+
+type StockLocation = AvailabilityRow["locations"][number]
+
+/** Location path without the leading warehouse part, which is the same for every chip. */
+const relativeLocationPath = (path: string, warehousePath: string | null | undefined) => {
+  if (warehousePath && path.startsWith(`${warehousePath}/`)) return path.slice(warehousePath.length + 1)
+  return path
+}
+
+/**
+ * Compact list of the bags a line can be taken from in the BOM's warehouse — location plus
+ * pieces in stock — so the operator knows where to go. Clicking a chip opens the scan action
+ * for that bag.
+ */
+function StockLocationChips({
+  locations,
+  warehousePath,
+  disabled,
+  onPick,
+}: {
+  locations: StockLocation[]
+  warehousePath: string | null
+  disabled: boolean
+  onPick: (location: StockLocation) => void
+}) {
+  if (locations.length === 0) {
+    return (
+      <div className="flex items-center gap-1.5 px-2 text-[11px] text-amber-700">
+        <MapPin className="h-3 w-3 shrink-0" />
+        Not in stock in this warehouse.
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-1 px-2">
+      <MapPin className="h-3 w-3 shrink-0 text-muted-foreground" aria-label="Stock locations" />
+      {locations.map((location) => (
+        <button
+          key={location.packet_id}
+          type="button"
+          disabled={disabled}
+          onClick={() => onPick(location)}
+          title={`${location.location} — ${formatQty(location.quantity)} pcs. Click to source or place from this bag.`}
+          className={cn(
+            "inline-flex max-w-full items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] leading-tight transition-colors hover:bg-accent disabled:pointer-events-none",
+            location.in_home ? "border-sky-300 bg-sky-50 text-sky-900" : "border-border bg-background",
+          )}
+        >
+          <span className="truncate">{relativeLocationPath(location.location, warehousePath)}</span>
+          <span className="shrink-0 font-medium tabular-nums text-muted-foreground">{formatQty(location.quantity)}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 type LocationPacketItem = {
   lineId: string
   componentId: string | null
@@ -646,6 +720,7 @@ function LocationsTreeView({
   openScanAction,
   onChangeComponent,
   disabled,
+  placedRowsMode,
 }: {
   locations: LocationNode[]
   availabilityByLineId: Map<string, AvailabilityRow>
@@ -654,16 +729,55 @@ function LocationsTreeView({
   openScanAction: (lineId: string, barcode: string, scannedPacketId?: string | null, operation?: "SOURCED" | "PLACED") => void
   onChangeComponent: (row: ScannerRow) => void
   disabled: boolean
+  placedRowsMode: PlacedRowsMode
 }) {
-  const packetsByLocation = useMemo(() => buildPacketsByLocation(availabilityByLineId), [availabilityByLineId])
+  const packetsByLocation = useMemo(() => {
+    const raw = buildPacketsByLocation(availabilityByLineId)
+    if (placedRowsMode === "inline") return raw
+    const map = new Map<string, LocationPacketItem[]>()
+    raw.forEach((items, path) => {
+      const open = items.filter((item) => !isLinePlaced(findScannerRow(item.lineId)))
+      if (placedRowsMode === "hidden") {
+        if (open.length > 0) map.set(path, open)
+        return
+      }
+      map.set(path, [...open, ...items.filter((item) => isLinePlaced(findScannerRow(item.lineId)))])
+    })
+    return map
+  }, [availabilityByLineId, findScannerRow, placedRowsMode])
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set())
 
-  const nodeHasPackets = useCallback(
-    (node: LocationNode): boolean => {
-      if ((packetsByLocation.get(node.full_path) || []).length > 0) return true
-      return (node.children || []).some(nodeHasPackets)
+  // Per node: does its subtree hold any bag, and any bag whose line still needs placing?
+  const nodeStats = useMemo(() => {
+    const stats = new Map<string, { hasPackets: boolean; hasOpen: boolean }>()
+    const visit = (node: LocationNode): { hasPackets: boolean; hasOpen: boolean } => {
+      const items = packetsByLocation.get(node.full_path) || []
+      let hasPackets = items.length > 0
+      let hasOpen = items.some((item) => !isLinePlaced(findScannerRow(item.lineId)))
+      ;(node.children || []).forEach((child) => {
+        const childStats = visit(child)
+        hasPackets ||= childStats.hasPackets
+        hasOpen ||= childStats.hasOpen
+      })
+      const result = { hasPackets, hasOpen }
+      stats.set(node.id, result)
+      return result
+    }
+    locations.forEach(visit)
+    return stats
+  }, [findScannerRow, locations, packetsByLocation])
+
+  const nodeHasPackets = useCallback((node: LocationNode) => Boolean(nodeStats.get(node.id)?.hasPackets), [nodeStats])
+
+  /** With "at end", locations where everything is already placed sink below the rest. */
+  const orderNodes = useCallback(
+    (nodes: LocationNode[]) => {
+      if (placedRowsMode !== "end") return nodes
+      const open = nodes.filter((node) => nodeStats.get(node.id)?.hasOpen)
+      const done = nodes.filter((node) => !nodeStats.get(node.id)?.hasOpen)
+      return [...open, ...done]
     },
-    [packetsByLocation],
+    [nodeStats, placedRowsMode],
   )
 
   const toggleCollapsed = (id: string) => {
@@ -747,21 +861,25 @@ function LocationsTreeView({
                 </div>
               )
             })}
-            {(node.children || []).map((child) => renderNode(child, depth + 1))}
+            {orderNodes(node.children || []).map((child) => renderNode(child, depth + 1))}
           </div>
         ) : null}
       </div>
     )
   }
 
-  const rendered = locations.map((node) => renderNode(node, 0)).filter(Boolean)
+  const rendered = orderNodes(locations).map((node) => renderNode(node, 0)).filter(Boolean)
 
   return (
     <div className="rounded-lg border border-border/70 p-2">
       {rendered.length > 0 ? (
         rendered
       ) : (
-        <p className="p-2 text-xs text-muted-foreground">No stocked bags match this BOM&apos;s linked components.</p>
+        <p className="p-2 text-xs text-muted-foreground">
+          {placedRowsMode === "hidden"
+            ? "No stocked bags left for lines that still need placing."
+            : "No stocked bags match this BOM’s linked components."}
+        </p>
       )}
     </div>
   )
@@ -2007,6 +2125,24 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
     return map
   }, [availabilityData?.warehouses])
 
+  /** Warehouse the BOM draws from; the production rows list stock locations only from there. */
+  const stockWarehouseId = selectedBom?.stock_warehouse || availabilityData?.warehouse_id || null
+  const stockWarehousePath = stockWarehouseId ? warehouseNameById.get(stockWarehouseId) || null : null
+
+  /** Bags of a production row's component in the BOM's warehouse, biggest first. */
+  const stockLocationsOf = useCallback(
+    (row: ScannerRow): StockLocation[] | null => {
+      const lineIds = [row.id, ...(row._groupedLineIds || [])]
+      const availabilityRow = lineIds.map((id) => availabilityByLineId.get(id)).find(Boolean)
+      if (!availabilityRow || !availabilityRow.linked_component) return null
+      return (availabilityRow.locations || [])
+        .filter((location) => !stockWarehouseId || location.warehouse_id === stockWarehouseId)
+        .slice()
+        .sort((a, b) => toNumber(b.quantity) - toNumber(a.quantity) || a.location.localeCompare(b.location))
+    },
+    [availabilityByLineId, stockWarehouseId],
+  )
+
 
   /**
    * Production rows are grouped per linked component: the backend resolves a scanned bag to a
@@ -2128,7 +2264,24 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
    * assemblyRows/ibomCompletionRefs, which stay on the merged-by-component data the backend's
    * scan resolution actually uses. */
   const [productionViewMode, setProductionViewMode] = useState<"component" | "line" | "tree">("component")
-  const displayAssemblyRows = productionViewMode === "line" ? assemblyRowsByLine : assemblyRows
+  /** Where fully placed lines go: left in BOM order, moved to the end, or hidden. */
+  const [placedRowsMode, setPlacedRowsModeState] = useState<PlacedRowsMode>(readPlacedRowsMode)
+  const setPlacedRowsMode = useCallback((mode: PlacedRowsMode) => {
+    setPlacedRowsModeState(mode)
+    try {
+      window.localStorage.setItem(PLACED_ROWS_MODE_STORAGE_KEY, mode)
+    } catch {
+      // Not persisted — the choice still applies for this session.
+    }
+  }, [])
+  const baseAssemblyRows = productionViewMode === "line" ? assemblyRowsByLine : assemblyRows
+  const displayAssemblyRows = useMemo(() => {
+    if (placedRowsMode === "inline") return baseAssemblyRows
+    const open = baseAssemblyRows.filter((row) => !isLinePlaced(row))
+    if (placedRowsMode === "hidden") return open
+    return [...open, ...baseAssemblyRows.filter((row) => isLinePlaced(row))]
+  }, [baseAssemblyRows, placedRowsMode])
+  const hiddenPlacedRowsCount = baseAssemblyRows.length - displayAssemblyRows.length
   const displayNotAssembledRows = productionViewMode === "line" ? notAssembledRowsByLine : notAssembledRows
 
   // Which PCB side is being worked on right now. This only affects styling (dimming the
@@ -4191,6 +4344,34 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                   </button>
                                 ))}
                               </div>
+                              <div
+                                className="inline-flex items-stretch overflow-hidden rounded-md border border-input"
+                                title="Where fully placed lines go, in the table and in the locations tree"
+                              >
+                                <span className="flex h-8 items-center gap-1 border-r border-input bg-muted/40 px-2 text-xs text-muted-foreground">
+                                  <PackageCheck className="h-3.5 w-3.5" />
+                                  Placed
+                                </span>
+                                {(
+                                  [
+                                    { key: "inline", label: "In place" },
+                                    { key: "end", label: "At end" },
+                                    { key: "hidden", label: "Hidden" },
+                                  ] as const
+                                ).map(({ key, label }) => (
+                                  <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => setPlacedRowsMode(key)}
+                                    className={cn(
+                                      "h-8 px-2.5 text-sm border-r border-input last:border-r-0",
+                                      placedRowsMode === key ? "bg-secondary font-medium" : "bg-background hover:bg-accent",
+                                    )}
+                                  >
+                                    {label}
+                                  </button>
+                                ))}
+                              </div>
                             </div>
 
                             <div className="grid gap-2 rounded-md border border-border/70 bg-muted/15 p-2 text-xs sm:grid-cols-2">
@@ -4229,6 +4410,7 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                 openScanAction={openScanAction}
                                 onChangeComponent={openLinkSheet}
                                 disabled={isBomClosed(selectedBom.status)}
+                                placedRowsMode={placedRowsMode}
                               />
                             ) : (
                             <>
@@ -4381,7 +4563,27 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                         </TableRow>
                                         {notAssembled ? null : (
                                         <TableRow className={cn("bg-muted/20", highlightedLineId === row.id ? "bg-amber-100/30" : undefined)}>
-                                          <TableCell colSpan={5} className="py-1.5">
+                                          <TableCell colSpan={5} className="space-y-1 py-1.5">
+                                            {(() => {
+                                              if (lineDone) return null
+                                              const stockLocations = stockLocationsOf(row)
+                                              if (!stockLocations) return null
+                                              return (
+                                                <StockLocationChips
+                                                  locations={stockLocations}
+                                                  warehousePath={stockWarehousePath}
+                                                  disabled={isBomClosed(selectedBom.status)}
+                                                  onPick={(location) =>
+                                                    openScanAction(
+                                                      row.id,
+                                                      location.packet_id,
+                                                      location.packet_id,
+                                                      scannerMode === "SOURCED" ? "SOURCED" : "PLACED",
+                                                    )
+                                                  }
+                                                />
+                                              )
+                                            })()}
                                             {row.scans && row.scans.length > 0 ? (
                                               <div className="space-y-0.5">
                                                 {row.scans.map((scan) => (
@@ -4488,7 +4690,22 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
                                         </TableRow>
                                         )}
                                       </Fragment>
-                                    )})
+                                    )}).concat(
+                                      hiddenPlacedRowsCount > 0 ? (
+                                        <TableRow key="hidden-placed" className="hover:bg-transparent">
+                                          <TableCell colSpan={5} className="py-1.5 text-center text-[11px] text-muted-foreground">
+                                            {hiddenPlacedRowsCount} placed {hiddenPlacedRowsCount === 1 ? "line" : "lines"} hidden ·{" "}
+                                            <button
+                                              type="button"
+                                              className="text-primary hover:underline"
+                                              onClick={() => setPlacedRowsMode("end")}
+                                            >
+                                              Show at end
+                                            </button>
+                                          </TableCell>
+                                        </TableRow>
+                                      ) : [],
+                                    )
                                   ) : (
                                     <TableRow>
                                       <TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
