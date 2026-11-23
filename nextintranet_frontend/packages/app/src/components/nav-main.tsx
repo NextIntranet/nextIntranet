@@ -36,7 +36,8 @@ export function NavMain({
   
   const isPathActive = (path: string) => {
      if (path === "/") return location.pathname === "/"
-     return location.pathname.startsWith(path)
+     // Match whole segments so "/store/location" stays inactive on "/store/location-check".
+     return location.pathname === path || location.pathname.startsWith(`${path}/`)
   }
 
   return (

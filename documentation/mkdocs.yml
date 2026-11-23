@@ -62,6 +62,7 @@ nav:
       - Packets & stock operations: guide/warehouse/packets.md
       - Pricing: guide/warehouse/pricing.md
       - Put-away check: guide/warehouse/put-away.md
+      - Location check: guide/warehouse/location-check.md
       - Suppliers: guide/warehouse/suppliers.md
       - Purchases: guide/warehouse/purchases.md
       - Reservations: guide/warehouse/reservations.md

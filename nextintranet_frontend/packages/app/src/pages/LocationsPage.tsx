@@ -2,11 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '@nextintranet/core';
-import { CheckCircle, ChevronRight, Copy, Home, Pencil, Plus, Warehouse } from 'lucide-react';
+import { CheckCircle, ChevronRight, ClipboardCheck, Copy, Home, Pencil, Plus, Warehouse } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { LocationParentSelect } from '@/components/LocationParentSelect';
 import { ShowComponentsButton } from '@/components/ShowComponentsButton';
+import { LocationCheckButton } from '@/components/LocationCheckButton';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -800,6 +801,7 @@ export function LocationsPage() {
                         <TableCell className="px-3 py-2 text-sm align-top">
                           <div className="flex flex-wrap items-center gap-2">
                             <ShowComponentsButton to={`/store?locations=${row.id}`} />
+                            <LocationCheckButton locationId={row.id} />
                             <PrintActions
                               targetType="location"
                               targetId={row.id}
@@ -838,6 +840,7 @@ export function LocationsPage() {
                     {currentLevel?.id && (
                       <ShowComponentsButton to={`/store?locations=${currentLevel.id}`} />
                     )}
+                    {currentLevel?.id && <LocationCheckButton locationId={currentLevel.id} />}
                     {canEdit && (
                       <Button
                         variant="outline"
@@ -1044,6 +1047,14 @@ export function LocationsPage() {
                         <p className="text-sm text-muted-foreground">No map uploaded.</p>
                       )}
                     </div>
+                    <Button
+                      variant="outline"
+                      className="mt-2 w-full gap-2"
+                      onClick={() => navigate(`/store/location-check/${locationDetail.id}`)}
+                    >
+                      <ClipboardCheck className="h-4 w-4" />
+                      Location check
+                    </Button>
                     {canEdit && (
                       <Button
                         className="mt-2 w-full gap-2"

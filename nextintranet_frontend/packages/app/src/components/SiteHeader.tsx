@@ -41,6 +41,7 @@ const segmentTitleMap: Record<string, string> = {
   queue: "Queue",
   "parameter-type": "Parameter types",
   "inventory-campaign": "Inventory campaigns",
+  "location-check": "Location check",
   inventory: "Inventory",
   packets: "Packet list",
   user: "Users",

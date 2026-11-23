@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-04T11:26:59.364Z",
+  "generatedAt": "2026-11-23T16:16:28.913Z",
   "pages": [
     {
       "path": "",
@@ -900,6 +900,55 @@
           "level": 2,
           "text": "Valuation report",
           "id": "valuation-report"
+        },
+        {
+          "level": 2,
+          "text": "Related topics",
+          "id": "related-topics"
+        }
+      ]
+    },
+    {
+      "path": "guide/warehouse/location-check",
+      "file": "guide/warehouse/location-check.md",
+      "title": "Location check",
+      "description": "Compare what is physically stored in a location with what the warehouse expects there.",
+      "draft": false,
+      "headings": [
+        {
+          "level": 1,
+          "text": "Location check",
+          "id": "location-check"
+        },
+        {
+          "level": 2,
+          "text": "Columns",
+          "id": "columns"
+        },
+        {
+          "level": 2,
+          "text": "Adding packets",
+          "id": "adding-packets"
+        },
+        {
+          "level": 2,
+          "text": "Resolving packets that do not belong",
+          "id": "resolving-packets-that-do-not-belong"
+        },
+        {
+          "level": 2,
+          "text": "What is saved",
+          "id": "what-is-saved"
+        },
+        {
+          "level": 2,
+          "text": "Keyboard shortcuts",
+          "id": "keyboard-shortcuts"
+        },
+        {
+          "level": 2,
+          "text": "Permissions",
+          "id": "permissions"
         },
         {
           "level": 2,

@@ -39,6 +39,7 @@ import { AboutPage } from './pages/AboutPage';
 import { SupplierRelationPage } from './pages/SupplierRelationPage';
 import { ProductionPage } from './pages/ProductionPage';
 import { PutAwayPage } from './pages/PutAwayPage';
+import { LocationCheckPage } from './pages/LocationCheckPage';
 import { ProductionBomPage } from './pages/ProductionBomPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { Layout } from './components/Layout';
@@ -191,6 +192,22 @@ export function App() {
             element={
               <RequirePermission area="warehouse" minLevel="read">
                 <InventoryLocationStatusPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="store/location-check"
+            element={
+              <RequirePermission area="warehouse" minLevel="read">
+                <LocationCheckPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="store/location-check/:id"
+            element={
+              <RequirePermission area="warehouse" minLevel="read">
+                <LocationCheckPage />
               </RequirePermission>
             }
           />
