@@ -2420,8 +2420,20 @@ export function ProductionPage({ mode = "overview" }: ProductionPageProps) {
       })
     })
 
+    // DNP / BOM-excluded parts are never assembled, so iBOM shows them as done. Taken per BOM
+    // line, not per merged row: a component with one DNP line and one assembled line merges into
+    // a single assembled row, but the DNP line's refs still have nothing left to do.
+    selectedBomComponents.forEach((line) => {
+      if (!line.dnp && !line.exclude_from_bom) return
+      ;(Array.isArray(line.refs) ? line.refs : []).forEach((ref) => {
+        if (!ref) return
+        sourced[ref] = true
+        placed[ref] = true
+      })
+    })
+
     return { sourced, placed }
-  }, [assemblyRows])
+  }, [assemblyRows, selectedBomComponents])
 
   useEffect(() => {
     scannerRowRefs.current = {}

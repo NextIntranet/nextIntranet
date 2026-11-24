@@ -37,13 +37,15 @@ function buildCompletionRefsFromState(state: IbomStateResponse): IbomCompletionR
   const qtyPlanned = Math.max(0, state.qty_planned || 0);
 
   for (const line of state.components || []) {
-    if (line.dnp) continue;
     const refs = Array.isArray(line.refs) ? line.refs : [];
     if (refs.length === 0) continue;
 
+    // DNP / BOM-excluded parts are never assembled, so there is nothing left to do for them:
+    // show them as done in iBOM instead of as open work.
+    const notAssembled = line.dnp || line.exclude_from_bom;
     const needed = Math.max(0, (line.qty_per_board || 0) * qtyPlanned);
-    const sourcedDone = needed > 0 && (line.sourced_total || 0) >= needed;
-    const placedDone = needed > 0 && (line.placed_total || 0) >= needed;
+    const sourcedDone = notAssembled || (needed > 0 && (line.sourced_total || 0) >= needed);
+    const placedDone = notAssembled || (needed > 0 && (line.placed_total || 0) >= needed);
 
     for (const ref of refs) {
       if (!ref) continue;
