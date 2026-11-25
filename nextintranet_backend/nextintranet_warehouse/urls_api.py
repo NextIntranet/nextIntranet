@@ -38,6 +38,7 @@ from .views.supplier import SupplierRouter, SupplierRelationRouter, ComponentSup
 from .views.locations import LocationRouter
 from .views.parameters import ParameterRouter, ParameterTypeRouter
 from .views.stocktaking_api import StocktakingRouter
+from .views.location_check import LocationCheckRouter
 from .views.stocktaking_report import StocktakingReportView
 from .views.stockOperation import StockOperationRouter
 from .views.transfers import TransferRequestDetailAPIView, TransferRequestListAPIView
@@ -103,6 +104,7 @@ urlpatterns = [
 
     path('positions/', WarehousePositionsListAPIView.as_view(), name='api_warehouse_positions'), # deprecated
     path('locations/tree/', WarehousePositionsTreeAPIView.as_view(), name='api_warehouse_locations_tree'),
+    path('location-check/', include(LocationCheckRouter.urls), name='api_warehouse_location_checks'),
     path('location/', include(LocationRouter.urls), name='api_warehouse_locations'),
     path('locations/', WarehousePositionsListAPIView.as_view(), name='api_warehouse_locations'),
     path('supplier/relation/', include(SupplierRelationRouter.urls), name='api_warehouse_supplier_relations'),

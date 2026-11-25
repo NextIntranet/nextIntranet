@@ -5,6 +5,7 @@ from .models import component
 from .models import category
 from .models import purchase
 from .models import stocktaking
+from .models import location_check
 
 
 class SuppliersRelationInline(admin.TabularInline):
@@ -72,3 +73,10 @@ class StocktakingAdmin(admin.ModelAdmin):
     filter_horizontal = ('authors',)
 
 admin.site.register(stocktaking.Stocktaking, StocktakingAdmin)
+
+
+@admin.register(location_check.LocationCheck)
+class LocationCheckAdmin(admin.ModelAdmin):
+    list_display = ('location', 'created_at', 'author', 'expected_count', 'confirmed_count', 'missing_count', 'unexpected_count')
+    list_filter = ('created_at',)
+    raw_id_fields = ('location', 'author')

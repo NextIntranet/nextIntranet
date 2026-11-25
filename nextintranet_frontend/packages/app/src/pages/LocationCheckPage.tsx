@@ -7,7 +7,9 @@ import {
   Check,
   CheckCircle2,
   ExternalLink,
+  MoreHorizontal,
   RotateCcw,
+  Save,
   Undo2,
   X,
 } from "lucide-react"
@@ -16,6 +18,20 @@ import { apiFetch } from "@nextintranet/core"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -57,6 +73,28 @@ interface CheckPacket {
 
 interface IdentifierResponse {
   result?: Array<{ type?: string; id?: string; name?: string }>
+}
+
+interface CheckRecordEntry {
+  id: string
+  component: string
+  serial_code: string
+  location: string | null
+}
+
+interface CheckRecord {
+  id: string
+  created_at: string
+  author_name: string | null
+  include_children: boolean
+  expected_count: number
+  confirmed_count: number
+  missing_count: number
+  unexpected_count: number
+  details: {
+    missing?: CheckRecordEntry[]
+    unexpected?: CheckRecordEntry[]
+  }
 }
 
 type ScanResult = "confirmed" | "repeat" | "foreign"
@@ -255,6 +293,9 @@ export function LocationCheckPage() {
   const [filter, setFilter] = useState("")
   const [isResolving, setIsResolving] = useState(false)
   const [cameraOpen, setCameraOpen] = useState(false)
+  const [moveTarget, setMoveTarget] = useState<CheckPacket | null>(null)
+  const [moveLocationId, setMoveLocationId] = useState<string | null>(null)
+  const [retireTarget, setRetireTarget] = useState<CheckPacket | null>(null)
 
   const scanInputRef = useRef<HTMLInputElement>(null)
   const lastScanRef = useRef<{ text: string; ts: number } | null>(null)
@@ -279,6 +320,17 @@ export function LocationCheckPage() {
     queryFn: async () => {
       const response = await apiFetch<PaginatedResponse<CheckPacket>>(
         `/api/v1/store/packet/?location=${locationId}&is_active=true&page_size=1000`,
+      )
+      return response.results
+    },
+    enabled: !!locationId,
+  })
+
+  const { data: history } = useQuery<CheckRecord[]>({
+    queryKey: ["location-checks", locationId],
+    queryFn: async () => {
+      const response = await apiFetch<PaginatedResponse<CheckRecord>>(
+        `/api/v1/store/location-check/?location=${locationId}&page_size=5`,
       )
       return response.results
     },
@@ -471,6 +523,69 @@ export function LocationCheckPage() {
     },
   })
 
+  const refreshPacket = (packetId: string) => {
+    queryClient.invalidateQueries({ queryKey: ["packet", packetId] })
+    return queryClient.invalidateQueries({ queryKey: ["location-check-packets"] })
+  }
+
+  // A missing packet that turned up elsewhere: store it where it really is.
+  const moveElsewhereMutation = useMutation({
+    mutationFn: (payload: { packet: CheckPacket; target: string }) =>
+      apiFetch(`/api/v1/store/packet/${payload.packet.id}/`, {
+        method: "PATCH",
+        body: JSON.stringify({ location: payload.target }),
+      }),
+    onSuccess: async (_data, payload) => {
+      await refreshPacket(payload.packet.id)
+      setMoveTarget(null)
+      toast.success("Packet moved.")
+    },
+    onError: () => {
+      toast.error("Failed to move packet.")
+    },
+  })
+
+  // A missing packet that is gone for good.
+  const retireMutation = useMutation({
+    mutationFn: (packet: CheckPacket) =>
+      apiFetch(`/api/v1/store/packet/${packet.id}/`, {
+        method: "PATCH",
+        body: JSON.stringify({ state: "retired" }),
+      }),
+    onSuccess: async (_data, packet) => {
+      await refreshPacket(packet.id)
+      setRetireTarget(null)
+      toast.success("Packet retired.")
+    },
+    onError: () => {
+      toast.error("Failed to retire packet.")
+    },
+  })
+
+  const saveCheckMutation = useMutation({
+    mutationFn: () =>
+      apiFetch<CheckRecord>("/api/v1/store/location-check/", {
+        method: "POST",
+        body: JSON.stringify({
+          location: locationId,
+          include_children: includeChildren,
+          found: confirmed.map((packet) => packet.id),
+          unexpected: unexpected.map((packet) => packet.id),
+        }),
+      }),
+    onSuccess: (record) => {
+      queryClient.invalidateQueries({ queryKey: ["location-checks", locationId] })
+      toast.success(
+        record.missing_count || record.unexpected_count
+          ? `Check saved: ${record.missing_count} missing, ${record.unexpected_count} unexpected.`
+          : "Check saved: location verified.",
+      )
+    },
+    onError: () => {
+      toast.error("Failed to save the check.")
+    },
+  })
+
   const handleManualSubmit = () => {
     const value = scanValue.trim()
     if (!value) {
@@ -576,6 +691,15 @@ export function LocationCheckPage() {
                 <RotateCcw className="mr-2 h-4 w-4" />
                 Start over
               </Button>
+              <Button
+                type="button"
+                className="shrink-0"
+                disabled={!locationId || packetsLoading || saveCheckMutation.isPending}
+                onClick={() => saveCheckMutation.mutate()}
+              >
+                <Save className="mr-2 h-4 w-4" />
+                Save check
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -660,12 +784,42 @@ export function LocationCheckPage() {
                           : undefined
                       }
                       actions={
-                        <IconAction
-                          label="Mark as found"
-                          onClick={() => registerPacket(packet)}
-                        >
-                          <Check className="h-4 w-4" />
-                        </IconAction>
+                        <>
+                          <IconAction
+                            label="Mark as found"
+                            onClick={() => registerPacket(packet)}
+                          >
+                            <Check className="h-4 w-4" />
+                          </IconAction>
+                          {canMove ? (
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  aria-label="Resolve missing packet"
+                                >
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onSelect={() => {
+                                    setMoveLocationId(null)
+                                    setMoveTarget(packet)
+                                  }}
+                                >
+                                  Found elsewhere — move…
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onSelect={() => setRetireTarget(packet)}>
+                                  Lost — retire packet…
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          ) : null}
+                        </>
                       }
                     />
                   ))}
@@ -763,9 +917,167 @@ export function LocationCheckPage() {
                 </Column>
               </div>
             )}
+
+            {history?.length ? (
+              <Card>
+                <CardHeader className="px-4 py-3">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">
+                    Previous checks
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <ul className="divide-y border-t text-sm">
+                    {history.map((record) => {
+                      const issues = [
+                        ...(record.details.missing ?? []).map((entry) => ({
+                          ...entry,
+                          kind: "Missing",
+                        })),
+                        ...(record.details.unexpected ?? []).map((entry) => ({
+                          ...entry,
+                          kind: "Unexpected",
+                        })),
+                      ]
+                      const clean = issues.length === 0
+                      return (
+                        <li key={record.id} className="px-4 py-2">
+                          <details>
+                            <summary
+                              className={cn(
+                                "flex flex-wrap items-center justify-between gap-x-4 gap-y-1",
+                                clean ? "list-none" : "cursor-pointer",
+                              )}
+                            >
+                              <span>
+                                {new Date(record.created_at).toLocaleString()}
+                                <span className="text-muted-foreground">
+                                  {record.author_name ? ` · ${record.author_name}` : ""}
+                                  {record.include_children ? "" : " · without sub-locations"}
+                                </span>
+                              </span>
+                              <span
+                                className={cn(
+                                  "font-medium tabular-nums",
+                                  clean ? "text-emerald-600" : "text-red-600",
+                                )}
+                              >
+                                {record.confirmed_count} / {record.expected_count} confirmed
+                                {record.missing_count
+                                  ? ` · ${record.missing_count} missing`
+                                  : ""}
+                                {record.unexpected_count
+                                  ? ` · ${record.unexpected_count} unexpected`
+                                  : ""}
+                              </span>
+                            </summary>
+                            {clean ? null : (
+                              <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                                {issues.map((entry) => (
+                                  <li key={`${entry.kind}-${entry.id}`}>
+                                    {entry.kind}:{" "}
+                                    <Link
+                                      to={`/store/packet/${entry.id}`}
+                                      className="text-foreground hover:underline"
+                                    >
+                                      {entry.component}
+                                      {entry.serial_code ? ` · ${entry.serial_code}` : ""}
+                                    </Link>
+                                    {entry.kind === "Unexpected"
+                                      ? ` · belonged in ${entry.location ?? "no location"}`
+                                      : ""}
+                                  </li>
+                                ))}
+                              </ul>
+                            )}
+                          </details>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </CardContent>
+              </Card>
+            ) : null}
           </>
         )}
       </div>
+
+      <Dialog open={!!moveTarget} onOpenChange={(open) => !open && setMoveTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Move packet</DialogTitle>
+            <DialogDescription>
+              {moveTarget?.component.name}
+              {moveTarget && serialCodeFromPacket(moveTarget)
+                ? ` · ${serialCodeFromPacket(moveTarget)}`
+                : ""}{" "}
+              is not here. Pick the location where it actually is.
+            </DialogDescription>
+          </DialogHeader>
+          <LocationParentSelect
+            locations={locationsTree || []}
+            value={moveLocationId}
+            onChange={setMoveLocationId}
+            isLoading={locationsLoading}
+            emptyLabel="No location selected"
+            placeholder="Select a location"
+          />
+          {moveLocationId && locationLookup.get(moveLocationId)?.can_store_items === false ? (
+            <p className="text-sm text-destructive">This location cannot store items.</p>
+          ) : null}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setMoveTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={
+                !moveTarget ||
+                !moveLocationId ||
+                moveLocationId === moveTarget.location?.id ||
+                locationLookup.get(moveLocationId)?.can_store_items === false ||
+                moveElsewhereMutation.isPending
+              }
+              onClick={() =>
+                moveTarget &&
+                moveLocationId &&
+                moveElsewhereMutation.mutate({ packet: moveTarget, target: moveLocationId })
+              }
+            >
+              Move packet
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!retireTarget} onOpenChange={(open) => !open && setRetireTarget(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Retire packet?</DialogTitle>
+            <DialogDescription>
+              {retireTarget?.component.name}
+              {retireTarget && serialCodeFromPacket(retireTarget)
+                ? ` · ${serialCodeFromPacket(retireTarget)}`
+                : ""}{" "}
+              ({retireTarget ? formatCount(retireTarget.count) : ""}) will be marked as
+              retired and no longer count as usable stock. You can reactivate it on the
+              packet detail page.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setRetireTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={retireMutation.isPending}
+              onClick={() => retireTarget && retireMutation.mutate(retireTarget)}
+            >
+              Retire packet
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <CameraScanDialog
         open={cameraOpen}

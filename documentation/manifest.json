@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-23T16:16:28.913Z",
+  "generatedAt": "2026-11-25T18:49:08.933Z",
   "pages": [
     {
       "path": "",
@@ -937,8 +937,13 @@
         },
         {
           "level": 2,
-          "text": "What is saved",
-          "id": "what-is-saved"
+          "text": "Resolving missing packets",
+          "id": "resolving-missing-packets"
+        },
+        {
+          "level": 2,
+          "text": "Saving the check",
+          "id": "saving-the-check"
         },
         {
           "level": 2,

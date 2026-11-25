@@ -45,15 +45,26 @@ Each packet in the red column has three actions:
 - **Open home location** — shows where the packet is supposed to be.
 - **Remove from list** — use after carrying the packet back to its own location.
 
-A missing packet can be opened by its name to review or correct it on the packet
-detail page.
+## Resolving missing packets
 
-## What is saved
+With **write** access, the **⋯** menu next to a packet in *Not found yet* offers:
 
-Only *Move to this location* changes warehouse data. The check itself is not
-recorded; its progress is kept in the browser tab, so reloading the page keeps it,
-and **Start over** clears it. To record counted quantities, use
-[Inventory](inventory.md).
+- **Found elsewhere — move…** — pick the location where the packet actually is.
+- **Lost — retire packet…** — marks the packet as *Retired*, so it no longer counts
+  as usable stock. It can be reactivated on the packet detail page.
+
+## Saving the check
+
+**Save check** stores the result — who checked the location, when, and which packets
+were confirmed, missing and unexpected at that moment. Saved checks are listed under
+**Previous checks** below the columns; open a row with problems to see the packets.
+A saved check is a snapshot and does not change when packets are moved or retired
+later, so save first and resolve afterwards if you want the record to show what you
+found. Saved checks cannot be edited.
+
+Until you save, progress is kept only in the browser tab: reloading the page keeps
+it, and **Start over** clears it. Saving does not change stock quantities — to record
+counted quantities, use [Inventory](inventory.md).
 
 ## Keyboard shortcuts
 
